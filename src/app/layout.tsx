@@ -1,9 +1,17 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import localFont from 'next/font/local'
 import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
 
-const inter = Inter({ subsets: ['latin'] })
+// Use the locally shipped Inter .ttf (see public/fonts) instead of fetching
+// from Google Fonts at build time — keeps builds offline-safe.
+const inter = localFont({
+  src: [
+    { path: '../../public/fonts/Inter-Regular.ttf', weight: '400', style: 'normal' },
+    { path: '../../public/fonts/Inter-Bold.ttf', weight: '700', style: 'normal' },
+  ],
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   title: 'PI 自动生成系统',
