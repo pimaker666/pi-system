@@ -5,11 +5,14 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
   Package,
+  Boxes,
   Users,
   UsersRound,
   FileText,
   FilePlus2,
+  Scale,
   Settings,
+  ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/types'
@@ -31,7 +34,14 @@ const NAV: NavItem[] = [
     icon: FileText,
     match: (p) => p.startsWith('/pi') && p !== '/pi/create',
   },
-  { href: '/products', label: '产品库', icon: Package },
+  { href: '/weight-calc', label: '计算重量', icon: Scale },
+  {
+    href: '/products',
+    label: '产品库',
+    icon: Package,
+    match: (p) => p.startsWith('/products') && !p.startsWith('/products/groups'),
+  },
+  { href: '/products/groups', label: '产品分组', icon: Boxes },
   {
     href: '/customers',
     label: '客户',
@@ -39,7 +49,8 @@ const NAV: NavItem[] = [
     match: (p) => p.startsWith('/customers') && !p.startsWith('/customers/groups'),
   },
   { href: '/customers/groups', label: '客户分组', icon: UsersRound },
-  { href: '/settings', label: '公司设置', icon: Settings, adminOnly: true },
+  { href: '/settings', label: '公司设置', icon: Settings },
+  { href: '/users', label: '用户管理', icon: ShieldCheck, adminOnly: true },
 ]
 
 export function Sidebar({ role, fullName }: { role: UserRole; fullName: string | null }) {

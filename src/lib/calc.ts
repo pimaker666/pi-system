@@ -1,12 +1,18 @@
 import type { PiLineItem, PiCharges, PiTotals } from '@/types'
 
+/** Minimal fields calcPiTotals needs from a line. */
+export type PiTotalsLine = Pick<PiLineItem, 'unit_price' | 'quantity'>
+
 /** Round to 2 decimal places avoiding float drift. */
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
 }
 
-export function calcLineTotal(unitPrice: number, quantity: number): number {
-  return round2(unitPrice * quantity)
+export function calcLineTotal(
+  unitPrice: number | null,
+  quantity: number | null,
+): number {
+  return round2((unitPrice ?? 0) * (quantity ?? 0))
 }
 
 /**
@@ -15,7 +21,7 @@ export function calcLineTotal(unitPrice: number, quantity: number): number {
  *   tax_amount = (subtotal - discount) * tax_rate%
  *   total      = subtotal - discount + tax_amount + shipping_fee
  */
-export function calcPiTotals(items: PiLineItem[], charges: PiCharges): PiTotals {
+export function calcPiTotals(items: PiTotalsLine[], charges: PiCharges): PiTotals {
   const subtotal = round2(
     items.reduce((sum, item) => sum + calcLineTotal(item.unit_price, item.quantity), 0),
   )

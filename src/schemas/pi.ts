@@ -12,10 +12,19 @@ export const customerSnapshotSchema = z.object({
 })
 
 export const piLineItemSchema = z.object({
-  product_id: z.string().uuid(),
+  product_id: z.string().uuid().nullable(),
   sku: z.string().min(1),
   name: z.string().min(1),
   description: z.string().nullable().optional(),
+  image_url: z.string().nullable().optional(),
+  remark_image_url: z.string().nullable().optional(),
+  specification: z.string().nullable().optional(),
+  weight_g: z
+    .preprocess(
+      (v) => (v === '' || v === null || v === undefined ? null : Number(v)),
+      z.number().min(0).nullable(),
+    )
+    .optional(),
   unit: z.string().min(1),
   unit_price: z.coerce.number().min(0),
   quantity: z.coerce.number().int('数量必须为整数').min(1, '数量至少为 1'),
@@ -33,6 +42,9 @@ export const createPiSchema = z.object({
   currency: z.enum(CURRENCIES),
   items: z.array(piLineItemSchema).min(1, '至少选择一个产品'),
   charges: piChargesSchema,
+  shipping_method: z.string().trim().max(200).optional().or(z.literal('')).nullable(),
+  show_specification: z.boolean().default(true),
+  show_weight: z.boolean().default(false),
   notes: z.string().trim().max(2000).optional().or(z.literal('')),
   terms: z.string().trim().max(4000).optional().or(z.literal('')),
 })

@@ -1,4 +1,4 @@
-import { requireProfile } from '@/lib/auth'
+import { requireApproved } from '@/lib/auth'
 import { Sidebar } from '@/components/layout/sidebar'
 import { LogoutButton } from '@/components/auth/logout-button'
 
@@ -7,7 +7,7 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const profile = await requireProfile()
+  const profile = await requireApproved()
 
   return (
     <div className="flex h-screen overflow-hidden">

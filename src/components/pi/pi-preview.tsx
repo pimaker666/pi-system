@@ -1,34 +1,21 @@
 'use client'
 
-import dynamic from 'next/dynamic'
-import { PiDocument } from './pi-document'
-import type { CompanySettings, ProformaInvoiceWithItems } from '@/types'
-
-// PDFViewer relies on browser APIs — never render it on the server.
-const PDFViewer = dynamic(
-  () => import('@react-pdf/renderer').then((m) => m.PDFViewer),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        正在加载预览…
-      </div>
-    ),
-  },
-)
-
-export function PiPreview({
-  pi,
-  company,
-}: {
-  pi: ProformaInvoiceWithItems
-  company: CompanySettings | null
-}) {
+/**
+ * PDF preview via an <iframe> pointing at the server-rendered PDF route
+ * (/api/pi/[id]/pdf?inline=1). This deliberately avoids running
+ * @react-pdf/renderer in the browser — the in-browser PDFViewer proved
+ * fragile (client-side exceptions on load) and pulled the heavy ESM-only
+ * react-pdf bundle into the client. The server already renders the exact same
+ * document reliably, so we reuse it for both preview and download.
+ */
+export function PiPreview({ id }: { id: string }) {
   return (
     <div className="h-[80vh] w-full overflow-hidden rounded-md border">
-      <PDFViewer width="100%" height="100%" showToolbar>
-        <PiDocument pi={pi} company={company} />
-      </PDFViewer>
+      <iframe
+        src={`/api/pi/${id}/pdf?inline=1`}
+        title="PI PDF 预览"
+        className="h-full w-full"
+      />
     </div>
   )
 }

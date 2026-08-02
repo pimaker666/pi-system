@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { PiActions } from '@/components/pi/pi-actions'
 import { PiPreview } from '@/components/pi/pi-preview'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import type { CompanySettings, ProformaInvoiceWithItems } from '@/types'
+import type { ProformaInvoiceWithItems } from '@/types'
 
 export default async function PiDetailPage({
   params,
@@ -18,18 +18,14 @@ export default async function PiDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: piData }, { data: companyData }] = await Promise.all([
-    supabase
-      .from('proforma_invoices')
-      .select('*, pi_items(*)')
-      .eq('id', id)
-      .single(),
-    supabase.from('company_settings').select('*').eq('id', 1).maybeSingle(),
-  ])
+  const { data: piData } = await supabase
+    .from('proforma_invoices')
+    .select('*, pi_items(*)')
+    .eq('id', id)
+    .single()
 
   if (!piData) notFound()
   const pi = piData as ProformaInvoiceWithItems
-  const company = (companyData ?? null) as CompanySettings | null
   const c = pi.customer_snapshot
 
   return (
@@ -113,7 +109,7 @@ export default async function PiDetailPage({
             <CardTitle className="text-base">PDF 预览</CardTitle>
           </CardHeader>
           <CardContent>
-            <PiPreview pi={pi} company={company} />
+            <PiPreview id={pi.id} />
           </CardContent>
         </Card>
       </div>

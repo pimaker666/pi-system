@@ -3,7 +3,8 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import { createElement } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { PiDocument } from '@/components/pi/pi-document'
-import type { CompanySettings, ProformaInvoiceWithItems } from '@/types'
+import { buildPiFilename, contentDisposition } from '@/lib/pi-filename'
+import type { CompanySettings, CompanySnapshot, ProformaInvoiceWithItems } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,6 +18,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
+  const inline = new URL(_request.url).searchParams.get('inline') === '1'
   const supabase = await createClient()
 
   const {
@@ -36,7 +38,10 @@ export async function GET(
   }
 
   const pi = piData as ProformaInvoiceWithItems
-  const company = (companyData ?? null) as CompanySettings | null
+  const company = (pi.company_snapshot ?? companyData ?? null) as
+    | CompanySettings
+    | CompanySnapshot
+    | null
 
   const buffer = await renderToBuffer(
     // react-pdf's renderToBuffer types insist on a Document element; our
@@ -48,7 +53,10 @@ export async function GET(
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${pi.pi_number}.pdf"`,
+      'Content-Disposition': contentDisposition(
+        buildPiFilename(pi, 'pdf'),
+        inline ? 'inline' : 'attachment',
+      ),
       'Cache-Control': 'no-store',
     },
   })

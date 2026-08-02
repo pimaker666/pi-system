@@ -6,6 +6,8 @@ import Image from 'next/image'
 import { toast } from 'sonner'
 import { upsertCompanySettings } from '@/lib/actions/company'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import { toImageSrc } from '@/lib/supabase/image'
+import { AccentColorField } from '@/components/settings/accent-color-field'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -85,10 +87,12 @@ export function CompanyForm({ settings }: { settings: CompanySettings | null }) 
             {uploading && <p className="text-sm text-muted-foreground">上传中…</p>}
             {logoUrl && (
               <div className="relative mt-2 h-20 w-40 overflow-hidden rounded-md border bg-white">
-                <Image src={logoUrl} alt="Logo" fill className="object-contain" sizes="160px" />
+                <Image src={toImageSrc(logoUrl)} alt="Logo" fill className="object-contain" sizes="160px" />
               </div>
             )}
           </div>
+
+          <AccentColorField defaultValue={settings?.accent_color} logoUrl={logoUrl || undefined} />
         </CardContent>
       </Card>
 

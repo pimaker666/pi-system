@@ -33,3 +33,17 @@ next-env.d.ts
 # supabase
 /supabase/.branches
 /supabase/.temp
+.vercel
+.env*
+
+# macOS junk (AppleDouble / Finder)
+._*
+.AppleDouble
+.Spotlight-V100
+.Trashes
+
+# deployment env files with real secrets (NAS)
+deploy/nas/app.env
+deploy/nas/supabase.env
+*.env
+!*.env.example

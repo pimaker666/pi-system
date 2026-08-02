@@ -7,6 +7,12 @@ export const companySchema = z.object({
   email: z.string().trim().email('邮箱格式错误').optional().or(z.literal('')),
   website: z.string().trim().max(200).optional().or(z.literal('')),
   logo_url: z.string().url('Logo 地址无效').optional().or(z.literal('')),
+  accent_color: z
+    .string()
+    .trim()
+    .regex(/^#[0-9a-fA-F]{6}$/, '品牌色需为 #RRGGBB 格式')
+    .optional()
+    .or(z.literal('')),
   bank_name: z.string().trim().max(200).optional().or(z.literal('')),
   bank_account: z.string().trim().max(100).optional().or(z.literal('')),
   bank_swift: z.string().trim().max(50).optional().or(z.literal('')),
@@ -15,3 +21,9 @@ export const companySchema = z.object({
 })
 
 export type CompanyInput = z.infer<typeof companySchema>
+
+export const companyProfileSchema = companySchema.extend({
+  label: z.string().trim().min(1, '档案名不能为空').max(100),
+})
+
+export type CompanyProfileInput = z.infer<typeof companyProfileSchema>

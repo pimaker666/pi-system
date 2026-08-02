@@ -24,10 +24,14 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   const [products, customers, pis, monthPis] = await Promise.all([
     supabase.from('products').select('id', { count: 'exact', head: true }),
     supabase.from('customers').select('id', { count: 'exact', head: true }),
-    supabase.from('proforma_invoices').select('id', { count: 'exact', head: true }),
     supabase
       .from('proforma_invoices')
       .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null),
+    supabase
+      .from('proforma_invoices')
+      .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
       .gte('created_at', start)
       .lt('created_at', end),
   ])

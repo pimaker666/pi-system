@@ -1,0 +1,41 @@
+############################################################
+#  pi-system 应用容器（接入自建 Supabase 的同一网络）
+#  与官方 supabase/docker 并排运行。
+#
+#  用法（在 supabase/docker 目录下，先起 Supabase，再起本应用）：
+#    docker compose -f docker-compose.app.yml --env-file app.env up -d --build
+#
+#  说明：本应用通过 NAS 内网 IP:8000（Kong 网关）访问 Supabase，
+#  浏览器与服务端用同一地址，保证客户端上传/图片显示也走内网。
+############################################################
+
+services:
+  pi-app:
+    build:
+      # 指向 pi-system 项目根目录（按实际路径调整，见部署指南）
+      context: ../..
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    image: pi-system:latest
+    container_name: pi-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    networks:
+      - supabase_network
+
+networks:
+  # 复用官方 supabase/docker 启动时创建的网络（项目名默认为目录名 supabase）。
+  # 若你的网络名不同，用 `docker network ls` 查到后改这里。
+  supabase_network:
+    external: true
+    name: supabase_default

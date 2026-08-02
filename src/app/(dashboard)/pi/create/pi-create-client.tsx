@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { usePiCartStore } from '@/stores/pi-cart-store'
@@ -14,14 +14,23 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import type { Customer, CustomerGroup, Product, CustomerSnapshot } from '@/types'
+import type { Customer, CustomerGroup, Product, ProductGroup, CustomerSnapshot } from '@/types'
 
 interface PiCreateClientProps {
   products: Product[]
   customers: Customer[]
   groups: CustomerGroup[]
+  productGroups: ProductGroup[]
   defaultTerms: string
 }
+
+/** Preset transport method + lead time options; users may also type freely. */
+const SHIPPING_METHOD_PRESETS = [
+  'Sea Transportation, 22~40 Days',
+  'Land Transportation, 20~28 Days',
+  'Air Transportation, 10~14 Days',
+  'Transportation Within China, 7 Days',
+] as const
 
 function toSnapshot(c: Customer): CustomerSnapshot {
   return {
@@ -30,6 +39,9 @@ function toSnapshot(c: Customer): CustomerSnapshot {
     email: c.email,
     phone: c.phone,
     address: c.address,
+    city: c.city,
+    state: c.state,
+    postal_code: c.postal_code,
     country: c.country,
     contact_person: c.contact_person,
   }
@@ -39,14 +51,30 @@ export function PiCreateClient({
   products,
   customers,
   groups,
-  defaultTerms,
+  productGroups,
 }: PiCreateClientProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [customer, setCustomer] = useState<Customer | null>(null)
-  const [terms, setTerms] = useState(defaultTerms)
 
-  const { items, charges, currency, notes, setCharges, setNotes, reset } = usePiCartStore()
+  const {
+    items,
+    charges,
+    currency,
+    notes,
+    customer,
+    terms,
+    shippingMethod,
+    showSpecification,
+    showWeight,
+    setCharges,
+    setNotes,
+    setCustomer,
+    setTerms,
+    setShippingMethod,
+    setShowSpecification,
+    setShowWeight,
+    reset,
+  } = usePiCartStore()
 
   const totals = useMemo(() => calcPiTotals(items, charges), [items, charges])
 
@@ -60,9 +88,21 @@ export function PiCreateClient({
       return
     }
 
+    const invalid = items.find(
+      (i) =>
+        i.quantity === null ||
+        i.quantity < 1 ||
+        i.unit_price === null ||
+        i.unit_price < 0,
+    )
+    if (invalid) {
+      toast.error(`请填写「${invalid.name}」的数量和单价`)
+      return
+    }
+
     startTransition(async () => {
       const result = await createProformaInvoice({
-        customer_id: customer.id,
+        customer_id: customer.id || null,
         customer_snapshot: toSnapshot(customer),
         currency,
         items: items.map((i) => ({
@@ -70,11 +110,18 @@ export function PiCreateClient({
           sku: i.sku,
           name: i.name,
           description: i.description,
+          image_url: i.image_url,
+          remark_image_url: i.remark_image_url,
+          specification: i.specification,
+          weight_g: i.weight_g,
           unit: i.unit,
-          unit_price: i.unit_price,
-          quantity: i.quantity,
+          unit_price: i.unit_price ?? 0,
+          quantity: i.quantity ?? 0,
         })),
         charges,
+        shipping_method: shippingMethod.trim() || null,
+        show_specification: showSpecification,
+        show_weight: showWeight,
         notes,
         terms,
       })
@@ -110,7 +157,7 @@ export function PiCreateClient({
           <CardTitle className="text-base">2. 选择产品</CardTitle>
         </CardHeader>
         <CardContent>
-          <ProductSelector products={products.filter((p) => p.is_active)} />
+          <ProductSelector products={products.filter((p) => p.is_active)} groups={productGroups} />
         </CardContent>
       </Card>
 
@@ -154,6 +201,42 @@ export function PiCreateClient({
               />
             </div>
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="shipping_method">运输方式与时间</Label>
+            <Input
+              id="shipping_method"
+              list="shipping-method-options"
+              placeholder="选择或输入运输方式与时间（可留空，选后可再修改）"
+              value={shippingMethod}
+              onChange={(e) => setShippingMethod(e.target.value)}
+            />
+            <datalist id="shipping-method-options">
+              {SHIPPING_METHOD_PRESETS.map((o) => (
+                <option key={o} value={o} />
+              ))}
+            </datalist>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={showSpecification}
+              onChange={(e) => setShowSpecification(e.target.checked)}
+              className="h-4 w-4"
+            />
+            在 PI 中包含 SPECIFICATION 列
+          </label>
+
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={showWeight}
+              onChange={(e) => setShowWeight(e.target.checked)}
+              className="h-4 w-4"
+            />
+            在 PI 中包含 克重 列
+          </label>
 
           <div className="space-y-2">
             <Label htmlFor="terms">条款</Label>

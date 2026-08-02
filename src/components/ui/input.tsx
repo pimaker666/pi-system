@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 export type InputProps = React.InputHTMLAttributes<HTMLInputElement>
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ className, type, ...props }, ref) => (
+  ({ className, type, onWheel, ...props }, ref) => (
     <input
       type={type}
       className={cn(
@@ -12,6 +12,16 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         className,
       )}
       ref={ref}
+      // 数字输入框禁用鼠标滚轮改值：滚轮时让输入框失焦，
+      // 数值不会被滚动改变，页面仍可正常滚动。
+      onWheel={
+        type === 'number'
+          ? (e) => {
+              e.currentTarget.blur()
+              onWheel?.(e)
+            }
+          : onWheel
+      }
       {...props}
     />
   ),

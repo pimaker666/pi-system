@@ -27,9 +27,19 @@ export async function requireProfile(): Promise<Profile> {
   return profile
 }
 
+/**
+ * Require a logged-in AND admin-approved user.
+ * Un-approved (pending) users are sent to the waiting-for-approval screen.
+ */
+export async function requireApproved(): Promise<Profile> {
+  const profile = await requireProfile()
+  if (profile.status !== 'approved') redirect('/pending')
+  return profile
+}
+
 /** Require an admin, else redirect to dashboard. */
 export async function requireAdmin(): Promise<Profile> {
-  const profile = await requireProfile()
+  const profile = await requireApproved()
   if (profile.role !== 'admin') redirect('/dashboard')
   return profile
 }
