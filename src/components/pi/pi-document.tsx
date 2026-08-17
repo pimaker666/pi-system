@@ -604,10 +604,7 @@ export function PiDocument({ pi, company }: PiDocumentProps) {
           <Text style={styles.footerText}>
             {company?.company_name ?? ''} · Proforma Invoice {pi.pi_number}
           </Text>
-          <Text
-            style={styles.footerText}
-            render={({ pageNumber, totalPages }) => `Page ${pageNumber} / ${totalPages}`}
-          />
+          <Text style={styles.footerText}>{pi.pi_number}</Text>
         </View>
       </Page>
     </Document>
