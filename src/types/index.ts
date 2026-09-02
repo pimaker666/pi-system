@@ -1,7 +1,70 @@
-export type UserRole = 'admin' | 'sales'
+export type UserRole = 'admin' | 'finance' | 'sales'
 export type UserStatus = 'pending' | 'approved'
 export type CurrencyCode = 'USD' | 'EUR' | 'CNY' | 'GBP' | 'JPY'
 export type PiStatus = 'active' | 'void'
+export type FinanceRecordStatus = 'active' | 'void'
+export type FinanceTransactionType = 'income' | 'expense'
+export type FinanceCostType =
+  | 'product'
+  | 'shipping'
+  | 'customs'
+  | 'platform_fee'
+  | 'payment_fee'
+  | 'other'
+
+export interface FinanceOrder {
+  id: string
+  pi_id: string | null
+  pi_number_snapshot: string
+  customer_name_snapshot: string | null
+  salesperson_id: string | null
+  salesperson_name_snapshot: string | null
+  order_date: string
+  amount_original: number
+  currency: CurrencyCode
+  exchange_rate_to_cny: number
+  amount_cny: number
+  status: FinanceRecordStatus
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FinanceTransaction {
+  id: string
+  transaction_type: FinanceTransactionType
+  category: string
+  transaction_date: string
+  amount_original: number
+  currency: CurrencyCode
+  exchange_rate_to_cny: number
+  amount_cny: number
+  finance_order_id: string | null
+  salesperson_id: string | null
+  salesperson_name_snapshot: string | null
+  reference_no: string | null
+  description: string | null
+  status: FinanceRecordStatus
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FinanceOrderCost {
+  id: string
+  finance_order_id: string
+  cost_type: FinanceCostType
+  incurred_date: string
+  amount_original: number
+  currency: CurrencyCode
+  exchange_rate_to_cny: number
+  amount_cny: number
+  description: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
 
 export interface Profile {
   id: string

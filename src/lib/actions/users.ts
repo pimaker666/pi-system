@@ -19,20 +19,32 @@ export async function setUserRole(
 ): Promise<ActionResult> {
   const me = await requireAdmin()
 
+  if (!(['admin', 'finance', 'sales'] as const).includes(role)) {
+    return { ok: false, error: '无效的用户角色' }
+  }
+
   if (userId === me.id) {
     return { ok: false, error: '不能修改自己的角色' }
   }
 
   const supabase = await createClient()
 
-  // When demoting an admin to sales, ensure at least one admin remains.
-  if (role === 'sales') {
-    const { count } = await supabase
+  // When changing an admin to any non-admin role, ensure at least one admin remains.
+  if (role !== 'admin') {
+    const { data: target } = await supabase
       .from('profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('role', 'admin')
-    if ((count ?? 0) <= 1) {
-      return { ok: false, error: '至少需保留一名管理员，无法取消' }
+      .select('role')
+      .eq('id', userId)
+      .single()
+
+    if (target?.role === 'admin') {
+      const { count } = await supabase
+        .from('profiles')
+        .select('id', { count: 'exact', head: true })
+        .eq('role', 'admin')
+      if ((count ?? 0) <= 1) {
+        return { ok: false, error: '至少需保留一名管理员，无法取消' }
+      }
     }
   }
 

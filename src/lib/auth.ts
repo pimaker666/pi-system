@@ -43,3 +43,12 @@ export async function requireAdmin(): Promise<Profile> {
   if (profile.role !== 'admin') redirect('/dashboard')
   return profile
 }
+
+/** Require an approved admin or finance user. */
+export async function requireFinanceAccess(): Promise<Profile> {
+  const profile = await requireApproved()
+  if (profile.role !== 'admin' && profile.role !== 'finance') {
+    redirect('/finance/performance')
+  }
+  return profile
+}

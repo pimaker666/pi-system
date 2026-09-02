@@ -2,10 +2,17 @@
 
 import { useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { ShieldCheck, ShieldOff, Check, Trash2 } from 'lucide-react'
+import { Check, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Table,
@@ -18,7 +25,7 @@ import {
 import { setUserRole, approveUser, deleteUser } from '@/lib/actions/users'
 import { ResetPasswordDialog } from './reset-password-dialog'
 import { formatDate } from '@/lib/utils'
-import type { Profile } from '@/types'
+import type { Profile, UserRole } from '@/types'
 
 interface UserTableProps {
   users: Pick<Profile, 'id' | 'email' | 'full_name' | 'role' | 'status' | 'created_at'>[]
@@ -31,11 +38,11 @@ export function UserTable({ users, currentUserId }: UserTableProps) {
 
   const adminCount = users.filter((u) => u.role === 'admin').length
 
-  function handleToggle(id: string, nextRole: 'admin' | 'sales') {
+  function handleRoleChange(id: string, nextRole: UserRole) {
     startTransition(async () => {
       const result = await setUserRole(id, nextRole)
       if (result.ok) {
-        toast.success(nextRole === 'admin' ? '已设为管理员' : '已取消管理员')
+        toast.success('用户角色已更新')
         router.refresh()
       } else {
         toast.error(result.error ?? '操作失败')
@@ -96,11 +103,20 @@ export function UserTable({ users, currentUserId }: UserTableProps) {
                   <TableCell className="font-medium">{u.email}</TableCell>
                   <TableCell>{u.full_name ?? '—'}</TableCell>
                   <TableCell>
-                    {isAdmin ? (
-                      <Badge variant="default">管理员</Badge>
-                    ) : (
-                      <Badge variant="secondary">业务员</Badge>
-                    )}
+                    <Select
+                      value={u.role}
+                      disabled={pending || isSelf || lastAdmin}
+                      onValueChange={(value) => handleRoleChange(u.id, value as UserRole)}
+                    >
+                      <SelectTrigger className="w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="admin">管理员</SelectItem>
+                        <SelectItem value="finance">财务</SelectItem>
+                        <SelectItem value="sales">业务员</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell>
                     {isPending ? (
@@ -124,37 +140,6 @@ export function UserTable({ users, currentUserId }: UserTableProps) {
                           通过审核
                         </Button>
                       )}
-
-                      {!isPending &&
-                        (isAdmin ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-destructive"
-                            disabled={pending || isSelf || lastAdmin}
-                            title={
-                              isSelf
-                                ? '不能修改自己的角色'
-                                : lastAdmin
-                                  ? '至少需保留一名管理员'
-                                  : undefined
-                            }
-                            onClick={() => handleToggle(u.id, 'sales')}
-                          >
-                            <ShieldOff className="h-3.5 w-3.5" />
-                            取消管理员
-                          </Button>
-                        ) : (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={pending}
-                            onClick={() => handleToggle(u.id, 'admin')}
-                          >
-                            <ShieldCheck className="h-3.5 w-3.5" />
-                            设为管理员
-                          </Button>
-                        ))}
 
                       <ResetPasswordDialog userId={u.id} email={u.email} />
 

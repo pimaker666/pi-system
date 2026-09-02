@@ -11,6 +11,7 @@ import {
   FileText,
   FilePlus2,
   Scale,
+  Landmark,
   Settings,
   ShieldCheck,
 } from 'lucide-react'
@@ -21,7 +22,7 @@ interface NavItem {
   href: string
   label: string
   icon: React.ComponentType<{ className?: string }>
-  adminOnly?: boolean
+  allowedRoles?: UserRole[]
   match?: (pathname: string) => boolean
 }
 
@@ -49,13 +50,26 @@ const NAV: NavItem[] = [
     match: (p) => p.startsWith('/customers') && !p.startsWith('/customers/groups'),
   },
   { href: '/customers/groups', label: '客户分组', icon: UsersRound },
+  {
+    href: '/finance',
+    label: '财务管理',
+    icon: Landmark,
+    allowedRoles: ['admin', 'finance'],
+    match: (p) => p.startsWith('/finance'),
+  },
+  {
+    href: '/finance/performance',
+    label: '我的业绩',
+    icon: Landmark,
+    allowedRoles: ['sales'],
+  },
   { href: '/settings', label: '公司设置', icon: Settings },
-  { href: '/users', label: '用户管理', icon: ShieldCheck, adminOnly: true },
+  { href: '/users', label: '用户管理', icon: ShieldCheck, allowedRoles: ['admin'] },
 ]
 
 export function Sidebar({ role, fullName }: { role: UserRole; fullName: string | null }) {
   const pathname = usePathname()
-  const items = NAV.filter((item) => !item.adminOnly || role === 'admin')
+  const items = NAV.filter((item) => !item.allowedRoles || item.allowedRoles.includes(role))
 
   return (
     <aside className="flex h-full w-60 flex-col border-r bg-muted/30">
@@ -89,7 +103,7 @@ export function Sidebar({ role, fullName }: { role: UserRole; fullName: string |
       <div className="border-t p-4">
         <div className="text-sm font-medium">{fullName ?? '用户'}</div>
         <div className="text-xs text-muted-foreground">
-          {role === 'admin' ? '管理员' : '业务员'}
+          {role === 'admin' ? '管理员' : role === 'finance' ? '财务' : '业务员'}
         </div>
       </div>
     </aside>
