@@ -2,26 +2,10 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { requireApproved, requireFinanceAccess } from '@/lib/auth'
-import {
-  financeCostSchema,
-  financeOrderSchema,
-  financeTransactionSchema,
-} from '@/schemas/finance'
+import { requireFinanceAccess } from '@/lib/auth'
+import { financeCostSchema, financeTransactionSchema } from '@/schemas/finance'
 import type { ActionResult } from './products'
 import type { CurrencyCode } from '@/types'
-
-interface PiForFinance {
-  id: string
-  pi_number: string
-  customer_snapshot: { name?: string; company?: string } | null
-  total: number
-  currency: CurrencyCode
-  created_by: string | null
-  created_at: string
-  status: 'active' | 'void'
-  deleted_at: string | null
-}
 
 function revalidateFinance() {
   revalidatePath('/finance')
@@ -32,72 +16,6 @@ function revalidateFinance() {
 
 function normalizedRate(currency: CurrencyCode, rate: number) {
   return currency === 'CNY' ? 1 : rate
-}
-
-export async function createFinanceOrder(
-  formData: FormData,
-): Promise<ActionResult & { id?: string }> {
-  const profile = await requireApproved()
-  const parsed = financeOrderSchema.safeParse({
-    pi_id: formData.get('pi_id'),
-    exchange_rate_to_cny: formData.get('exchange_rate_to_cny'),
-    order_date: formData.get('order_date'),
-    notes: formData.get('notes') || '',
-  })
-  if (!parsed.success) {
-    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
-  }
-
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('proforma_invoices')
-    .select('id, pi_number, customer_snapshot, total, currency, created_by, created_at, status, deleted_at')
-    .eq('id', parsed.data.pi_id)
-    .single()
-
-  if (error || !data) return { ok: false, error: 'PI 不存在或无权访问' }
-  const pi = data as PiForFinance
-  if (pi.status !== 'active' || pi.deleted_at) {
-    return { ok: false, error: '已作废或已删除的 PI 不能登记业绩' }
-  }
-  if (!pi.created_by) return { ok: false, error: '该 PI 没有业务员归属，请先补充归属' }
-  if (profile.role === 'sales' && pi.created_by !== profile.id) {
-    return { ok: false, error: '只能登记自己名下的 PI' }
-  }
-
-  const { data: salesperson } = await supabase
-    .from('profiles')
-    .select('full_name, email')
-    .eq('id', pi.created_by)
-    .single()
-
-  const customer = pi.customer_snapshot ?? {}
-  const customerName = customer.company || customer.name || null
-  const { data: inserted, error: insertError } = await supabase
-    .from('finance_orders')
-    .insert({
-      pi_id: pi.id,
-      pi_number_snapshot: pi.pi_number,
-      customer_name_snapshot: customerName,
-      salesperson_id: pi.created_by,
-      salesperson_name_snapshot: salesperson?.full_name || salesperson?.email || null,
-      order_date: parsed.data.order_date,
-      amount_original: pi.total,
-      currency: pi.currency,
-      exchange_rate_to_cny: normalizedRate(pi.currency, parsed.data.exchange_rate_to_cny),
-      notes: parsed.data.notes || null,
-      created_by: profile.id,
-    })
-    .select('id')
-    .single()
-
-  if (insertError) {
-    if (insertError.code === '23505') return { ok: false, error: '该 PI 已登记过业绩' }
-    return { ok: false, error: insertError.message }
-  }
-
-  revalidateFinance()
-  return { ok: true, id: inserted.id }
 }
 
 export async function createFinanceTransaction(formData: FormData): Promise<ActionResult> {
@@ -166,7 +84,7 @@ export async function createFinanceTransaction(formData: FormData): Promise<Acti
 export async function createFinanceCost(formData: FormData): Promise<ActionResult> {
   const profile = await requireFinanceAccess()
   const parsed = financeCostSchema.safeParse({
-    finance_order_id: formData.get('finance_order_id'),
+    order_reference: formData.get('order_reference'),
     cost_type: formData.get('cost_type'),
     incurred_date: formData.get('incurred_date'),
     amount_original: formData.get('amount_original'),
@@ -178,9 +96,33 @@ export async function createFinanceCost(formData: FormData): Promise<ActionResul
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
   }
 
+  const [source, orderId] = parsed.data.order_reference.split(':') as [
+    'finance' | 'business',
+    string,
+  ]
   const supabase = await createClient()
+
+  if (source === 'finance') {
+    const { data: order, error: orderError } = await supabase
+      .from('finance_orders')
+      .select('id')
+      .eq('id', orderId)
+      .eq('status', 'active')
+      .maybeSingle()
+    if (orderError || !order) return { ok: false, error: '历史订单不存在或已作废' }
+  } else {
+    const { data: order, error: orderError } = await supabase
+      .from('business_orders')
+      .select('id')
+      .eq('id', orderId)
+      .in('status', ['approved', 'completed'])
+      .maybeSingle()
+    if (orderError || !order) return { ok: false, error: '业务订单不存在或尚未审核通过' }
+  }
+
   const { error } = await supabase.from('finance_order_costs').insert({
-    finance_order_id: parsed.data.finance_order_id,
+    finance_order_id: source === 'finance' ? orderId : null,
+    business_order_id: source === 'business' ? orderId : null,
     cost_type: parsed.data.cost_type,
     incurred_date: parsed.data.incurred_date,
     amount_original: parsed.data.amount_original,

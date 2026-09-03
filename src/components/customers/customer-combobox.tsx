@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Check, ChevronsUpDown, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -35,9 +36,12 @@ export function CustomerCombobox({
   value,
   onChange,
 }: CustomerComboboxProps) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [localCustomers, setLocalCustomers] = useState(customers)
+
+  useEffect(() => setLocalCustomers(customers), [customers])
 
   const sorted = useMemo(
     () => [...localCustomers].sort((a, b) => a.name.localeCompare(b.name)),
@@ -110,8 +114,7 @@ export function CustomerCombobox({
             groups={groups}
             onSuccess={() => {
               setCreateOpen(false)
-              // Refresh from server on next navigation; here we simply close.
-              // The parent page re-fetches customers on router.refresh() elsewhere.
+              router.refresh()
             }}
           />
         </DialogContent>

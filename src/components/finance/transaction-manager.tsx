@@ -103,8 +103,8 @@ export function TransactionManager({
           </DialogTrigger>
           <DialogContent className="sm:max-w-2xl">
             <DialogHeader>
-              <DialogTitle>录入收支</DialogTitle>
-              <DialogDescription>保存原币金额和当日汇率，系统自动折算人民币。</DialogDescription>
+              <DialogTitle>录入其他收支</DialogTitle>
+              <DialogDescription>业务订单客户收款请在订单详情登记；此处仅录入其他独立收支。</DialogDescription>
             </DialogHeader>
             <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
               <div className="space-y-2">
@@ -119,7 +119,7 @@ export function TransactionManager({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="category">分类</Label>
-                <Input id="category" name="category" placeholder="例如：客户回款、办公费用" required />
+                <Input id="category" name="category" placeholder="例如：利息收入、办公费用" required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="transaction_date">日期</Label>

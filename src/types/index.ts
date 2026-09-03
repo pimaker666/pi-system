@@ -12,6 +12,27 @@ export type FinanceCostType =
   | 'payment_fee'
   | 'other'
 
+export type BusinessOrderStatus =
+  | 'draft'
+  | 'submitted'
+  | 'rejected'
+  | 'approved'
+  | 'completed'
+export type BusinessFulfillmentType = 'custom' | 'stock'
+export type BusinessPaymentType = 'full' | 'deposit' | 'balance'
+export type BusinessAuditAction =
+  | 'create'
+  | 'update'
+  | 'payment_add'
+  | 'payment_update'
+  | 'payment_void'
+  | 'submit'
+  | 'approve'
+  | 'reject'
+  | 'finance_update'
+  | 'complete'
+  | 'correct'
+
 export interface FinanceOrder {
   id: string
   pi_id: string | null
@@ -53,7 +74,8 @@ export interface FinanceTransaction {
 
 export interface FinanceOrderCost {
   id: string
-  finance_order_id: string
+  finance_order_id: string | null
+  business_order_id: string | null
   cost_type: FinanceCostType
   incurred_date: string
   amount_original: number
@@ -64,6 +86,107 @@ export interface FinanceOrderCost {
   created_by: string | null
   created_at: string
   updated_at: string
+}
+
+export interface BusinessOrder {
+  id: string
+  order_number: string
+  status: BusinessOrderStatus
+  version: number
+  customer_id: string | null
+  customer_snapshot: CustomerSnapshot
+  salesperson_id: string | null
+  salesperson_name_snapshot: string | null
+  order_date: string
+  fulfillment_type: BusinessFulfillmentType
+  currency: CurrencyCode
+  exchange_rate_to_cny: number
+  items_subtotal: number
+  shipping_fee: number
+  total_amount: number
+  total_cny: number
+  tracking_number: string | null
+  sales_notes: string | null
+  review_note: string | null
+  submitted_by: string | null
+  submitted_at: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  completed_by: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BusinessOrderItem {
+  id: string
+  order_id: string
+  product_id: string | null
+  sku_snapshot: string
+  name_snapshot: string
+  description_snapshot: string | null
+  specification_snapshot: string | null
+  unit_snapshot: string
+  image_url_snapshot: string | null
+  quantity: number
+  unit_price: number
+  line_amount: number
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface BusinessOrderPayment {
+  id: string
+  order_id: string
+  payment_type: BusinessPaymentType
+  amount: number
+  currency: CurrencyCode
+  exchange_rate_to_cny: number
+  received_at: string
+  proof_path: string
+  notes: string | null
+  created_by: string | null
+  updated_by: string | null
+  voided_at: string | null
+  voided_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BusinessOrderFinanceDetail {
+  order_id: string
+  wage_amount_cny: number
+  calculation_notes: string
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BusinessOrderAuditLog {
+  id: number
+  order_id: string
+  entity_type: 'order' | 'item' | 'payment'
+  entity_id: string
+  action: BusinessAuditAction
+  from_status: BusinessOrderStatus | null
+  to_status: BusinessOrderStatus | null
+  old_data: Record<string, unknown> | null
+  new_data: Record<string, unknown> | null
+  reason: string | null
+  actor_id: string | null
+  actor_snapshot: {
+    id: string
+    email: string | null
+    full_name: string | null
+    role: UserRole
+  }
+  created_at: string
+}
+
+export interface BusinessOrderWithDetails extends BusinessOrder {
+  business_order_items: BusinessOrderItem[]
+  business_order_payments: BusinessOrderPayment[]
 }
 
 export interface Profile {

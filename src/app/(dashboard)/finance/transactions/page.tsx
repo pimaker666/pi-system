@@ -37,7 +37,7 @@ export default async function FinanceTransactionsPage() {
       <div>
         <h1 className="text-2xl font-semibold">收支流水</h1>
         <p className="text-sm text-muted-foreground">
-          录入客户回款、日常支出及其他现金流水，并保留原币与登记汇率。
+          录入日常支出及其他独立现金流水；业务订单客户收款统一在订单详情登记。
         </p>
       </div>
       <TransactionManager

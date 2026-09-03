@@ -35,10 +35,17 @@ import { createFinanceCost, deleteFinanceCost } from '@/lib/actions/finance'
 import { FINANCE_COST_LABELS, formatCny } from '@/lib/finance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { financeCostTypes, financeCurrencies } from '@/schemas/finance'
-import type { CurrencyCode, FinanceOrder, FinanceOrderCost } from '@/types'
+import type { CurrencyCode, FinanceOrderCost } from '@/types'
+
+export interface CostOrderOption {
+  id: string
+  source: 'finance' | 'business'
+  reference: string
+  customer: string | null
+}
 
 export interface PiCostManagerProps {
-  orders: Pick<FinanceOrder, 'id' | 'pi_number_snapshot' | 'customer_name_snapshot'>[]
+  orders: CostOrderOption[]
   costs: FinanceOrderCost[]
 }
 
@@ -55,7 +62,9 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
   const [pending, startTransition] = useTransition()
   const [currency, setCurrency] = useState<CurrencyCode>('CNY')
   const [exchangeRate, setExchangeRate] = useState('1')
-  const ordersById = new Map(orders.map((order) => [order.id, order]))
+  const ordersByReference = new Map(
+    orders.map((order) => [`${order.source}:${order.id}`, order]),
+  )
 
   function handleCurrencyChange(value: CurrencyCode) {
     setCurrency(value)
@@ -102,7 +111,7 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-4">
         <p className="text-sm text-muted-foreground">
-          {orders.length === 0 ? '暂无已登记订单，请先登记订单业绩。' : '成本将按已登记订单归集。'}
+          {orders.length === 0 ? '暂无可归集成本的订单。' : '成本可归集到历史 PI 或已审核业务订单。'}
         </p>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -118,16 +127,19 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
             </DialogHeader>
             <form className="grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="finance_order_id">订单</Label>
-                <Select name="finance_order_id" required>
-                  <SelectTrigger id="finance_order_id">
-                    <SelectValue placeholder="请选择已登记订单" />
+                <Label htmlFor="order_reference">订单</Label>
+                <Select name="order_reference" required>
+                  <SelectTrigger id="order_reference">
+                    <SelectValue placeholder="请选择订单" />
                   </SelectTrigger>
                   <SelectContent>
                     {orders.map((order) => (
-                      <SelectItem key={order.id} value={order.id}>
-                        {order.pi_number_snapshot}
-                        {order.customer_name_snapshot ? ` · ${order.customer_name_snapshot}` : ''}
+                      <SelectItem
+                        key={`${order.source}:${order.id}`}
+                        value={`${order.source}:${order.id}`}
+                      >
+                        {order.source === 'business' ? '业务订单' : '历史 PI'} · {order.reference}
+                        {order.customer ? ` · ${order.customer}` : ''}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -225,14 +237,17 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
           </TableHeader>
           <TableBody>
             {costs.map((cost) => {
-              const order = ordersById.get(cost.finance_order_id)
+              const orderReference = cost.business_order_id
+                ? `business:${cost.business_order_id}`
+                : `finance:${cost.finance_order_id}`
+              const order = ordersByReference.get(orderReference)
               return (
                 <TableRow key={cost.id}>
                   <TableCell>{formatDate(cost.incurred_date)}</TableCell>
                   <TableCell>
-                    <div className="font-medium">{order?.pi_number_snapshot ?? '订单已不可用'}</div>
+                    <div className="font-medium">{order?.reference ?? '订单已不可用'}</div>
                     <div className="text-xs text-muted-foreground">
-                      {order?.customer_name_snapshot || '—'}
+                      {order?.customer || '—'}
                     </div>
                   </TableCell>
                   <TableCell>
