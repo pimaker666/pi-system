@@ -14,6 +14,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import type { Customer, CustomerGroup, Product, ProductGroup, CustomerSnapshot } from '@/types'
 
 interface PiCreateClientProps {
@@ -26,10 +33,10 @@ interface PiCreateClientProps {
 
 /** Preset transport method + lead time options; users may also type freely. */
 const SHIPPING_METHOD_PRESETS = [
-  'Sea Transportation, 22~40 Days',
-  'Land Transportation, 20~28 Days',
-  'Air Transportation, 10~14 Days',
-  'Transportation Within China, 7 Days',
+  'Sea transportation, 22~40 days',
+  'land transportation, 20~28 days',
+  'air transportation, 10~14 days',
+  'Transportation within China, 7days',
 ] as const
 
 function toSnapshot(c: Customer): CustomerSnapshot {
@@ -204,18 +211,34 @@ export function PiCreateClient({
 
           <div className="space-y-2">
             <Label htmlFor="shipping_method">运输方式与时间</Label>
-            <Input
-              id="shipping_method"
-              list="shipping-method-options"
-              placeholder="选择或输入运输方式与时间（可留空，选后可再修改）"
-              value={shippingMethod}
-              onChange={(e) => setShippingMethod(e.target.value)}
-            />
-            <datalist id="shipping-method-options">
-              {SHIPPING_METHOD_PRESETS.map((o) => (
-                <option key={o} value={o} />
-              ))}
-            </datalist>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                id="shipping_method"
+                placeholder="输入运输方式与时间（可留空）"
+                value={shippingMethod}
+                onChange={(e) => setShippingMethod(e.target.value)}
+              />
+              <Select
+                value={SHIPPING_METHOD_PRESETS.includes(
+                  shippingMethod as (typeof SHIPPING_METHOD_PRESETS)[number],
+                ) ? shippingMethod : ''}
+                onValueChange={setShippingMethod}
+              >
+                <SelectTrigger className="w-full shrink-0 sm:w-80" aria-label="选择运输方式预设">
+                  <SelectValue placeholder="选择预设" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SHIPPING_METHOD_PRESETS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              可从右侧选择预设，选择后仍可在左侧自定义修改。
+            </p>
           </div>
 
           <label className="flex items-center gap-2 text-sm">
