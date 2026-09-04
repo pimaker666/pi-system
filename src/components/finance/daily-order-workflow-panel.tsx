@@ -58,7 +58,7 @@ import {
   dailyOrderPaymentCategories,
   dailyOrderShippingCategories,
 } from '@/schemas/daily-order'
-import { formatDate } from '@/lib/utils'
+import { displayProfileName, formatDate } from '@/lib/utils'
 import type {
   Customer,
   CustomerGroup,
@@ -222,7 +222,7 @@ export function DailyOrderWorkflowPanel({
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
               <span className="text-muted-foreground">业务员：</span>
-              {workflow.salesperson_name_snapshot || '—'}
+              {displayProfileName(workflow.salesperson, workflow.salesperson_name_snapshot)}
             </div>
             <div>
               <span className="text-muted-foreground">客户：</span>

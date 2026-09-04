@@ -13,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { ProductCombobox } from '@/components/products/product-combobox'
 import { createClient } from '@/lib/supabase/client'
+import { displayProfileName } from '@/lib/utils'
 import {
   bindDailyOrderScreenshot,
   bulkCreateDailyOrders,
@@ -36,7 +37,7 @@ export interface DailyOrderShopOption extends DailyOrderShop {
 interface Props {
   profileId: string
   shops: DailyOrderShopOption[]
-  salespeople: Pick<Profile, 'id' | 'full_name' | 'email'>[]
+  salespeople: Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
   products: Pick<Product, 'id' | 'name' | 'sku' | 'image_url' | 'unit_price' | 'currency' | 'unit'>[]
   initialOrder?: DailyOrder
 }
@@ -454,7 +455,7 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
         <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <div className="space-y-2"><Label>下单日期</Label><Input type="date" value={orderDate} onChange={(event) => { const value = event.target.value; setOrderDate(value); if (!shippingDateEdited) setShippingDate(value) }} required /></div>
           <div className="space-y-2"><Label>店铺</Label><Select value={shopId} onValueChange={changeShop}><SelectTrigger><SelectValue placeholder="选择店铺" /></SelectTrigger><SelectContent>{shops.filter((shop) => shop.is_active || shop.id === initialOrder?.shop_id).map((shop) => <SelectItem key={shop.id} value={shop.id}>{shop.name}{shop.is_active ? '' : '（停用）'}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-2"><Label>业务员</Label><Select value={salespersonId} onValueChange={setSalespersonId}><SelectTrigger><SelectValue placeholder="选择业务员" /></SelectTrigger><SelectContent>{assignedSalespeople.map((person) => <SelectItem key={person.id} value={person.id}>{person.full_name || person.email}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2"><Label>业务员</Label><Select value={salespersonId} onValueChange={setSalespersonId}><SelectTrigger><SelectValue placeholder="选择业务员" /></SelectTrigger><SelectContent>{assignedSalespeople.map((person) => <SelectItem key={person.id} value={person.id}>{displayProfileName(person)}</SelectItem>)}</SelectContent></Select></div>
           <div className="space-y-2"><Label htmlFor="order_number">订单号</Label><Input id="order_number" name="order_number" defaultValue={initialOrder?.order_number} maxLength={200} required /></div>
           <div className="space-y-2"><Label>发货日期</Label><Input type="date" value={shippingDate} onChange={(event) => { setShippingDate(event.target.value); setShippingDateEdited(true) }} required /></div>
           <div className="space-y-2"><Label htmlFor="shipping_number">发货单号</Label><Input id="shipping_number" name="shipping_number" defaultValue={initialOrder?.shipping_number ?? ''} maxLength={200} /></div>

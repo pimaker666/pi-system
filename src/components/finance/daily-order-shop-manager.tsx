@@ -13,6 +13,7 @@ import {
   saveDailyOrderShop,
   saveDailyOrderShopGroup,
 } from '@/lib/actions/daily-orders'
+import { displayProfileName } from '@/lib/utils'
 import type { DailyOrderShop, DailyOrderShopGroup, Profile } from '@/types'
 
 interface ShopRow extends DailyOrderShop {
@@ -22,7 +23,7 @@ interface ShopRow extends DailyOrderShop {
 interface Props {
   shops: ShopRow[]
   groups: DailyOrderShopGroup[]
-  salespeople: Pick<Profile, 'id' | 'full_name' | 'email'>[]
+  salespeople: Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
 }
 
 export function DailyOrderShopManager({ shops, groups, salespeople }: Props) {
@@ -113,7 +114,7 @@ export function DailyOrderShopManager({ shops, groups, salespeople }: Props) {
                 value={person.id}
                 defaultChecked={shop?.salespersonIds.includes(person.id)}
               />
-              {person.full_name || person.email}
+              {displayProfileName(person)}
             </label>
           ))}
         </div>

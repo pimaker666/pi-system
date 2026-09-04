@@ -167,6 +167,9 @@ export interface DailyOrder {
   created_at: string
   updated_at: string
   finance_daily_order_screenshots?: DailyOrderScreenshot[]
+  /** Live-joined salesperson profile (PostgREST embed on salesperson_id) used to
+   *  render the current chinese_name; null when the user was deleted. */
+  salesperson?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
 
 export type DailyOrderWorkflowStatus =
@@ -214,6 +217,9 @@ export interface DailyOrderWorkflow {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** Live-joined salesperson profile (PostgREST embed on salesperson_id) used to
+   *  render the current chinese_name; null when the user was deleted. */
+  salesperson?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
 
 export interface DailyOrderCommission {

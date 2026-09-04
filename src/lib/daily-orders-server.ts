@@ -14,6 +14,12 @@ import type { DailyOrderShopOption } from '@/components/finance/daily-order-form
 
 export const DAILY_ORDER_EXPORT_LIMIT = 500
 
+// Live-join the salesperson profile so the UI can render the current chinese_name
+// (falling back full_name → email). Disambiguated by the salesperson_id FK because
+// the table has several FKs to profiles (created_by/updated_by/voided_by...).
+const SALESPERSON_EMBED =
+  'salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)'
+
 export async function fetchDailyOrders(
   supabase: SupabaseClient,
   filters: DailyOrderFilters,
@@ -22,7 +28,11 @@ export async function fetchDailyOrders(
 ) {
   let query = supabase
     .from('finance_daily_orders')
-    .select(includeScreenshots ? '*, finance_daily_order_screenshots(*)' : '*')
+    .select(
+      includeScreenshots
+        ? `*, finance_daily_order_screenshots(*), ${SALESPERSON_EMBED}`
+        : `*, ${SALESPERSON_EMBED}`,
+    )
     .eq('status', 'active')
     .order('order_date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -53,7 +63,7 @@ export async function fetchDailyOrderOptions(supabase: SupabaseClient) {
     supabase.from('finance_daily_order_shops').select('*').order('name'),
     supabase.from('finance_daily_order_shop_groups').select('*').order('name'),
     supabase.from('finance_daily_order_shop_salespeople').select('*').eq('is_active', true),
-    supabase.from('profiles').select('id, full_name, email').in('role', ['sales', 'admin']).eq('status', 'approved').order('full_name'),
+    supabase.from('profiles').select('id, full_name, email, chinese_name').in('role', ['sales', 'admin']).eq('status', 'approved').order('full_name'),
     supabase.from('products').select('id, name, sku, image_url, unit_price, currency, unit').eq('is_active', true).order('name'),
   ])
   const error = shopsResult.error || groupsResult.error || assignmentsResult.error || salesResult.error || productsResult.error
@@ -66,7 +76,7 @@ export async function fetchDailyOrderOptions(supabase: SupabaseClient) {
   return {
     shops,
     groups: (groupsResult.data ?? []) as DailyOrderShopGroup[],
-    salespeople: (salesResult.data ?? []) as Pick<Profile, 'id' | 'full_name' | 'email'>[],
+    salespeople: (salesResult.data ?? []) as Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[],
     products: (productsResult.data ?? []) as Pick<Product, 'id' | 'name' | 'sku' | 'image_url' | 'unit_price' | 'currency' | 'unit'>[],
   }
 }
@@ -88,7 +98,7 @@ export async function fetchDailyOrderWorkflows(
 ): Promise<DailyOrderWorkflowSummary[]> {
   let query = supabase
     .from('finance_daily_order_workflows')
-    .select('*, finance_daily_orders(count)')
+    .select(`*, finance_daily_orders(count), ${SALESPERSON_EMBED}`)
     .order('updated_at', { ascending: false })
     .limit(Math.min(options.limit ?? WORKFLOW_LIST_LIMIT, WORKFLOW_LIST_LIMIT))
   if (options.statuses && options.statuses.length > 0) query = query.in('status', options.statuses)
@@ -110,7 +120,7 @@ export async function fetchDailyOrderWorkflowDetail(
 ): Promise<{ workflow: DailyOrderWorkflow; orders: DailyOrder[] } | null> {
   const { data: workflow, error } = await supabase
     .from('finance_daily_order_workflows')
-    .select('*')
+    .select(`*, ${SALESPERSON_EMBED}`)
     .eq('id', workflowId)
     .maybeSingle()
   if (error) throw new Error(`订单工作流读取失败：${error.message}`)

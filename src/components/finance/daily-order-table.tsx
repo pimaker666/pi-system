@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getDailyOrderScreenshotUrl, voidDailyOrder } from '@/lib/actions/daily-orders'
 import { formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
+import { displayProfileName } from '@/lib/utils'
 import type { DailyOrder } from '@/types'
 
 export function DailyOrderTable({ orders, readOnly = false }: { orders: DailyOrder[]; readOnly?: boolean }) {
@@ -48,7 +49,7 @@ export function DailyOrderTable({ orders, readOnly = false }: { orders: DailyOrd
               <TableCell><div className="font-medium">{index + 1}</div>{!readOnly && <div className="flex"><Button asChild variant="ghost" size="icon"><Link href={`/finance/daily-orders/${order.id}/edit`} aria-label="编辑"><Pencil className="h-3.5 w-3.5" /></Link></Button><Button variant="ghost" size="icon" disabled={pending} onClick={() => voidRow(order)} aria-label="作废"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></div>}</TableCell>
               <TableCell>{order.order_date}</TableCell>
               <TableCell>{order.shop_name_snapshot}</TableCell>
-              <TableCell>{order.salesperson_name_snapshot}</TableCell>
+              <TableCell>{displayProfileName(order.salesperson, order.salesperson_name_snapshot)}</TableCell>
               <TableCell className="font-medium">{order.order_number}</TableCell>
               <TableCell>{order.shipping_date}</TableCell>
               <TableCell>{order.shipping_number || '—'}</TableCell>

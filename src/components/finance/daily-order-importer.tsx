@@ -8,12 +8,13 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { bulkCreateDailyOrders } from '@/lib/actions/daily-orders'
 import { validateDailyOrderImportRow, type DailyOrderImportRow } from '@/lib/daily-orders'
+import { displayProfileName } from '@/lib/utils'
 import type { DailyOrderShopOption } from './daily-order-form'
 import type { Product, Profile } from '@/types'
 
 interface Props {
   shops: DailyOrderShopOption[]
-  salespeople: Pick<Profile, 'id' | 'full_name' | 'email'>[]
+  salespeople: Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
   products: Pick<Product, 'id' | 'name' | 'sku'>[]
 }
 
@@ -77,7 +78,7 @@ export function DailyOrderImporter({ shops, salespeople, products }: Props) {
     if (kind === 'sales') {
       const shop = shops.find((item) => item.id === row.shop_id)
       const allowed = new Set(shop?.salespersonIds ?? [])
-      return <select className="h-9 min-w-32 rounded-md border bg-background px-2" value={value} onChange={(e) => update(index, field, e.target.value)}><option value="">请选择</option>{salespeople.filter((person) => allowed.has(person.id)).map((person) => <option key={person.id} value={person.id}>{person.full_name || person.email}</option>)}</select>
+      return <select className="h-9 min-w-32 rounded-md border bg-background px-2" value={value} onChange={(e) => update(index, field, e.target.value)}><option value="">请选择</option>{salespeople.filter((person) => allowed.has(person.id)).map((person) => <option key={person.id} value={person.id}>{displayProfileName(person)}</option>)}</select>
     }
     if (kind === 'product') return <select className="h-9 min-w-48 rounded-md border bg-background px-2" value={value} onChange={(e) => update(index, field, e.target.value)}><option value="">请选择</option>{products.map((product) => <option key={product.id} value={product.id}>{product.sku} · {product.name}</option>)}</select>
     if (kind === 'shipping') return <select className="h-9 rounded-md border bg-background px-2" value={value} onChange={(e) => update(index, field, e.target.value)}><option value="stock">现货</option><option value="sample">样品</option><option value="custom">定制</option><option value="purchase">外采</option></select>

@@ -22,7 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { WORKFLOW_STATUS_LABELS, WORKFLOW_STATUS_VARIANTS } from '@/lib/daily-orders'
-import { formatDate } from '@/lib/utils'
+import { displayProfileName, formatDate } from '@/lib/utils'
 import type { DailyOrderWorkflowStatus } from '@/types'
 import type { DailyOrderWorkflowSummary } from '@/lib/daily-orders-server'
 
@@ -41,7 +41,7 @@ export function DailyOrderWorkflowList({ workflows }: DailyOrderWorkflowListProp
       if (!normalized) return true
       return [
         workflow.order_number,
-        workflow.salesperson_name_snapshot,
+        displayProfileName(workflow.salesperson, workflow.salesperson_name_snapshot),
         workflow.customer_name_snapshot ?? '',
       ]
         .join(' ')
@@ -101,7 +101,7 @@ export function DailyOrderWorkflowList({ workflows }: DailyOrderWorkflowListProp
                     {workflow.order_number}
                   </Link>
                 </TableCell>
-                <TableCell>{workflow.salesperson_name_snapshot || '—'}</TableCell>
+                <TableCell>{displayProfileName(workflow.salesperson, workflow.salesperson_name_snapshot)}</TableCell>
                 <TableCell>{workflow.customer_name_snapshot || '—'}</TableCell>
                 <TableCell className="text-right">{workflow.order_line_count}</TableCell>
                 <TableCell>
