@@ -7,6 +7,7 @@ import type { UserRole } from '@/types'
 
 const financeItems = [
   { href: '/finance', label: '财务总览', financeOnly: true },
+  { href: '/finance/daily-orders', label: '每日订单', financeOnly: true },
   { href: '/finance/transactions', label: '收支流水', financeOnly: true },
   { href: '/finance/costs', label: '订单成本', financeOnly: true },
   { href: '/finance/performance', label: '业务业绩', financeOnly: false },

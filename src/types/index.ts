@@ -88,6 +88,77 @@ export interface FinanceOrderCost {
   updated_at: string
 }
 
+export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom'
+export type DailyOrderPaymentCategory = 'full' | 'deposit' | 'balance'
+
+export interface DailyOrderShop {
+  id: string
+  name: string
+  is_active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyOrderShopSalesperson {
+  shop_id: string
+  salesperson_id: string
+  is_active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyOrderScreenshot {
+  id: string
+  order_id: string
+  object_path: string
+  original_name: string | null
+  mime_type: 'image/jpeg' | 'image/png'
+  size_bytes: number
+  status: FinanceRecordStatus
+  created_by: string | null
+  removed_by: string | null
+  removed_at: string | null
+  created_at: string
+}
+
+export interface DailyOrder {
+  id: string
+  version: number
+  status: FinanceRecordStatus
+  order_date: string
+  shop_id: string | null
+  shop_name_snapshot: string
+  salesperson_id: string | null
+  salesperson_name_snapshot: string
+  order_number: string
+  shipping_date: string
+  shipping_number: string | null
+  shipping_category: DailyOrderShippingCategory
+  product_id: string | null
+  product_name_snapshot: string
+  product_sku_snapshot: string
+  quantity: number
+  sales_unit_price_amount: number
+  sales_unit_price_currency: CurrencyCode
+  product_received_amount: number
+  product_received_currency: CurrencyCode
+  logistics_fee_amount: number
+  logistics_fee_currency: CurrencyCode
+  sales_total_amount: number
+  sales_total_currency: CurrencyCode
+  payment_category: DailyOrderPaymentCategory
+  remarks: string | null
+  created_by: string | null
+  updated_by: string | null
+  voided_by: string | null
+  voided_at: string | null
+  created_at: string
+  updated_at: string
+  finance_daily_order_screenshots?: DailyOrderScreenshot[]
+}
+
 export interface BusinessOrder {
   id: string
   order_number: string

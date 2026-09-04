@@ -19,6 +19,7 @@ const nextConfig = {
   outputFileTracingIncludes: {
     '/api/pi/**': ['./public/fonts/**'],
     '/pi/**': ['./public/fonts/**'],
+    '/api/finance/daily-orders/export/pdf': ['./public/fonts/**'],
   },
   // @react-pdf/renderer 是纯 ESM 且体积大，让 webpack 打包+压缩会在 Vercel
   // serverless 崩（reading 'S' at appendChild）。用 Next 官方 serverExternalPackages
