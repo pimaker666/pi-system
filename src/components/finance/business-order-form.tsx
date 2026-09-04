@@ -193,6 +193,7 @@ export function BusinessOrderForm({
               groups={customerGroups}
               value={customer}
               onChange={setCustomer}
+              allowCreate={profile.role === 'sales'}
             />
           </div>
           <div className="space-y-2">

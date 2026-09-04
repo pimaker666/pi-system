@@ -24,7 +24,7 @@ const NO_GROUP = '__none__'
 interface CustomerFormProps {
   customer?: Customer
   groups: CustomerGroup[]
-  onSuccess?: (id?: string) => void
+  onSuccess?: (id?: string, createdCustomer?: Customer) => void
 }
 
 interface FormState {
@@ -172,7 +172,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
         : await createCustomer(formData)
       if (result.ok) {
         toast.success(customer ? '客户已更新' : '客户已创建')
-        onSuccess?.(result.id)
+        onSuccess?.(result.id, result.customer)
       } else {
         toast.error(result.error ?? '保存失败')
       }

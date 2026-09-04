@@ -28,6 +28,7 @@ interface CustomerComboboxProps {
   groups: CustomerGroup[]
   value: Customer | null
   onChange: (customer: Customer) => void
+  allowCreate?: boolean
 }
 
 export function CustomerCombobox({
@@ -35,6 +36,7 @@ export function CustomerCombobox({
   groups,
   value,
   onChange,
+  allowCreate = true,
 }: CustomerComboboxProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -102,23 +104,32 @@ export function CustomerCombobox({
         </PopoverContent>
       </Popover>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <Button type="button" variant="outline" size="icon" onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" />
-        </Button>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>新增客户</DialogTitle>
-          </DialogHeader>
-          <CustomerFormFields
-            groups={groups}
-            onSuccess={() => {
-              setCreateOpen(false)
-              router.refresh()
-            }}
-          />
-        </DialogContent>
-      </Dialog>
+      {allowCreate && (
+        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Button type="button" variant="outline" size="icon" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" />
+          </Button>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>新增客户</DialogTitle>
+            </DialogHeader>
+            <CustomerFormFields
+              groups={groups}
+              onSuccess={(_id, createdCustomer) => {
+                if (createdCustomer) {
+                  setLocalCustomers((current) => [
+                    createdCustomer,
+                    ...current.filter((customer) => customer.id !== createdCustomer.id),
+                  ])
+                  onChange(createdCustomer)
+                }
+                setCreateOpen(false)
+                router.refresh()
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }

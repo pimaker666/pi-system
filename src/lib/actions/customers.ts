@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireProfile } from '@/lib/auth'
 import { customerSchema } from '@/schemas/customer'
+import type { Customer } from '@/types'
 import type { ActionResult } from './products'
 
 function parseCustomer(formData: FormData) {
@@ -40,7 +41,7 @@ function normalize(data: ReturnType<typeof customerSchema.parse>) {
 
 export async function createCustomer(
   formData: FormData,
-): Promise<ActionResult & { id?: string }> {
+): Promise<ActionResult & { id?: string; customer?: Customer }> {
   const profile = await requireProfile()
   const parsed = parseCustomer(formData)
   if (!parsed.success) {
@@ -51,15 +52,18 @@ export async function createCustomer(
   const { data, error } = await supabase
     .from('customers')
     .insert({ ...normalize(parsed.data), created_by: profile.id })
-    .select('id')
+    .select('*')
     .single()
   if (error) return { ok: false, error: error.message }
 
   revalidatePath('/customers')
-  return { ok: true, id: data.id }
+  return { ok: true, id: data.id, customer: data }
 }
 
-export async function updateCustomer(id: string, formData: FormData): Promise<ActionResult & { id?: string }> {
+export async function updateCustomer(
+  id: string,
+  formData: FormData,
+): Promise<ActionResult & { id?: string; customer?: Customer }> {
   await requireProfile()
   const parsed = parseCustomer(formData)
   if (!parsed.success) {
