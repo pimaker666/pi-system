@@ -1,4 +1,4 @@
--- 0022_daily_order_purchase_and_admin.sql
+-- 0024_daily_order_purchase_and_admin.sql
 -- 每日订单增强：
 --  1) 发货分类新增 '外采'（purchase）。
 --  2) 店铺可分配业务员范围放宽到 approved 的 sales + admin；
