@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const dailyOrderCurrencies = ['CNY', 'USD'] as const
-export const dailyOrderShippingCategories = ['stock', 'sample', 'custom'] as const
+export const dailyOrderShippingCategories = ['stock', 'sample', 'custom', 'purchase'] as const
 export const dailyOrderPaymentCategories = ['full', 'deposit', 'balance'] as const
 
 const date = z.string()
@@ -59,8 +59,14 @@ export const dailyOrderFilterSchema = z.object({
 export const dailyOrderShopSchema = z.object({
   id: z.string().uuid().optional(),
   name: z.string().trim().min(1, '请输入店铺名称').max(100),
+  group_id: z.string().uuid().nullable().optional(),
   is_active: z.boolean(),
   salesperson_ids: z.array(z.string().uuid()).max(200),
+})
+
+export const dailyOrderShopGroupSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().trim().min(1, '请输入分组名称').max(100),
 })
 
 export const dailyOrderScreenshotSchema = z.object({

@@ -7,6 +7,7 @@ import {
   dailyOrderBatchSchema,
   dailyOrderSchema,
   dailyOrderScreenshotSchema,
+  dailyOrderShopGroupSchema,
   dailyOrderShopSchema,
   type DailyOrderInput,
 } from '@/schemas/daily-order'
@@ -17,6 +18,10 @@ export interface DailyOrderActionResult extends ActionResult {
   version?: number
 }
 
+export interface DailyOrderBatchResult extends ActionResult {
+  ids?: string[]
+}
+
 function firstError(error: { issues: Array<{ message: string }> }) {
   return error.issues[0]?.message ?? '数据校验失败'
 }
@@ -25,6 +30,7 @@ function mapError(message: string) {
   const errors: Array<[string, string]> = [
     ['Only approved admin or finance', '仅已审核的管理员或财务可操作每日订单'],
     ['Shop does not exist or is inactive', '店铺不存在或已停用'],
+    ['Shop group does not exist', '店铺分组不存在'],
     ['Salesperson does not exist or is not approved', '业务员不存在或未审核'],
     ['Salesperson is not assigned to shop', '所选业务员未分配到该店铺'],
     ['Product does not exist or is inactive', '产品不存在或已停用'],
@@ -110,15 +116,20 @@ export async function updateDailyOrder(
   return { ok: true, ...result }
 }
 
-export async function bulkCreateDailyOrders(raw: unknown): Promise<ActionResult> {
+export async function bulkCreateDailyOrders(raw: unknown): Promise<DailyOrderBatchResult> {
   await requireFinanceAccess()
   const parsed = dailyOrderBatchSchema.safeParse(raw)
   if (!parsed.success) return { ok: false, error: `第 ${parsed.error.issues[0]?.path[0] ?? '?'} 行：${firstError(parsed.error)}` }
   const supabase = await createClient()
-  const { error } = await supabase.rpc('bulk_create_finance_daily_orders', { p_rows: parsed.data })
+  const { data, error } = await supabase.rpc('bulk_create_finance_daily_orders', { p_rows: parsed.data })
   if (error) return { ok: false, error: mapError(error.message) }
+  const ids = Array.isArray(data)
+    ? (data as Array<Record<string, unknown>>)
+        .map((row) => row.id)
+        .filter((id): id is string => typeof id === 'string')
+    : []
   revalidateDailyOrders()
-  return { ok: true }
+  return { ok: true, ids }
 }
 
 export async function voidDailyOrder(id: string, expectedVersion: number): Promise<ActionResult> {
@@ -141,9 +152,35 @@ export async function saveDailyOrderShop(raw: unknown): Promise<ActionResult> {
   const { error } = await supabase.rpc('save_finance_daily_order_shop', {
     p_shop_id: parsed.data.id ?? null,
     p_name: parsed.data.name,
+    p_group_id: parsed.data.group_id ?? null,
     p_is_active: parsed.data.is_active,
     p_salesperson_ids: parsed.data.salesperson_ids,
   })
+  if (error) return { ok: false, error: mapError(error.message) }
+  revalidateDailyOrders()
+  return { ok: true }
+}
+
+export async function saveDailyOrderShopGroup(raw: unknown): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const parsed = dailyOrderShopGroupSchema.safeParse(raw)
+  if (!parsed.success) return { ok: false, error: firstError(parsed.error) }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('save_finance_daily_order_shop_group', {
+    p_group_id: parsed.data.id ?? null,
+    p_name: parsed.data.name,
+  })
+  if (error) return { ok: false, error: mapError(error.message) }
+  revalidateDailyOrders()
+  return { ok: true }
+}
+
+export async function deleteDailyOrderShopGroup(id: string): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const parsed = dailyOrderShopGroupSchema.shape.id.safeParse(id)
+  if (!parsed.success || !parsed.data) return { ok: false, error: '分组无效' }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('delete_finance_daily_order_shop_group', { p_group_id: parsed.data })
   if (error) return { ok: false, error: mapError(error.message) }
   revalidateDailyOrders()
   return { ok: true }

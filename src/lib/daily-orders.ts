@@ -15,7 +15,7 @@ export const DAILY_ORDER_COLUMNS = [
 ] as const
 
 export const SHIPPING_LABELS: Record<DailyOrderShippingCategory, string> = {
-  stock: '现货', sample: '样品', custom: '定制',
+  stock: '现货', sample: '样品', custom: '定制', purchase: '外采',
 }
 export const PAYMENT_LABELS: Record<DailyOrderPaymentCategory, string> = {
   full: '全款', deposit: '定金', balance: '尾款',
@@ -114,6 +114,7 @@ function shippingValue(value: unknown): DailyOrderShippingCategory | '' {
   if (['stock', '现货'].includes(text)) return 'stock'
   if (['sample', '样品', '样板'].includes(text)) return 'sample'
   if (['custom', '定制'].includes(text)) return 'custom'
+  if (['purchase', '外采', '外购', '采购'].includes(text)) return 'purchase'
   return ''
 }
 

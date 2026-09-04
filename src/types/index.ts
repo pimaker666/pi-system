@@ -88,13 +88,22 @@ export interface FinanceOrderCost {
   updated_at: string
 }
 
-export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom'
+export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'
 export type DailyOrderPaymentCategory = 'full' | 'deposit' | 'balance'
 
 export interface DailyOrderShop {
   id: string
   name: string
+  group_id: string | null
   is_active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyOrderShopGroup {
+  id: string
+  name: string
   created_by: string | null
   created_at: string
   updated_at: string

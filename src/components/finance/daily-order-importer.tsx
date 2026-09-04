@@ -80,7 +80,7 @@ export function DailyOrderImporter({ shops, salespeople, products }: Props) {
       return <select className="h-9 min-w-32 rounded-md border bg-background px-2" value={value} onChange={(e) => update(index, field, e.target.value)}><option value="">请选择</option>{salespeople.filter((person) => allowed.has(person.id)).map((person) => <option key={person.id} value={person.id}>{person.full_name || person.email}</option>)}</select>
     }
     if (kind === 'product') return <select className="h-9 min-w-48 rounded-md border bg-background px-2" value={value} onChange={(e) => update(index, field, e.target.value)}><option value="">请选择</option>{products.map((product) => <option key={product.id} value={product.id}>{product.sku} · {product.name}</option>)}</select>
-    if (kind === 'shipping') return <select className="h-9 rounded-md border bg-background px-2" value={value} onChange={(e) => update(index, field, e.target.value)}><option value="stock">现货</option><option value="sample">样品</option><option value="custom">定制</option></select>
+    if (kind === 'shipping') return <select className="h-9 rounded-md border bg-background px-2" value={value} onChange={(e) => update(index, field, e.target.value)}><option value="stock">现货</option><option value="sample">样品</option><option value="custom">定制</option><option value="purchase">外采</option></select>
     if (kind === 'payment') return <select className="h-9 rounded-md border bg-background px-2" value={value} onChange={(e) => update(index, field, e.target.value)}><option value="full">全款</option><option value="deposit">定金</option><option value="balance">尾款</option></select>
     if (kind === 'money') {
       const currencyField = moneyCurrencyFields[field as keyof typeof moneyCurrencyFields]
