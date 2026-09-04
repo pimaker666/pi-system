@@ -96,14 +96,14 @@ function emptyLine(): LineItem {
     key: newLocalId('daily-order-line'),
     shipping_category: 'stock',
     product_id: '',
-    quantity: '1',
-    sales_unit_price_amount: '0',
+    quantity: '',
+    sales_unit_price_amount: '',
     sales_unit_price_currency: 'CNY',
-    product_received_amount: '0',
+    product_received_amount: '',
     product_received_currency: 'CNY',
-    logistics_fee_amount: '0',
+    logistics_fee_amount: '',
     logistics_fee_currency: 'CNY',
-    sales_total_amount: '0',
+    sales_total_amount: '',
     sales_total_currency: 'CNY',
   }
 }
@@ -130,6 +130,7 @@ function normalizedAmount(value: string) {
 }
 
 function sumMoney(items: LineItem[], key: TotalAmountKey) {
+  if (items.every((item) => item[key].trim() === '')) return ''
   const cents = items.reduce((sum, item) => {
     const amount = Number(normalizedAmount(item[key]))
     return sum + (Number.isFinite(amount) ? Math.round(amount * 100) : 0)
@@ -397,7 +398,6 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
             step="0.01"
             value={item[amountKey]}
             onChange={(event) => updateItem(index, { [amountKey]: event.target.value })}
-            placeholder="0"
           />
         </div>
       </div>
@@ -438,7 +438,6 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
             step="0.01"
             value={amount}
             onChange={(event) => setTotalOverrides((current) => ({ ...current, [field.key]: event.target.value }))}
-            placeholder="0"
           />
         </div>
         {mixedTotalCurrencies.has(field.key) && (
