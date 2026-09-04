@@ -46,12 +46,17 @@ export default async function ProductsPage({
 
   let financials: ProductFinancial[] = []
   if (canManageFinancials && products.length > 0) {
+    // 不要按 product_id 逐个 .in() 过滤：商品数量较多时会拼出超长 GET URL，
+    // 被网关以 HTTP 414 (URI too long) 拒绝。product_financials 已由 RLS 限定
+    // 仅财务/管理员可见，且每个产品至多一行，直接全量拉取后在内存中按当前展示的产品过滤。
+    const productIds = new Set(products.map((product) => product.id))
     const { data: financialData, error: financialError } = await supabase
       .from('product_financials')
       .select('*')
-      .in('product_id', products.map((product) => product.id))
     if (financialError) throw new Error('加载产品财务资料失败')
-    financials = (financialData ?? []) as ProductFinancial[]
+    financials = ((financialData ?? []) as ProductFinancial[]).filter((item) =>
+      productIds.has(item.product_id),
+    )
   }
 
   return (
