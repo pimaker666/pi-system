@@ -39,7 +39,7 @@ export function BusinessOrderActions({ order, profile }: BusinessOrderActionsPro
   const [rejectNote, setRejectNote] = useState('')
 
   const canSalesEdit =
-    profile.role === 'sales' &&
+    (profile.role === 'sales' || profile.role === 'supervisor') &&
     order.salesperson_id === profile.id &&
     ['draft', 'rejected'].includes(order.status)
   const canCorrect =

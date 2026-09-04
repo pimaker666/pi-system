@@ -197,6 +197,7 @@ export default async function BusinessOrderDetailPage({
 
           <BusinessOrderPaymentManager
             orderId={order.id}
+            ownerId={order.salesperson_id}
             currency={order.currency}
             status={order.status}
             profile={profile}

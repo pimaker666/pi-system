@@ -25,7 +25,7 @@ export default async function EditBusinessOrderPage({
   if (error || !data) notFound()
   const order = data as BusinessOrderWithDetails
   const salesCanEdit =
-    profile.role === 'sales' &&
+    (profile.role === 'sales' || profile.role === 'supervisor') &&
     order.salesperson_id === profile.id &&
     ['draft', 'rejected'].includes(order.status)
   const privilegedCanCorrect =

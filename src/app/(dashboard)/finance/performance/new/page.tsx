@@ -9,7 +9,7 @@ import type { Customer, CustomerGroup, Product } from '@/types'
 
 export default async function NewBusinessOrderPage() {
   const profile = await requireApproved()
-  if (profile.role !== 'sales') redirect('/finance/performance')
+  if (profile.role !== 'sales' && profile.role !== 'supervisor') redirect('/finance/performance')
 
   const supabase = await createClient()
   const [customersResult, groupsResult, productsResult] = await Promise.all([

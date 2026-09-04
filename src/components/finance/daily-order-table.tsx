@@ -11,7 +11,7 @@ import { getDailyOrderScreenshotUrl, voidDailyOrder } from '@/lib/actions/daily-
 import { formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import type { DailyOrder } from '@/types'
 
-export function DailyOrderTable({ orders }: { orders: DailyOrder[] }) {
+export function DailyOrderTable({ orders, readOnly = false }: { orders: DailyOrder[]; readOnly?: boolean }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
@@ -45,7 +45,7 @@ export function DailyOrderTable({ orders }: { orders: DailyOrder[] }) {
         <TableBody>
           {orders.map((order, index) => (
             <TableRow key={order.id}>
-              <TableCell><div className="font-medium">{index + 1}</div><div className="flex"><Button asChild variant="ghost" size="icon"><Link href={`/finance/daily-orders/${order.id}/edit`} aria-label="编辑"><Pencil className="h-3.5 w-3.5" /></Link></Button><Button variant="ghost" size="icon" disabled={pending} onClick={() => voidRow(order)} aria-label="作废"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></div></TableCell>
+              <TableCell><div className="font-medium">{index + 1}</div>{!readOnly && <div className="flex"><Button asChild variant="ghost" size="icon"><Link href={`/finance/daily-orders/${order.id}/edit`} aria-label="编辑"><Pencil className="h-3.5 w-3.5" /></Link></Button><Button variant="ghost" size="icon" disabled={pending} onClick={() => voidRow(order)} aria-label="作废"><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button></div>}</TableCell>
               <TableCell>{order.order_date}</TableCell>
               <TableCell>{order.shop_name_snapshot}</TableCell>
               <TableCell>{order.salesperson_name_snapshot}</TableCell>

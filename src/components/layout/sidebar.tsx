@@ -61,7 +61,7 @@ const NAV: NavItem[] = [
     href: '/finance/performance',
     label: '我的业绩',
     icon: Landmark,
-    allowedRoles: ['sales'],
+    allowedRoles: ['sales', 'supervisor'],
   },
   { href: '/settings', label: '公司设置', icon: Settings },
   {
@@ -108,7 +108,13 @@ export function Sidebar({ role, fullName }: { role: UserRole; fullName: string |
       <div className="border-t p-4">
         <div className="text-sm font-medium">{fullName ?? '用户'}</div>
         <div className="text-xs text-muted-foreground">
-          {role === 'admin' ? '管理员' : role === 'finance' ? '财务' : '业务员'}
+          {role === 'admin'
+            ? '管理员'
+            : role === 'finance'
+              ? '财务'
+              : role === 'supervisor'
+                ? '业务主管'
+                : '业务员'}
         </div>
       </div>
     </aside>

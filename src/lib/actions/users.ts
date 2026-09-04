@@ -52,7 +52,7 @@ export async function setUserRole(
 ): Promise<ActionResult> {
   const me = await requireAdmin()
 
-  if (!(['admin', 'finance', 'sales'] as const).includes(role)) {
+  if (!(['admin', 'finance', 'sales', 'supervisor'] as const).includes(role)) {
     return { ok: false, error: '无效的用户角色' }
   }
 
@@ -86,6 +86,46 @@ export async function setUserRole(
     .update({ role })
     .eq('id', userId)
   if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/users')
+  return { ok: true }
+}
+
+/**
+ * Set or clear a user's reporting manager (superior). Admin-only.
+ * The manager must be an approved supervisor or administrator, and the target
+ * must be a sales or supervisor user. Cycle prevention and manager-role checks
+ * are enforced server-side by the `set_user_manager` RPC and the profiles guard
+ * trigger. Passing null clears the manager.
+ */
+export async function setUserManager(
+  userId: string,
+  managerId: string | null,
+): Promise<ActionResult> {
+  await requireAdmin()
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('set_user_manager', {
+    p_user_id: userId,
+    p_manager_id: managerId,
+  })
+
+  if (error) {
+    const message = error.message.includes('User does not exist')
+      ? '用户不存在'
+      : error.message.includes('their own manager')
+        ? '不能将用户设置为自己的上级'
+        : error.message.includes('sales or supervisor users can have a manager')
+          ? '只有业务员或业务主管可以设置上级'
+          : error.message.includes('approved supervisor or administrator')
+            ? '上级必须是已通过审核的业务主管或管理员'
+            : error.message.includes('cannot contain a cycle')
+              ? '上级关系不能形成环'
+              : error.message.includes('Only administrators')
+                ? '只有管理员可以设置上级'
+                : error.message
+    return { ok: false, error: message }
+  }
 
   revalidatePath('/users')
   return { ok: true }

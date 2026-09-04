@@ -84,7 +84,7 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
             </SelectContent>
           </Select>
         </div>
-        {profile.role === 'sales' && (
+        {(profile.role === 'sales' || profile.role === 'supervisor') && (
           <Button asChild>
             <Link href="/finance/performance/new">
               <Plus className="h-4 w-4" />
