@@ -103,5 +103,6 @@ begin
 end;
 $$;
 
-revoke all on function public.update_profile_chinese_name(uuid, text) from public;
+revoke all on function public.update_profile_chinese_name(uuid, text)
+  from public, anon, authenticated, service_role;
 grant execute on function public.update_profile_chinese_name(uuid, text) to authenticated;
