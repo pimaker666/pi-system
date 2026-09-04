@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useMemo, useState, useTransition } from 'react'
+import { ClipboardEvent, DragEvent, FormEvent, useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Eye, Plus, Trash2 } from 'lucide-react'
@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { ProductCombobox } from '@/components/products/product-combobox'
 import { createClient } from '@/lib/supabase/client'
-import { displayProfileName } from '@/lib/utils'
+import { cn, displayProfileName } from '@/lib/utils'
 import {
   bindDailyOrderScreenshot,
   bulkCreateDailyOrders,
@@ -171,6 +171,7 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
       .map((field) => field.key),
   ), [items])
   const [files, setFiles] = useState<PendingScreenshot[]>([])
+  const [isDragging, setIsDragging] = useState(false)
   const [screenshots, setScreenshots] = useState(
     initialOrder?.finance_daily_order_screenshots?.filter((item) => item.status === 'active') ?? [],
   )
@@ -226,12 +227,35 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
     setItems((current) => (current.length <= 1 ? current : current.filter((_, i) => i !== index)))
   }
 
-  function selectFiles(next: FileList | null) {
+  function addFiles(next: FileList | File[] | null) {
     const selected = Array.from(next ?? [])
-    if (screenshots.length + selected.length > 10) return toast.error('每条订单最多 10 张截图')
+    if (selected.length === 0) return
+    if (screenshots.length + files.length + selected.length > 10) return toast.error('每条订单最多 10 张截图')
     const invalid = selected.find((file) => !['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024)
     if (invalid) return toast.error(`${invalid.name} 不是 JPEG/PNG 或超过 5MB`)
-    setFiles(selected.map((file) => ({ id: newLocalId('daily-order-screenshot'), file })))
+    setFiles((current) => [...current, ...selected.map((file) => ({ id: newLocalId('daily-order-screenshot'), file }))])
+  }
+
+  function removePendingFile(id: string) {
+    setFiles((current) => current.filter((item) => item.id !== id))
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setIsDragging(false)
+    if (screenshots.length >= 10) return
+    addFiles(event.dataTransfer.files)
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
+    if (screenshots.length >= 10) return
+    const images = Array.from(event.clipboardData?.items ?? [])
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+    if (images.length === 0) return
+    event.preventDefault()
+    addFiles(images)
   }
 
   async function uploadScreenshots(orderId: string) {
@@ -503,8 +527,31 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
         <CardHeader><CardTitle className="text-base">截图（JPEG/PNG，每张 ≤5MB，最多10张）</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           {screenshots.map((shot) => <div key={shot.id} className="flex items-center justify-between rounded-md border p-2 text-sm"><span className="truncate">{shot.original_name || '截图'}</span><div className="flex"><Button type="button" variant="ghost" size="icon" onClick={() => viewScreenshot(shot.id)} aria-label="查看截图"><Eye className="h-4 w-4" /></Button><Button type="button" variant="ghost" size="icon" onClick={() => removeScreenshot(shot.id)} aria-label="移除截图"><Trash2 className="h-4 w-4 text-destructive" /></Button></div></div>)}
-          <Input type="file" accept="image/jpeg,image/png" multiple onChange={(event) => selectFiles(event.target.files)} disabled={screenshots.length >= 10} />
-          {files.length > 0 && <p className="text-xs text-muted-foreground">待上传：{files.map((item) => item.file.name).join('、')}</p>}
+          <div
+            onDragOver={(event) => { event.preventDefault(); if (screenshots.length < 10) setIsDragging(true) }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            onPaste={handlePaste}
+            tabIndex={0}
+            className={cn(
+              'space-y-2 rounded-md border border-dashed p-4 text-center outline-none transition-colors',
+              isDragging ? 'border-primary bg-primary/5' : 'border-muted-foreground/30',
+              screenshots.length >= 10 && 'opacity-60',
+            )}
+          >
+            <p className="text-xs text-muted-foreground">将截图拖拽到此处，或点选后 Ctrl/⌘+V 粘贴，或点击下方选择文件</p>
+            <Input type="file" accept="image/jpeg,image/png" multiple onChange={(event) => { addFiles(event.target.files); event.target.value = '' }} disabled={screenshots.length >= 10} />
+          </div>
+          {files.length > 0 && (
+            <div className="space-y-1">
+              {files.map((item) => (
+                <div key={item.id} className="flex items-center justify-between rounded-md border p-2 text-sm">
+                  <span className="truncate">待上传：{item.file.name}</span>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => removePendingFile(item.id)} aria-label="移除待上传截图"><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                </div>
+              ))}
+            </div>
+          )}
           {!isEdit && <p className="text-xs text-muted-foreground">截图会绑定到本次创建的第一个产品行。</p>}
         </CardContent>
       </Card>
