@@ -71,6 +71,8 @@ interface LineItem {
   logistics_fee_currency: CurrencyCode
   sales_total_amount: string
   sales_total_currency: CurrencyCode
+  product_received_overridden: boolean
+  sales_total_overridden: boolean
 }
 
 interface PendingScreenshot {
@@ -106,6 +108,8 @@ function emptyLine(): LineItem {
     logistics_fee_currency: 'CNY',
     sales_total_amount: '',
     sales_total_currency: 'CNY',
+    product_received_overridden: false,
+    sales_total_overridden: false,
   }
 }
 
@@ -123,6 +127,8 @@ function lineFromOrder(order: DailyOrder): LineItem {
     logistics_fee_currency: order.logistics_fee_currency ?? 'CNY',
     sales_total_amount: String(order.sales_total_amount ?? '0'),
     sales_total_currency: order.sales_total_currency ?? 'CNY',
+    product_received_overridden: true,
+    sales_total_overridden: true,
   }
 }
 
@@ -137,6 +143,31 @@ function sumMoney(items: LineItem[], key: TotalAmountKey) {
     return sum + (Number.isFinite(amount) ? Math.round(amount * 100) : 0)
   }, 0)
   return (cents / 100).toFixed(2)
+}
+
+function computeProductReceived(unitPrice: string, quantity: string) {
+  const unit = unitPrice.trim()
+  const qty = quantity.trim()
+  if (unit === '' || qty === '') return ''
+  const unitValue = Number(unit)
+  const qtyValue = Number(qty)
+  if (!Number.isFinite(unitValue) || !Number.isFinite(qtyValue)) return ''
+  return (Math.round(unitValue * qtyValue * 100) / 100).toFixed(2)
+}
+
+function computeSalesTotal(productReceived: string, logisticsFee: string) {
+  const product = productReceived.trim()
+  const logistics = logisticsFee.trim()
+  if (product === '' && logistics === '') return ''
+  const productValue = Number(product || '0')
+  const logisticsValue = Number(logistics || '0')
+  if (!Number.isFinite(productValue) || !Number.isFinite(logisticsValue)) return ''
+  return ((Math.round(productValue * 100) + Math.round(logisticsValue * 100)) / 100).toFixed(2)
+}
+
+function toCents(value: string) {
+  const amount = Number(value.trim() || '0')
+  return Number.isFinite(amount) ? Math.round(amount * 100) : NaN
 }
 
 function currentBusinessDate() {
@@ -170,6 +201,21 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
       .filter((field) => items.some((item) => item[field.currencyKey] !== items[0]?.[field.currencyKey]))
       .map((field) => field.key),
   ), [items])
+  const totalCurrenciesUnified = useMemo(() => {
+    const first = items[0]
+    if (!first) return true
+    return first.product_received_currency === first.logistics_fee_currency
+      && first.logistics_fee_currency === first.sales_total_currency
+  }, [items])
+  const totalsBalanced = useMemo(() => {
+    if (!totalCurrenciesUnified) return true
+    const effective = (key: TotalKey) => toCents(totalOverrides[key] ?? automaticTotals[key])
+    const product = effective('product_received')
+    const shipping = effective('shipping_received')
+    const sales = effective('sales')
+    if (!Number.isFinite(product) || !Number.isFinite(shipping) || !Number.isFinite(sales)) return true
+    return product + shipping === sales
+  }, [totalCurrenciesUnified, totalOverrides, automaticTotals])
   const [files, setFiles] = useState<PendingScreenshot[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [screenshots, setScreenshots] = useState(
@@ -188,6 +234,21 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
 
   function updateItem(index: number, patch: Partial<LineItem>) {
     setItems((current) => current.map((item, i) => (i === index ? { ...item, ...patch } : item)))
+  }
+
+  function applyLineDerived(line: LineItem): LineItem {
+    const next = { ...line }
+    if (!next.product_received_overridden) {
+      next.product_received_amount = computeProductReceived(next.sales_unit_price_amount, next.quantity)
+    }
+    if (!next.sales_total_overridden) {
+      next.sales_total_amount = computeSalesTotal(next.product_received_amount, next.logistics_fee_amount)
+    }
+    return next
+  }
+
+  function setLine(index: number, updater: (line: LineItem) => LineItem) {
+    setItems((current) => current.map((item, i) => (i === index ? applyLineDerived(updater(item)) : item)))
   }
 
   function changeItemCurrency(index: number, key: MoneyKey, currency: CurrencyCode) {
@@ -402,12 +463,32 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
     })
   }
 
-  const itemMoneyField = (item: LineItem, index: number, key: MoneyKey, label: string) => {
+  const itemMoneyField = (
+    item: LineItem,
+    index: number,
+    key: MoneyKey,
+    label: string,
+    options?: { overridden?: boolean; onRestore?: () => void; onAmountChange?: (value: string) => void },
+  ) => {
     const amountKey = `${key}_amount` as const
     const currencyKey = `${key}_currency` as const
+    const onAmountChange = options?.onAmountChange ?? ((value: string) => updateItem(index, { [amountKey]: value }))
     return (
       <div className="space-y-2">
-        <Label>{label}</Label>
+        <div className="flex items-center justify-between gap-2">
+          <Label>{label}</Label>
+          {options?.overridden && options.onRestore && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto px-2 py-1 text-xs"
+              onClick={options.onRestore}
+            >
+              恢复自动计算
+            </Button>
+          )}
+        </div>
         <div className="flex gap-2">
           <Select
             value={item[currencyKey]}
@@ -422,7 +503,7 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
             max="999999999999"
             step="0.01"
             value={item[amountKey]}
-            onChange={(event) => updateItem(index, { [amountKey]: event.target.value })}
+            onChange={(event) => onAmountChange(event.target.value)}
           />
         </div>
       </div>
@@ -502,11 +583,23 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
               <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 <div className="space-y-2"><Label>发货分类</Label><Select value={item.shipping_category} onValueChange={(value) => updateItem(index, { shipping_category: value as DailyOrderShippingCategory })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{SHIPPING_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></div>
                 <div className="space-y-2"><Label>产品</Label><ProductCombobox products={products} value={item.product_id} onChange={(value) => updateItem(index, { product_id: value })} placeholder="选择产品" className="w-full" /></div>
-                <div className="space-y-2"><Label>数量</Label><Input type="number" min="0.0001" max="999999999999" step="0.0001" value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} required /></div>
-                {itemMoneyField(item, index, 'sales_unit_price', '销售单价')}
-                {itemMoneyField(item, index, 'product_received', '产品实收金额')}
-                {itemMoneyField(item, index, 'logistics_fee', '运费实收金额')}
-                {itemMoneyField(item, index, 'sales_total', '销售总金额')}
+                <div className="space-y-2"><Label>数量</Label><Input type="number" min="0.0001" max="999999999999" step="0.0001" value={item.quantity} onChange={(event) => { const value = event.target.value; setLine(index, (line) => ({ ...line, quantity: value })) }} required /></div>
+                {itemMoneyField(item, index, 'sales_unit_price', '销售单价', {
+                  onAmountChange: (value) => setLine(index, (line) => ({ ...line, sales_unit_price_amount: value })),
+                })}
+                {itemMoneyField(item, index, 'product_received', '产品实收金额', {
+                  overridden: item.product_received_overridden,
+                  onRestore: () => setLine(index, (line) => ({ ...line, product_received_overridden: false })),
+                  onAmountChange: (value) => setLine(index, (line) => ({ ...line, product_received_amount: value, product_received_overridden: true })),
+                })}
+                {itemMoneyField(item, index, 'logistics_fee', '运费实收金额', {
+                  onAmountChange: (value) => setLine(index, (line) => ({ ...line, logistics_fee_amount: value })),
+                })}
+                {itemMoneyField(item, index, 'sales_total', '销售总金额', {
+                  overridden: item.sales_total_overridden,
+                  onRestore: () => setLine(index, (line) => ({ ...line, sales_total_overridden: false })),
+                  onAmountChange: (value) => setLine(index, (line) => ({ ...line, sales_total_amount: value, sales_total_overridden: true })),
+                })}
               </div>
             </div>
           ))}
@@ -520,6 +613,9 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
               {ORDER_TOTAL_FIELDS.map((field) => <div key={field.key}>{orderTotalField(field)}</div>)}
             </div>
             <p className="text-xs text-muted-foreground">默认自动加总各产品对应金额；产品金额留空按 0 计算。修改总额后会保留人工填写值，可点击“恢复自动计算”。</p>
+            {!totalsBalanced && (
+              <p className="text-xs text-destructive">销售总金额 ≠ 总产品实收金额 + 总运费实收金额，请检查各项金额。</p>
+            )}
           </CardContent>
         </Card>
       )}
