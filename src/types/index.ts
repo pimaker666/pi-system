@@ -50,6 +50,9 @@ export interface FinanceOrder {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** Live-joined salesperson profile (PostgREST embed on salesperson_id) used to
+   *  render the current chinese_name; null when the user was deleted. */
+  salesperson?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
 
 export interface FinanceTransaction {
@@ -70,6 +73,9 @@ export interface FinanceTransaction {
   created_by: string | null
   created_at: string
   updated_at: string
+  /** Live-joined salesperson profile (PostgREST embed on salesperson_id) used to
+   *  render the current chinese_name; null when the user was deleted. */
+  salesperson?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
 
 export interface FinanceOrderCost {
@@ -286,6 +292,9 @@ export interface BusinessOrder {
   completed_at: string | null
   created_at: string
   updated_at: string
+  /** Live-joined salesperson profile (PostgREST embed on salesperson_id) used to
+   *  render the current chinese_name; null when the user was deleted. */
+  salesperson?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
 
 export interface BusinessOrderItem {
@@ -352,6 +361,9 @@ export interface BusinessOrderAuditLog {
     role: UserRole
   }
   created_at: string
+  /** Live-joined actor profile (PostgREST embed on actor_id) used to render the
+   *  current chinese_name; null when the user was deleted. */
+  actor?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
 
 export interface BusinessOrderWithDetails extends BusinessOrder {

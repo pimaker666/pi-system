@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { UsersRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
+import { displayProfileName } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { NewCustomerButton } from '@/components/customers/new-customer-button'
 import { CustomerFilters } from '@/components/customers/customer-filters'
@@ -39,17 +40,17 @@ export default async function CustomersPage({
     await Promise.all([
       customerQuery,
       supabase.from('customer_groups').select('*').order('name'),
-      supabase.from('profiles').select('id, full_name, email').order('full_name'),
+      supabase.from('profiles').select('id, full_name, email, chinese_name').order('full_name'),
       supabase.from('customers').select('country'),
     ])
 
   const customers = (customerData ?? []) as CustomerRow[]
   const groups = (groupData ?? []) as CustomerGroup[]
-  const profiles = (profileData ?? []) as Pick<Profile, 'id' | 'full_name' | 'email'>[]
+  const profiles = (profileData ?? []) as Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
 
   const owners: OwnerOption[] = profiles.map((p) => ({
     id: p.id,
-    label: p.full_name || p.email || '未知账号',
+    label: displayProfileName(p),
   }))
 
   const countries = Array.from(

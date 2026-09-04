@@ -34,14 +34,14 @@ import {
 } from '@/components/ui/table'
 import { createFinanceTransaction, deleteFinanceTransaction } from '@/lib/actions/finance'
 import { formatCny, FINANCE_TRANSACTION_LABELS } from '@/lib/finance'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, displayProfileName } from '@/lib/utils'
 import { financeCurrencies } from '@/schemas/finance'
 import type { CurrencyCode, FinanceOrder, FinanceTransaction, Profile } from '@/types'
 
 interface TransactionManagerProps {
   transactions: FinanceTransaction[]
   orders: Pick<FinanceOrder, 'id' | 'pi_number_snapshot'>[]
-  salespeople: Pick<Profile, 'id' | 'full_name' | 'email'>[]
+  salespeople: Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
 }
 
 export function TransactionManager({
@@ -181,7 +181,7 @@ export function TransactionManager({
                   <SelectContent>
                     {salespeople.map((person) => (
                       <SelectItem key={person.id} value={person.id}>
-                        {person.full_name || person.email}
+                        {displayProfileName(person)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -229,7 +229,7 @@ export function TransactionManager({
                   <div className="font-medium">{row.category}</div>
                   <div className="text-xs text-muted-foreground">{row.reference_no || row.description || '—'}</div>
                 </TableCell>
-                <TableCell>{row.salesperson_name_snapshot || '—'}</TableCell>
+                <TableCell>{displayProfileName(row.salesperson, row.salesperson_name_snapshot)}</TableCell>
                 <TableCell className="text-right">{formatCurrency(Number(row.amount_original), row.currency)}</TableCell>
                 <TableCell className="text-right font-medium">{formatCny(Number(row.amount_cny))}</TableCell>
                 <TableCell>

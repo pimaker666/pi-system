@@ -28,7 +28,7 @@ import {
   getBusinessOrderCustomerName,
 } from '@/lib/business-orders'
 import { formatCny } from '@/lib/finance'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, displayProfileName } from '@/lib/utils'
 import type { BusinessOrder, BusinessOrderStatus, Profile } from '@/types'
 
 export interface BusinessOrderListRow extends BusinessOrder {
@@ -50,7 +50,11 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
       if (status !== 'all' && order.status !== status) return false
       if (!normalized) return true
       const customer = getBusinessOrderCustomerName(order.customer_snapshot)
-      return [order.order_number, customer, order.salesperson_name_snapshot ?? '']
+      return [
+        order.order_number,
+        customer,
+        displayProfileName(order.salesperson, order.salesperson_name_snapshot),
+      ]
         .join(' ')
         .toLocaleLowerCase('zh-CN')
         .includes(normalized)
@@ -128,7 +132,7 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
                   </TableCell>
                   <TableCell className="whitespace-nowrap">{formatDate(order.order_date)}</TableCell>
                   <TableCell>{BUSINESS_FULFILLMENT_LABELS[order.fulfillment_type]}</TableCell>
-                  <TableCell>{order.salesperson_name_snapshot || '—'}</TableCell>
+                  <TableCell>{displayProfileName(order.salesperson, order.salesperson_name_snapshot)}</TableCell>
                   <TableCell className="whitespace-nowrap text-right font-medium">
                     <div>{formatCurrency(Number(order.total_amount), order.currency)}</div>
                     <div className="text-xs font-normal text-muted-foreground">

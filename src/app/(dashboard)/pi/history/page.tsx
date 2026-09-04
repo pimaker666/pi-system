@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
+import { displayProfileName } from '@/lib/utils'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { OwnerFilter, type OwnerOption } from '@/components/shared/owner-filter'
@@ -33,11 +34,11 @@ export default async function PiHistoryPage({
 
   // Owner options (admins can filter by creator) — shared by both branches.
   const ownersData = isAdmin
-    ? (await supabase.from('profiles').select('id, full_name, email').order('full_name')).data
+    ? (await supabase.from('profiles').select('id, full_name, email, chinese_name').order('full_name')).data
     : []
   const owners: OwnerOption[] = (
-    (ownersData ?? []) as Pick<Profile, 'id' | 'full_name' | 'email'>[]
-  ).map((p) => ({ id: p.id, label: p.full_name || p.email || '未知账号' }))
+    (ownersData ?? []) as Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
+  ).map((p) => ({ id: p.id, label: displayProfileName(p) }))
 
   // ---- 克重历史 branch: saved weight calculations ----
   if (view === 'weight') {

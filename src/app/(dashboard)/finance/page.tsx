@@ -14,8 +14,8 @@ import { BUSINESS_ORDER_STATUS_LABELS, BUSINESS_ORDER_STATUS_VARIANTS } from '@/
 import { requireFinanceAccess } from '@/lib/auth'
 import { formatCny } from '@/lib/finance'
 import { createClient } from '@/lib/supabase/server'
-import { formatDate } from '@/lib/utils'
-import type { BusinessOrderStatus } from '@/types'
+import { formatDate, displayProfileName } from '@/lib/utils'
+import type { BusinessOrder, BusinessOrderStatus, FinanceOrder } from '@/types'
 
 interface FinanceSummaryRow {
   order_revenue: number
@@ -45,13 +45,13 @@ export default async function FinanceOverviewPage() {
     supabase.rpc('get_finance_summary').single(),
     supabase
       .from('finance_orders')
-      .select('id, order_date, pi_number_snapshot, customer_name_snapshot, salesperson_name_snapshot, amount_cny')
+      .select('id, order_date, pi_number_snapshot, customer_name_snapshot, salesperson_name_snapshot, amount_cny, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)')
       .eq('status', 'active')
       .order('order_date', { ascending: false })
       .limit(8),
     supabase
       .from('business_orders')
-      .select('id, order_number, status, order_date, customer_snapshot, salesperson_name_snapshot, total_cny')
+      .select('id, order_number, status, order_date, customer_snapshot, salesperson_name_snapshot, total_cny, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)')
       .order('order_date', { ascending: false })
       .limit(8),
   ])
@@ -69,22 +69,45 @@ export default async function FinanceOverviewPage() {
     grossProfit: Number(rawSummary.gross_profit),
     cashBalance: Number(rawSummary.cash_balance),
   }
-  const legacyOrders: RecentOrder[] = (legacyOrdersResult.data ?? []).map((order) => ({
+  const legacyOrders: RecentOrder[] = ((legacyOrdersResult.data ?? []) as unknown as Array<
+    Pick<
+      FinanceOrder,
+      | 'id'
+      | 'order_date'
+      | 'pi_number_snapshot'
+      | 'customer_name_snapshot'
+      | 'salesperson_name_snapshot'
+      | 'amount_cny'
+      | 'salesperson'
+    >
+  >).map((order) => ({
     id: `legacy-${order.id}`,
     orderDate: order.order_date,
     reference: order.pi_number_snapshot,
     customer: order.customer_name_snapshot || '—',
-    salesperson: order.salesperson_name_snapshot || '—',
+    salesperson: displayProfileName(order.salesperson, order.salesperson_name_snapshot),
     amountCny: Number(order.amount_cny),
   }))
-  const businessOrders: RecentOrder[] = (businessOrdersResult.data ?? []).map((order) => {
+  const businessOrders: RecentOrder[] = ((businessOrdersResult.data ?? []) as unknown as Array<
+    Pick<
+      BusinessOrder,
+      | 'id'
+      | 'order_number'
+      | 'status'
+      | 'order_date'
+      | 'customer_snapshot'
+      | 'salesperson_name_snapshot'
+      | 'total_cny'
+      | 'salesperson'
+    >
+  >).map((order) => {
     const customer = order.customer_snapshot as { name?: string | null; company?: string | null }
     return {
       id: order.id,
       orderDate: order.order_date,
       reference: order.order_number,
       customer: customer.company || customer.name || '—',
-      salesperson: order.salesperson_name_snapshot || '—',
+      salesperson: displayProfileName(order.salesperson, order.salesperson_name_snapshot),
       amountCny: Number(order.total_cny),
       href: `/finance/performance/${order.id}`,
       status: order.status as BusinessOrderStatus,

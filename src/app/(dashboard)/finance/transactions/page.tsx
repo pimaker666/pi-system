@@ -10,7 +10,7 @@ export default async function FinanceTransactionsPage() {
   const [transactionsResult, ordersResult, salespeopleResult] = await Promise.all([
     supabase
       .from('finance_transactions')
-      .select('*')
+      .select('*, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)')
       .order('transaction_date', { ascending: false }),
     supabase
       .from('finance_orders')
@@ -19,7 +19,7 @@ export default async function FinanceTransactionsPage() {
       .order('order_date', { ascending: false }),
     supabase
       .from('profiles')
-      .select('id, full_name, email')
+      .select('id, full_name, email, chinese_name')
       .eq('role', 'sales')
       .eq('status', 'approved')
       .order('full_name', { ascending: true }),
@@ -29,7 +29,7 @@ export default async function FinanceTransactionsPage() {
   const orders = (ordersResult.data ?? []) as Pick<FinanceOrder, 'id' | 'pi_number_snapshot'>[]
   const salespeople = (salespeopleResult.data ?? []) as Pick<
     Profile,
-    'id' | 'full_name' | 'email'
+    'id' | 'full_name' | 'email' | 'chinese_name'
   >[]
 
   return (

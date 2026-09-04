@@ -11,7 +11,9 @@ export default async function FinancePerformancePage() {
 
   const { data, error } = await supabase
     .from('business_orders')
-    .select('*, business_order_payments(amount, voided_at)')
+    .select(
+      '*, business_order_payments(amount, voided_at), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)',
+    )
     .order('order_date', { ascending: false })
     .order('created_at', { ascending: false })
 

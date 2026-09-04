@@ -1,4 +1,5 @@
 import { requireApproved } from '@/lib/auth'
+import { displayProfileName } from '@/lib/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { LogoutButton } from '@/components/auth/logout-button'
 
@@ -11,7 +12,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar role={profile.role} fullName={profile.full_name} />
+      <Sidebar role={profile.role} fullName={displayProfileName(profile)} />
       <div className="flex flex-1 flex-col overflow-hidden">
         <header className="flex h-16 items-center justify-end border-b px-6">
           <LogoutButton />

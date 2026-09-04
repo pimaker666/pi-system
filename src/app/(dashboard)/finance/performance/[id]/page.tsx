@@ -26,7 +26,7 @@ import {
 } from '@/lib/business-orders'
 import { formatCny } from '@/lib/finance'
 import { createClient } from '@/lib/supabase/server'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, displayProfileName } from '@/lib/utils'
 import type {
   BusinessAuditAction,
   BusinessOrderAuditLog,
@@ -58,7 +58,9 @@ export default async function BusinessOrderDetailPage({
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('business_orders')
-    .select('*, business_order_items(*), business_order_payments(*)')
+    .select(
+      '*, business_order_items(*), business_order_payments(*), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)',
+    )
     .eq('id', id)
     .single()
 
@@ -75,7 +77,7 @@ export default async function BusinessOrderDetailPage({
     const [auditResult, financeResult] = await Promise.all([
       supabase
         .from('business_order_audit_logs')
-        .select('*')
+        .select('*, actor:profiles!actor_id(id, chinese_name, full_name, email)')
         .eq('order_id', id)
         .order('created_at', { ascending: false }),
       supabase
@@ -132,7 +134,7 @@ export default async function BusinessOrderDetailPage({
               {customer.address && <div className="text-muted-foreground">{customer.address}</div>}
               <div className="border-t pt-2">
                 <span className="text-muted-foreground">业务员：</span>
-                {order.salesperson_name_snapshot || '—'}
+                {displayProfileName(order.salesperson, order.salesperson_name_snapshot)}
               </div>
               <div>
                 <span className="text-muted-foreground">货运单号：</span>
@@ -212,7 +214,7 @@ export default async function BusinessOrderDetailPage({
                   <div key={log.id} className="border-l-2 pl-3 text-sm">
                     <div className="font-medium">{auditLabels[log.action]}</div>
                     <div className="text-muted-foreground">
-                      {log.actor_snapshot.full_name || log.actor_snapshot.email || '未知用户'} · {formatDate(log.created_at, true)}
+                      {displayProfileName(log.actor, log.actor_snapshot.full_name || log.actor_snapshot.email)} · {formatDate(log.created_at, true)}
                     </div>
                     {log.reason && <div className="mt-1">说明：{log.reason}</div>}
                   </div>
