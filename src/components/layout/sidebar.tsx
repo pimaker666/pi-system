@@ -64,7 +64,12 @@ const NAV: NavItem[] = [
     allowedRoles: ['sales'],
   },
   { href: '/settings', label: '公司设置', icon: Settings },
-  { href: '/users', label: '用户管理', icon: ShieldCheck, allowedRoles: ['admin'] },
+  {
+    href: '/users',
+    label: '用户管理',
+    icon: ShieldCheck,
+    allowedRoles: ['admin', 'finance'],
+  },
 ]
 
 export function Sidebar({ role, fullName }: { role: UserRole; fullName: string | null }) {

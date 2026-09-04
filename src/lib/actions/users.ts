@@ -3,9 +3,42 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireAdmin } from '@/lib/auth'
+import { requireAdmin, requireFinanceAccess } from '@/lib/auth'
 import type { ActionResult } from './products'
 import type { UserRole } from '@/types'
+
+/** Update the separately managed Chinese name. Approved admin/finance only. */
+export async function updateUserChineseName(
+  userId: string,
+  chineseName: string,
+): Promise<ActionResult> {
+  await requireFinanceAccess()
+
+  const normalizedName = chineseName.trim()
+  if (normalizedName.length > 50) {
+    return { ok: false, error: '中文名不能超过 50 个字符' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('update_profile_chinese_name', {
+    p_user_id: userId,
+    p_chinese_name: normalizedName,
+  })
+
+  if (error) {
+    const message = error.message.includes('User does not exist')
+      ? '用户不存在'
+      : error.message.includes('Chinese name cannot exceed 50 characters')
+        ? '中文名不能超过 50 个字符'
+        : error.message.includes('Only approved finance users or administrators')
+          ? '只有已通过审核的财务或管理员可以修改中文名'
+          : error.message
+    return { ok: false, error: message }
+  }
+
+  revalidatePath('/users')
+  return { ok: true }
+}
 
 /**
  * Promote or demote a user's role. Admin-only.

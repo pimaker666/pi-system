@@ -180,7 +180,11 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
   }
 
   return (
-    <form action={handleSubmit} className="space-y-4">
+    <form
+      action={handleSubmit}
+      className="space-y-4"
+      onSubmit={(event) => event.stopPropagation()}
+    >
       <div className="space-y-2 rounded-md border border-dashed bg-muted/30 p-3">
         <div className="flex items-center justify-between">
           <Label className="flex items-center gap-1.5 text-sm">

@@ -5,7 +5,7 @@ import { getCurrentProfile } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { ProductFilters } from '@/components/products/product-filters'
 import { ProductTable } from '@/components/products/product-table'
-import type { Product, ProductGroup } from '@/types'
+import type { Product, ProductFinancial, ProductGroup } from '@/types'
 
 export default async function ProductsPage({
   searchParams,
@@ -15,6 +15,8 @@ export default async function ProductsPage({
   const { q, category, group } = await searchParams
   const profile = await getCurrentProfile()
   const isAdmin = profile?.role === 'admin'
+  const canManageFinancials =
+    profile?.status === 'approved' && (profile.role === 'admin' || profile.role === 'finance')
   const supabase = await createClient()
 
   let query = supabase.from('products').select('*').order('created_at', { ascending: false })
@@ -42,6 +44,16 @@ export default async function ProductsPage({
     ),
   ).sort()
 
+  let financials: ProductFinancial[] = []
+  if (canManageFinancials && products.length > 0) {
+    const { data: financialData, error: financialError } = await supabase
+      .from('product_financials')
+      .select('*')
+      .in('product_id', products.map((product) => product.id))
+    if (financialError) throw new Error('加载产品财务资料失败')
+    financials = (financialData ?? []) as ProductFinancial[]
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -62,7 +74,14 @@ export default async function ProductsPage({
         group={group ?? ''}
       />
 
-      <ProductTable products={products} groups={groups} canManage={true} canDelete={isAdmin} />
+      <ProductTable
+        products={products}
+        groups={groups}
+        financials={financials}
+        canManage={true}
+        canDelete={isAdmin}
+        canManageFinancials={canManageFinancials}
+      />
     </div>
   )
 }

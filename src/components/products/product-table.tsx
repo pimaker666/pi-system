@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, Trash2, FolderInput, DollarSign, Settings2 } from 'lucide-react'
+import { Pencil, Trash2, FolderInput, DollarSign, Save, Settings2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -49,9 +49,10 @@ import {
   bulkUpdatePrice,
   bulkUpdateProducts,
   bulkDeleteProducts,
+  updateProductFinancials,
   updateProductInline,
 } from '@/lib/actions/products'
-import type { Product, ProductGroup } from '@/types'
+import type { Product, ProductFinancial, ProductGroup } from '@/types'
 
 const NO_GROUP = '__none__'
 const KEEP = '__keep__'
@@ -148,16 +149,132 @@ function InlineEditableCell({
   )
 }
 
+function ProductFinancialCells({
+  productId,
+  financial,
+}: {
+  productId: string
+  financial?: ProductFinancial
+}) {
+  const router = useRouter()
+  const [financialNumber, setFinancialNumber] = useState(financial?.financial_number ?? '')
+  const [productName, setProductName] = useState(financial?.product_name ?? '')
+  const [cost, setCost] = useState(financial?.cost != null ? String(financial.cost) : '')
+  const [saving, setSaving] = useState(false)
+
+  const initialNumber = financial?.financial_number ?? ''
+  const initialName = financial?.product_name ?? ''
+  const initialCost = financial?.cost != null ? String(financial.cost) : ''
+  const normalizedNumber = financialNumber.trim()
+  const normalizedName = productName.trim()
+  const normalizedCost = cost.trim()
+  const unchanged =
+    normalizedNumber === initialNumber &&
+    normalizedName === initialName &&
+    normalizedCost === initialCost
+
+  async function save() {
+    const numericCost = normalizedCost === '' ? null : Number(normalizedCost)
+    if (numericCost !== null && (!Number.isFinite(numericCost) || numericCost < 0)) {
+      toast.error('成本必须是非负数字')
+      return
+    }
+
+    setSaving(true)
+    const result = await updateProductFinancials({
+      product_id: productId,
+      financial_number: normalizedNumber,
+      product_name: normalizedName,
+      cost: numericCost,
+    })
+    setSaving(false)
+
+    if (result.ok) {
+      toast.success('财务资料已保存')
+      router.refresh()
+      return
+    }
+
+    const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+    toast.error(firstFieldError ?? result.error ?? '保存失败')
+  }
+
+  function saveOnEnter(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter' && !saving && !unchanged) {
+      event.preventDefault()
+      void save()
+    }
+  }
+
+  return (
+    <>
+      <TableCell className="min-w-40 align-top">
+        <Input
+          value={financialNumber}
+          maxLength={100}
+          disabled={saving}
+          placeholder="财务编号"
+          onChange={(event) => setFinancialNumber(event.target.value)}
+          onKeyDown={saveOnEnter}
+          className="h-8"
+        />
+      </TableCell>
+      <TableCell className="min-w-48 align-top">
+        <Input
+          value={productName}
+          maxLength={200}
+          disabled={saving}
+          placeholder="产品名称"
+          onChange={(event) => setProductName(event.target.value)}
+          onKeyDown={saveOnEnter}
+          className="h-8"
+        />
+      </TableCell>
+      <TableCell className="min-w-40 align-top">
+        <div className="flex items-center gap-2">
+          <Input
+            value={cost}
+            type="number"
+            step="0.0001"
+            min={0}
+            disabled={saving}
+            placeholder="成本"
+            onChange={(event) => setCost(event.target.value)}
+            onKeyDown={saveOnEnter}
+            className="h-8"
+          />
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            className="h-8 w-8 shrink-0"
+            disabled={saving || unchanged}
+            aria-label="保存产品财务资料"
+            title="保存产品财务资料"
+            onClick={save}
+          >
+            <Save className="h-4 w-4" />
+          </Button>
+        </div>
+      </TableCell>
+    </>
+  )
+}
+
 export function ProductTable({
   products,
   groups,
+  financials,
   canManage,
   canDelete,
+  canManageFinancials,
 }: {
   products: Product[]
   groups: ProductGroup[]
+  financials: ProductFinancial[]
   canManage: boolean
   canDelete: boolean
+  canManageFinancials: boolean
 }) {
   const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -176,6 +293,10 @@ export function ProductTable({
   const [eSpecification, setESpecification] = useState('')
 
   const groupName = useMemo(() => new Map(groups.map((g) => [g.id, g.name])), [groups])
+  const financialByProduct = useMemo(
+    () => new Map(financials.map((financial) => [financial.product_id, financial])),
+    [financials],
+  )
 
   const allChecked = products.length > 0 && selected.size === products.length
   const someChecked = selected.size > 0 && !allChecked
@@ -349,7 +470,14 @@ export function ProductTable({
                 )}
                 <TableHead className="w-16">图片</TableHead>
                 <TableHead>SKU</TableHead>
-                <TableHead>名称</TableHead>
+                <TableHead>{canManageFinancials ? '销售名称' : '名称'}</TableHead>
+                {canManageFinancials && (
+                  <>
+                    <TableHead>财务编号</TableHead>
+                    <TableHead>产品名称</TableHead>
+                    <TableHead>成本</TableHead>
+                  </>
+                )}
                 <TableHead className="w-44">规格</TableHead>
                 <TableHead className="w-28">克重(g)</TableHead>
                 <TableHead>分组</TableHead>
@@ -382,6 +510,13 @@ export function ProductTable({
                   </TableCell>
                   <TableCell className="font-mono text-xs">{p.sku}</TableCell>
                   <TableCell className="font-medium">{p.name}</TableCell>
+                  {canManageFinancials && (
+                    <ProductFinancialCells
+                      key={`${p.id}:${financialByProduct.get(p.id)?.updated_at ?? 'new'}`}
+                      productId={p.id}
+                      financial={financialByProduct.get(p.id)}
+                    />
+                  )}
                   <TableCell className="max-w-[180px] align-top">
                     <InlineEditableCell
                       productId={p.id}
@@ -432,7 +567,7 @@ export function ProductTable({
               {products.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={canManage ? 10 : 8}
+                    colSpan={(canManage ? 10 : 8) + (canManageFinancials ? 3 : 0)}
                     className="py-10 text-center text-muted-foreground"
                   >
                     没有符合条件的产品

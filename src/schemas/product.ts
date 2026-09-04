@@ -53,10 +53,21 @@ export const productSchema = z.object({
   is_active: z.boolean().default(true),
 })
 
+export const productFinancialSchema = z.object({
+  product_id: z.string().uuid('产品 ID 无效'),
+  financial_number: z.string().trim().max(100, '财务编号不能超过 100 个字符'),
+  product_name: z.string().trim().max(200, '产品名称不能超过 200 个字符'),
+  cost: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? null : Number(value)),
+    z.number({ invalid_type_error: '成本必须是数字' }).min(0, '成本不能为负').nullable(),
+  ),
+})
+
 export const productGroupSchema = z.object({
   name: z.string().trim().min(1, '分组名称不能为空').max(100),
   description: z.string().trim().max(500).optional().or(z.literal('')),
 })
 
 export type ProductInput = z.infer<typeof productSchema>
+export type ProductFinancialInput = z.infer<typeof productFinancialSchema>
 export type ProductGroupInput = z.infer<typeof productGroupSchema>

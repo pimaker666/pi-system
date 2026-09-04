@@ -88,7 +88,7 @@ export interface FinanceOrderCost {
   updated_at: string
 }
 
-export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom'
+export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'
 export type DailyOrderPaymentCategory = 'full' | 'deposit' | 'balance'
 
 export interface DailyOrderShop {
@@ -264,6 +264,7 @@ export interface Profile {
   id: string
   email: string
   full_name: string | null
+  chinese_name: string | null
   role: UserRole
   status: UserStatus
   created_at: string
@@ -340,6 +341,16 @@ export interface Product {
   category: string | null
   group_id: string | null
   is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface ProductFinancial {
+  product_id: string
+  financial_number: string | null
+  product_name: string | null
+  cost: number | null
+  updated_by: string | null
   created_at: string
   updated_at: string
 }

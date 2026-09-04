@@ -2,13 +2,52 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { requireAdmin, requireProfile } from '@/lib/auth'
-import { productSchema } from '@/schemas/product'
+import { requireAdmin, requireFinanceAccess, requireProfile } from '@/lib/auth'
+import { productFinancialSchema, productSchema } from '@/schemas/product'
+import type { ProductFinancialInput } from '@/schemas/product'
 
 export interface ActionResult {
   ok: boolean
   error?: string
   fieldErrors?: Record<string, string[]>
+}
+
+/** Save finance-only product fields. Both the action and table RLS enforce access. */
+export async function updateProductFinancials(
+  input: ProductFinancialInput,
+): Promise<ActionResult> {
+  const profile = await requireFinanceAccess()
+  const parsed = productFinancialSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const { product_id, financial_number, product_name, cost } = parsed.data
+  const supabase = await createClient()
+  const { error } = await supabase.from('product_financials').upsert(
+    {
+      product_id,
+      financial_number: financial_number || null,
+      product_name: product_name || null,
+      cost,
+      updated_by: profile.id,
+    },
+    { onConflict: 'product_id' },
+  )
+
+  if (error) {
+    return {
+      ok: false,
+      error:
+        error.code === '23505'
+          ? '财务编号已被其他产品使用'
+          : error.message,
+    }
+  }
+
+  revalidatePath('/products')
+  revalidatePath(`/products/${product_id}/edit`)
+  return { ok: true }
 }
 
 function parseProduct(formData: FormData) {

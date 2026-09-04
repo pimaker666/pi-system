@@ -133,6 +133,7 @@ export function BusinessOrderForm({
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (event.target !== event.currentTarget) return
     event.preventDefault()
     if (!customer) {
       toast.error('请选择客户')

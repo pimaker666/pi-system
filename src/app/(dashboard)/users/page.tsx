@@ -1,20 +1,20 @@
 import { createClient } from '@/lib/supabase/server'
-import { requireAdmin } from '@/lib/auth'
+import { requireFinanceAccess } from '@/lib/auth'
 import { UserTable } from '@/components/users/user-table'
 import type { Profile } from '@/types'
 
 export default async function UsersPage() {
-  const me = await requireAdmin()
+  const me = await requireFinanceAccess()
   const supabase = await createClient()
 
   const { data } = await supabase
     .from('profiles')
-    .select('id, email, full_name, role, status, created_at')
+    .select('id, email, full_name, chinese_name, role, status, created_at')
     .order('created_at', { ascending: true })
 
   const users = (data ?? []) as Pick<
     Profile,
-    'id' | 'email' | 'full_name' | 'role' | 'status' | 'created_at'
+    'id' | 'email' | 'full_name' | 'chinese_name' | 'role' | 'status' | 'created_at'
   >[]
 
   return (
@@ -22,11 +22,11 @@ export default async function UsersPage() {
       <div>
         <h1 className="text-2xl font-semibold">用户管理</h1>
         <p className="text-sm text-muted-foreground">
-          新注册的用户需管理员「通过审核」后才能登录使用；管理员还可提升/取消他人的管理员身份，或删除用户账号。
+          财务和管理员可维护用户中文名；用户审核、角色、密码及账号删除仍仅限管理员操作。
         </p>
       </div>
 
-      <UserTable users={users} currentUserId={me.id} />
+      <UserTable users={users} currentUserId={me.id} currentUserRole={me.role} />
     </div>
   )
 }
