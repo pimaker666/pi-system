@@ -1,5 +1,13 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { DailyOrder, DailyOrderShop, Product, Profile } from '@/types'
+import type {
+  DailyOrder,
+  DailyOrderChangeRequest,
+  DailyOrderCommission,
+  DailyOrderShop,
+  DailyOrderWorkflow,
+  Product,
+  Profile,
+} from '@/types'
 import type { DailyOrderFilters } from '@/schemas/daily-order'
 import type { DailyOrderShopOption } from '@/components/finance/daily-order-form'
 
@@ -59,3 +67,95 @@ export async function fetchDailyOrderOptions(supabase: SupabaseClient) {
     products: (productsResult.data ?? []) as Pick<Product, 'id' | 'name' | 'sku' | 'image_url' | 'unit_price' | 'currency' | 'unit'>[],
   }
 }
+
+export const WORKFLOW_LIST_LIMIT = 200
+
+/** A workflow header enriched with the count of its product-line rows. */
+export interface DailyOrderWorkflowSummary extends DailyOrderWorkflow {
+  order_line_count: number
+}
+
+/**
+ * Workflows visible to the current actor (RLS scopes rows: finance/admin see all,
+ * sales see their own, supervisors see subordinates'). Optionally filter by status.
+ */
+export async function fetchDailyOrderWorkflows(
+  supabase: SupabaseClient,
+  options: { statuses?: string[]; limit?: number } = {},
+): Promise<DailyOrderWorkflowSummary[]> {
+  let query = supabase
+    .from('finance_daily_order_workflows')
+    .select('*, finance_daily_orders(count)')
+    .order('updated_at', { ascending: false })
+    .limit(Math.min(options.limit ?? WORKFLOW_LIST_LIMIT, WORKFLOW_LIST_LIMIT))
+  if (options.statuses && options.statuses.length > 0) query = query.in('status', options.statuses)
+
+  const { data, error } = await query
+  if (error) throw new Error(`订单工作流读取失败：${error.message}`)
+  return ((data ?? []) as Array<DailyOrderWorkflow & { finance_daily_orders?: Array<{ count: number }> }>).map(
+    ({ finance_daily_orders, ...workflow }) => ({
+      ...workflow,
+      order_line_count: finance_daily_orders?.[0]?.count ?? 0,
+    }),
+  )
+}
+
+/** Full detail for a single workflow: header + its product-line order rows. */
+export async function fetchDailyOrderWorkflowDetail(
+  supabase: SupabaseClient,
+  workflowId: string,
+): Promise<{ workflow: DailyOrderWorkflow; orders: DailyOrder[] } | null> {
+  const { data: workflow, error } = await supabase
+    .from('finance_daily_order_workflows')
+    .select('*')
+    .eq('id', workflowId)
+    .maybeSingle()
+  if (error) throw new Error(`订单工作流读取失败：${error.message}`)
+  if (!workflow) return null
+
+  const { data: orders, error: ordersError } = await supabase
+    .from('finance_daily_orders')
+    .select('*')
+    .eq('workflow_id', workflowId)
+    .eq('status', 'active')
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+  if (ordersError) throw new Error(`订单明细读取失败：${ordersError.message}`)
+
+  return { workflow: workflow as DailyOrderWorkflow, orders: (orders ?? []) as unknown as DailyOrder[] }
+}
+
+/**
+ * Change requests visible to the current actor (RLS: finance/admin all, requester own,
+ * supervisor subordinates'). Filter by status for the finance review queue.
+ */
+export async function fetchDailyOrderChangeRequests(
+  supabase: SupabaseClient,
+  options: { statuses?: string[]; limit?: number } = {},
+): Promise<DailyOrderChangeRequest[]> {
+  let query = supabase
+    .from('finance_daily_order_change_requests')
+    .select('*')
+    .order('requested_at', { ascending: false })
+    .limit(Math.min(options.limit ?? WORKFLOW_LIST_LIMIT, WORKFLOW_LIST_LIMIT))
+  if (options.statuses && options.statuses.length > 0) query = query.in('status', options.statuses)
+
+  const { data, error } = await query
+  if (error) throw new Error(`改动申请读取失败：${error.message}`)
+  return (data ?? []) as DailyOrderChangeRequest[]
+}
+
+/** Commission for a workflow. Finance/admin only (RLS blocks sales/supervisor). */
+export async function fetchDailyOrderCommission(
+  supabase: SupabaseClient,
+  workflowId: string,
+): Promise<DailyOrderCommission | null> {
+  const { data, error } = await supabase
+    .from('finance_daily_order_commissions')
+    .select('*')
+    .eq('workflow_id', workflowId)
+    .maybeSingle()
+  if (error) throw new Error(`提成读取失败：${error.message}`)
+  return (data as DailyOrderCommission) ?? null
+}
+

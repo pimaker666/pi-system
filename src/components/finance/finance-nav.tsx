@@ -11,6 +11,7 @@ const financeItems = [
   { href: '/finance/transactions', label: '收支流水', financeOnly: true },
   { href: '/finance/costs', label: '订单成本', financeOnly: true },
   { href: '/finance/performance', label: '业务业绩', financeOnly: false },
+  { href: '/finance/performance/orders', label: '每日订单认领', financeOnly: false },
   { href: '/finance/performance/daily-orders', label: '团队每日订单', supervisorOnly: true },
 ] as const
 
