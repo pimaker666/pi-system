@@ -70,9 +70,16 @@ const SHIPPING_OPTIONS: Array<{ value: DailyOrderShippingCategory; label: string
   { value: 'purchase', label: '外采' },
 ]
 
+function newLocalId(prefix: string) {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+}
+
 function emptyLine(): LineItem {
   return {
-    key: crypto.randomUUID(),
+    key: newLocalId('daily-order-line'),
     shipping_category: 'stock',
     product_id: '',
     quantity: '1',
@@ -158,7 +165,7 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
     if (screenshots.length + selected.length > 10) return toast.error('每条订单最多 10 张截图')
     const invalid = selected.find((file) => !['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024)
     if (invalid) return toast.error(`${invalid.name} 不是 JPEG/PNG 或超过 5MB`)
-    setFiles(selected.map((file) => ({ id: crypto.randomUUID(), file })))
+    setFiles(selected.map((file) => ({ id: newLocalId('daily-order-screenshot'), file })))
   }
 
   async function uploadScreenshots(orderId: string) {
