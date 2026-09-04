@@ -44,7 +44,7 @@ export async function fetchDailyOrderOptions(supabase: SupabaseClient) {
     supabase.from('finance_daily_order_shops').select('*').order('name'),
     supabase.from('finance_daily_order_shop_salespeople').select('*').eq('is_active', true),
     supabase.from('profiles').select('id, full_name, email').eq('role', 'sales').eq('status', 'approved').order('full_name'),
-    supabase.from('products').select('id, name, sku').eq('is_active', true).order('name'),
+    supabase.from('products').select('id, name, sku, image_url, unit_price, currency, unit').eq('is_active', true).order('name'),
   ])
   const error = shopsResult.error || assignmentsResult.error || salesResult.error || productsResult.error
   if (error) throw new Error(`每日订单基础数据读取失败：${error.message}`)
@@ -56,6 +56,6 @@ export async function fetchDailyOrderOptions(supabase: SupabaseClient) {
   return {
     shops,
     salespeople: (salesResult.data ?? []) as Pick<Profile, 'id' | 'full_name' | 'email'>[],
-    products: (productsResult.data ?? []) as Pick<Product, 'id' | 'name' | 'sku'>[],
+    products: (productsResult.data ?? []) as Pick<Product, 'id' | 'name' | 'sku' | 'image_url' | 'unit_price' | 'currency' | 'unit'>[],
   }
 }

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CustomerCombobox } from '@/components/customers/customer-combobox'
+import { ProductCombobox } from '@/components/products/product-combobox'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -281,16 +282,13 @@ export function BusinessOrderForm({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Select value={selectedProductId} onValueChange={setSelectedProductId}>
-              <SelectTrigger className="flex-1"><SelectValue placeholder="从产品库选择产品" /></SelectTrigger>
-              <SelectContent>
-                {products.map((product) => (
-                  <SelectItem key={product.id} value={product.id}>
-                    {product.sku} · {product.name} · {formatCurrency(Number(product.unit_price), product.currency)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <ProductCombobox
+              products={products}
+              value={selectedProductId}
+              onChange={setSelectedProductId}
+              placeholder="从产品库选择产品"
+              className="flex-1"
+            />
             <Button type="button" variant="outline" onClick={addProduct} disabled={!selectedProductId}>
               <Plus className="h-4 w-4" />添加产品
             </Button>

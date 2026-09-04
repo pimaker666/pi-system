@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
+import { ProductCombobox } from '@/components/products/product-combobox'
 import { createClient } from '@/lib/supabase/client'
 import {
   bindDailyOrderScreenshot,
@@ -37,7 +38,7 @@ interface Props {
   profileId: string
   shops: DailyOrderShopOption[]
   salespeople: Pick<Profile, 'id' | 'full_name' | 'email'>[]
-  products: Pick<Product, 'id' | 'name' | 'sku'>[]
+  products: Pick<Product, 'id' | 'name' | 'sku' | 'image_url' | 'unit_price' | 'currency' | 'unit'>[]
   initialOrder?: DailyOrder
 }
 
@@ -68,6 +69,7 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
   const [shippingDateEdited, setShippingDateEdited] = useState(Boolean(initialOrder))
   const [shopId, setShopId] = useState(initialOrder?.shop_id ?? '')
   const [salespersonId, setSalespersonId] = useState(initialOrder?.salesperson_id ?? '')
+  const [productId, setProductId] = useState(initialOrder?.product_id ?? '')
   const [files, setFiles] = useState<PendingScreenshot[]>([])
   const [screenshots, setScreenshots] = useState(
     initialOrder?.finance_daily_order_screenshots?.filter((item) => item.status === 'active') ?? [],
@@ -149,7 +151,7 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
       shipping_date: shippingDate,
       shipping_number: data.get('shipping_number'),
       shipping_category: data.get('shipping_category'),
-      product_id: data.get('product_id'),
+      product_id: productId,
       quantity: data.get('quantity'),
       sales_unit_price_amount: data.get('sales_unit_price_amount'),
       sales_unit_price_currency: currencies.sales_unit_price,
@@ -228,7 +230,7 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
           <div className="space-y-2"><Label>发货日期</Label><Input type="date" value={shippingDate} onChange={(event) => { setShippingDate(event.target.value); setShippingDateEdited(true) }} required /></div>
           <div className="space-y-2"><Label htmlFor="shipping_number">发货单号</Label><Input id="shipping_number" name="shipping_number" defaultValue={initialOrder?.shipping_number ?? ''} maxLength={200} /></div>
           <div className="space-y-2"><Label>发货分类</Label><Select name="shipping_category" defaultValue={initialOrder?.shipping_category ?? 'stock'}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="stock">现货</SelectItem><SelectItem value="sample">样品</SelectItem><SelectItem value="custom">定制</SelectItem></SelectContent></Select></div>
-          <div className="space-y-2"><Label>产品</Label><Select name="product_id" defaultValue={initialOrder?.product_id ?? ''}><SelectTrigger><SelectValue placeholder="选择产品" /></SelectTrigger><SelectContent>{products.map((product) => <SelectItem key={product.id} value={product.id}>{product.sku} · {product.name}</SelectItem>)}</SelectContent></Select></div>
+          <div className="space-y-2"><Label>产品</Label><ProductCombobox products={products} value={productId} onChange={setProductId} placeholder="选择产品" className="w-full" /></div>
           <div className="space-y-2"><Label htmlFor="quantity">数量</Label><Input id="quantity" name="quantity" type="number" min="0.0001" max="999999999999" step="0.0001" defaultValue={initialOrder?.quantity ?? 1} required /></div>
           {moneyField('sales_unit_price', '销售单价', initialOrder?.sales_unit_price_amount)}
           {moneyField('product_received', '产品实收金额', initialOrder?.product_received_amount)}
