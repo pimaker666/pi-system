@@ -79,5 +79,18 @@ export const dailyOrderScreenshotSchema = z.object({
 
 export const dailyOrderBatchSchema = z.array(dailyOrderSchema).min(1).max(500)
 
+export const dailyOrderTotalsSchema = z.object({
+  total_product_received_amount: amount,
+  total_product_received_currency: z.enum(dailyOrderCurrencies),
+  total_product_received_overridden: z.boolean(),
+  total_shipping_received_amount: amount,
+  total_shipping_received_currency: z.enum(dailyOrderCurrencies),
+  total_shipping_received_overridden: z.boolean(),
+  total_sales_amount: amount,
+  total_sales_currency: z.enum(dailyOrderCurrencies),
+  total_sales_overridden: z.boolean(),
+}).strict()
+
 export type DailyOrderInput = z.infer<typeof dailyOrderSchema>
+export type DailyOrderTotalsInput = z.infer<typeof dailyOrderTotalsSchema>
 export type DailyOrderFilters = z.infer<typeof dailyOrderFilterSchema>

@@ -42,6 +42,20 @@ interface Props {
 }
 
 type MoneyKey = 'sales_unit_price' | 'product_received' | 'logistics_fee' | 'sales_total'
+type TotalKey = 'product_received' | 'shipping_received' | 'sales'
+type TotalAmountKey = 'product_received_amount' | 'logistics_fee_amount' | 'sales_total_amount'
+type TotalCurrencyKey = 'product_received_currency' | 'logistics_fee_currency' | 'sales_total_currency'
+
+const ORDER_TOTAL_FIELDS: Array<{
+  key: TotalKey
+  label: string
+  amountKey: TotalAmountKey
+  currencyKey: TotalCurrencyKey
+}> = [
+  { key: 'product_received', label: '总产品实收金额', amountKey: 'product_received_amount', currencyKey: 'product_received_currency' },
+  { key: 'shipping_received', label: '总运费实收金额', amountKey: 'logistics_fee_amount', currencyKey: 'logistics_fee_currency' },
+  { key: 'sales', label: '销售总金额', amountKey: 'sales_total_amount', currencyKey: 'sales_total_currency' },
+]
 
 interface LineItem {
   key: string
@@ -111,6 +125,18 @@ function lineFromOrder(order: DailyOrder): LineItem {
   }
 }
 
+function normalizedAmount(value: string) {
+  return value.trim() || '0'
+}
+
+function sumMoney(items: LineItem[], key: TotalAmountKey) {
+  const cents = items.reduce((sum, item) => {
+    const amount = Number(normalizedAmount(item[key]))
+    return sum + (Number.isFinite(amount) ? Math.round(amount * 100) : 0)
+  }, 0)
+  return (cents / 100).toFixed(2)
+}
+
 function currentBusinessDate() {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Shanghai',
@@ -133,6 +159,15 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
   const [shopId, setShopId] = useState(initialOrder?.shop_id ?? '')
   const [salespersonId, setSalespersonId] = useState(initialOrder?.salesperson_id ?? '')
   const [items, setItems] = useState<LineItem[]>(() => (initialOrder ? [lineFromOrder(initialOrder)] : [emptyLine()]))
+  const [totalOverrides, setTotalOverrides] = useState<Partial<Record<TotalKey, string>>>({})
+  const automaticTotals = useMemo(() => Object.fromEntries(
+    ORDER_TOTAL_FIELDS.map((field) => [field.key, sumMoney(items, field.amountKey)]),
+  ) as Record<TotalKey, string>, [items])
+  const mixedTotalCurrencies = useMemo(() => new Set(
+    ORDER_TOTAL_FIELDS
+      .filter((field) => items.some((item) => item[field.currencyKey] !== items[0]?.[field.currencyKey]))
+      .map((field) => field.key),
+  ), [items])
   const [files, setFiles] = useState<PendingScreenshot[]>([])
   const [screenshots, setScreenshots] = useState(
     initialOrder?.finance_daily_order_screenshots?.filter((item) => item.status === 'active') ?? [],
@@ -152,8 +187,37 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
     setItems((current) => current.map((item, i) => (i === index ? { ...item, ...patch } : item)))
   }
 
+  function changeItemCurrency(index: number, key: MoneyKey, currency: CurrencyCode) {
+    const currencyKey = `${key}_currency` as const
+    updateItem(index, { [currencyKey]: currency })
+    const totalKey = key === 'product_received'
+      ? 'product_received'
+      : key === 'logistics_fee'
+        ? 'shipping_received'
+        : key === 'sales_total'
+          ? 'sales'
+          : null
+    if (totalKey) {
+      setTotalOverrides((current) => {
+        const next = { ...current }
+        delete next[totalKey]
+        return next
+      })
+    }
+  }
+
   function addItem() {
-    setItems((current) => [...current, emptyLine()])
+    setItems((current) => {
+      const next = emptyLine()
+      const reference = current[0]
+      if (reference) {
+        next.sales_unit_price_currency = reference.sales_unit_price_currency
+        next.product_received_currency = reference.product_received_currency
+        next.logistics_fee_currency = reference.logistics_fee_currency
+        next.sales_total_currency = reference.sales_total_currency
+      }
+      return [...current, next]
+    })
   }
 
   function removeItem(index: number) {
@@ -215,6 +279,10 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
     if (!shopId) return toast.error('请选择店铺')
     if (!salespersonId) return toast.error('请选择业务员')
     if (items.some((item) => !item.product_id)) return toast.error('请为每个产品行选择产品')
+    if (!isEdit && mixedTotalCurrencies.size > 0) {
+      const labels = ORDER_TOTAL_FIELDS.filter((field) => mixedTotalCurrencies.has(field.key)).map((field) => field.label)
+      return toast.error(`${labels.join('、')}对应的产品明细币种必须一致`)
+    }
     const base = {
       order_date: orderDate,
       shop_id: shopId,
@@ -230,15 +298,27 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
       shipping_category: item.shipping_category,
       product_id: item.product_id,
       quantity: item.quantity,
-      sales_unit_price_amount: item.sales_unit_price_amount,
+      sales_unit_price_amount: normalizedAmount(item.sales_unit_price_amount),
       sales_unit_price_currency: item.sales_unit_price_currency,
-      product_received_amount: item.product_received_amount,
+      product_received_amount: normalizedAmount(item.product_received_amount),
       product_received_currency: item.product_received_currency,
-      logistics_fee_amount: item.logistics_fee_amount,
+      logistics_fee_amount: normalizedAmount(item.logistics_fee_amount),
       logistics_fee_currency: item.logistics_fee_currency,
-      sales_total_amount: item.sales_total_amount,
+      sales_total_amount: normalizedAmount(item.sales_total_amount),
       sales_total_currency: item.sales_total_currency,
     }))
+    const firstItem = items[0]
+    const totals = {
+      total_product_received_amount: normalizedAmount(totalOverrides.product_received ?? automaticTotals.product_received),
+      total_product_received_currency: firstItem.product_received_currency,
+      total_product_received_overridden: totalOverrides.product_received !== undefined,
+      total_shipping_received_amount: normalizedAmount(totalOverrides.shipping_received ?? automaticTotals.shipping_received),
+      total_shipping_received_currency: firstItem.logistics_fee_currency,
+      total_shipping_received_overridden: totalOverrides.shipping_received !== undefined,
+      total_sales_amount: normalizedAmount(totalOverrides.sales ?? automaticTotals.sales),
+      total_sales_currency: firstItem.sales_total_currency,
+      total_sales_overridden: totalOverrides.sales !== undefined,
+    }
     startTransition(async () => {
       if (initialOrder) {
         const result = await updateDailyOrder(initialOrder.id, initialOrder.version, rows[0])
@@ -257,7 +337,7 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
         router.refresh()
         return
       }
-      const result = await bulkCreateDailyOrders(rows)
+      const result = await bulkCreateDailyOrders(rows, totals)
       if (!result.ok || !result.ids?.length) {
         toast.error(result.error ?? '保存失败')
         return
@@ -305,7 +385,7 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
         <div className="flex gap-2">
           <Select
             value={item[currencyKey]}
-            onValueChange={(value) => updateItem(index, { [currencyKey]: value as CurrencyCode })}
+            onValueChange={(value) => changeItemCurrency(index, key, value as CurrencyCode)}
           >
             <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="CNY">CNY</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent>
@@ -317,9 +397,53 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
             step="0.01"
             value={item[amountKey]}
             onChange={(event) => updateItem(index, { [amountKey]: event.target.value })}
-            required
+            placeholder="0"
           />
         </div>
+      </div>
+    )
+  }
+
+  const orderTotalField = (field: (typeof ORDER_TOTAL_FIELDS)[number]) => {
+    const overridden = totalOverrides[field.key] !== undefined
+    const amount = totalOverrides[field.key] ?? automaticTotals[field.key]
+    const currency = items[0]?.[field.currencyKey] ?? 'CNY'
+    return (
+      <div className="space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor={`order-total-${field.key}`}>{field.label}</Label>
+          {overridden && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto px-2 py-1 text-xs"
+              onClick={() => setTotalOverrides((current) => {
+                const next = { ...current }
+                delete next[field.key]
+                return next
+              })}
+            >
+              恢复自动计算
+            </Button>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <div className="flex h-10 w-24 items-center rounded-md border bg-muted px-3 text-sm">{currency}</div>
+          <Input
+            id={`order-total-${field.key}`}
+            type="number"
+            min="0"
+            max="999999999999"
+            step="0.01"
+            value={amount}
+            onChange={(event) => setTotalOverrides((current) => ({ ...current, [field.key]: event.target.value }))}
+            placeholder="0"
+          />
+        </div>
+        {mixedTotalCurrencies.has(field.key) && (
+          <p className="text-xs text-destructive">对应产品明细币种不一致，请统一币种后保存。</p>
+        )}
       </div>
     )
   }
@@ -357,13 +481,24 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
                 <div className="space-y-2"><Label>数量</Label><Input type="number" min="0.0001" max="999999999999" step="0.0001" value={item.quantity} onChange={(event) => updateItem(index, { quantity: event.target.value })} required /></div>
                 {itemMoneyField(item, index, 'sales_unit_price', '销售单价')}
                 {itemMoneyField(item, index, 'product_received', '产品实收金额')}
-                {itemMoneyField(item, index, 'logistics_fee', '物流费用')}
+                {itemMoneyField(item, index, 'logistics_fee', '运费实收金额')}
                 {itemMoneyField(item, index, 'sales_total', '销售总金额')}
               </div>
             </div>
           ))}
         </CardContent>
       </Card>
+      {!isEdit && (
+        <Card>
+          <CardHeader><CardTitle className="text-base">订单总额</CardTitle></CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {ORDER_TOTAL_FIELDS.map((field) => <div key={field.key}>{orderTotalField(field)}</div>)}
+            </div>
+            <p className="text-xs text-muted-foreground">默认自动加总各产品对应金额；产品金额留空按 0 计算。修改总额后会保留人工填写值，可点击“恢复自动计算”。</p>
+          </CardContent>
+        </Card>
+      )}
       <Card>
         <CardHeader><CardTitle className="text-base">截图（JPEG/PNG，每张 ≤5MB，最多10张）</CardTitle></CardHeader>
         <CardContent className="space-y-3">

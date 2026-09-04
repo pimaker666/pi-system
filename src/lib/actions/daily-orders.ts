@@ -9,6 +9,7 @@ import {
   dailyOrderScreenshotSchema,
   dailyOrderShopGroupSchema,
   dailyOrderShopSchema,
+  dailyOrderTotalsSchema,
   type DailyOrderInput,
 } from '@/schemas/daily-order'
 import type { ActionResult } from './products'
@@ -36,6 +37,9 @@ function mapError(message: string) {
     ['Product does not exist or is inactive', '产品不存在或已停用'],
     ['Quantity cannot exceed 4 decimal places', '数量最多保留 4 位小数'],
     ['Amounts cannot exceed 2 decimal places', '金额最多保留 2 位小数'],
+    ['Order totals must be non-negative and within 2 decimal places', '订单总额必须为非负数且最多保留 2 位小数'],
+    ['Order total currencies must match across product lines', '同一订单各产品的对应金额币种必须一致'],
+    ['Rows with explicit order totals must belong to one order', '带订单总额的产品行必须属于同一订单'],
     ['Daily order version conflict', '记录已被他人修改，请刷新后重试'],
     ['Daily order cannot have more than 10', '每条订单最多上传 10 张截图'],
     ['Screenshot object does not exist', '截图尚未成功上传'],
@@ -116,12 +120,19 @@ export async function updateDailyOrder(
   return { ok: true, ...result }
 }
 
-export async function bulkCreateDailyOrders(raw: unknown): Promise<DailyOrderBatchResult> {
+export async function bulkCreateDailyOrders(raw: unknown, rawTotals?: unknown): Promise<DailyOrderBatchResult> {
   await requireFinanceAccess()
   const parsed = dailyOrderBatchSchema.safeParse(raw)
   if (!parsed.success) return { ok: false, error: `第 ${parsed.error.issues[0]?.path[0] ?? '?'} 行：${firstError(parsed.error)}` }
+  const totals = rawTotals === undefined ? null : dailyOrderTotalsSchema.safeParse(rawTotals)
+  if (totals && !totals.success) return { ok: false, error: firstError(totals.error) }
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('bulk_create_finance_daily_orders', { p_rows: parsed.data })
+  const { data, error } = totals
+    ? await supabase.rpc('bulk_create_finance_daily_orders_with_totals', {
+        p_rows: parsed.data,
+        p_totals: totals.data,
+      })
+    : await supabase.rpc('bulk_create_finance_daily_orders', { p_rows: parsed.data })
   if (error) return { ok: false, error: mapError(error.message) }
   const ids = Array.isArray(data)
     ? (data as Array<Record<string, unknown>>)

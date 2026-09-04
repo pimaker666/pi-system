@@ -28,7 +28,7 @@ export default async function TeamDailyOrdersPage({
   const orders = await fetchDailyOrders(supabase, filters, 500, true)
   const totals = [
     ['产品实收', sumDailyOrdersByCurrency(orders, 'product_received')],
-    ['物流费用', sumDailyOrdersByCurrency(orders, 'logistics_fee')],
+    ['运费实收金额', sumDailyOrdersByCurrency(orders, 'logistics_fee')],
     ['销售总额', sumDailyOrdersByCurrency(orders, 'sales_total')],
   ] as const
 

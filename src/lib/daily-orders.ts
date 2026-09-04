@@ -15,7 +15,7 @@ type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'succe
 
 export const DAILY_ORDER_COLUMNS = [
   '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '发货单号', '发货分类',
-  '产品名称', '数量', '销售单价', '产品实收金额', '物流费用', '销售总金额', '收款分类', '备注', '截图',
+  '产品名称', '数量', '销售单价', '产品实收金额', '运费实收金额', '销售总金额', '收款分类', '备注', '截图',
 ] as const
 
 export const SHIPPING_LABELS: Record<DailyOrderShippingCategory, string> = {
@@ -49,8 +49,8 @@ export const CHANGE_FIELD_LABELS: Record<string, string> = {
   sales_unit_price_currency: '销售单价币种',
   product_received_amount: '产品实收金额',
   product_received_currency: '产品实收币种',
-  logistics_fee_amount: '物流费用',
-  logistics_fee_currency: '物流费用币种',
+  logistics_fee_amount: '运费实收金额',
+  logistics_fee_currency: '运费实收币种',
   sales_total_amount: '销售总金额',
   sales_total_currency: '销售总金额币种',
   payment_category: '收款分类',
@@ -108,8 +108,8 @@ const HEADER_ALIASES: Record<keyof DailyOrderInput, string[]> = {
   sales_unit_price_currency: ['销售单价币种', '单价币种', 'sales_unit_price_currency'],
   product_received_amount: ['产品实收金额', '实收金额', 'product_received_amount'],
   product_received_currency: ['产品实收币种', '实收币种', 'product_received_currency'],
-  logistics_fee_amount: ['物流费用', '运费', 'logistics_fee'],
-  logistics_fee_currency: ['物流费用币种', '物流币种', 'logistics_fee_currency'],
+  logistics_fee_amount: ['运费实收金额', '物流费用', '运费', 'logistics_fee'],
+  logistics_fee_currency: ['运费实收币种', '物流费用币种', '物流币种', 'logistics_fee_currency'],
   sales_total_amount: ['销售总金额', '销售总额', 'sales_total_amount', 'total amount'],
   sales_total_currency: ['销售总金额币种', '总金额币种', 'sales_total_currency'],
   payment_category: ['收款分类', '收款类型', 'payment_category', 'payment category'],
@@ -241,13 +241,13 @@ export function mapDailyOrderImportRows(matrix: unknown[][], refs: DailyOrderImp
       shipping_category: shippingText ? shippingValue(raw.shipping_category) : 'stock',
       product_id: product?.id ?? '', product_name: String(raw.product_id ?? ''),
       quantity: String(raw.quantity ?? '').replace(/,/g, ''),
-      sales_unit_price_amount: unit.amount,
+      sales_unit_price_amount: unit.amount || '0',
       sales_unit_price_currency: String(raw.sales_unit_price_currency || unit.currency || 'CNY').toUpperCase(),
-      product_received_amount: received.amount,
+      product_received_amount: received.amount || '0',
       product_received_currency: String(raw.product_received_currency || received.currency || 'CNY').toUpperCase(),
-      logistics_fee_amount: logistics.amount,
+      logistics_fee_amount: logistics.amount || '0',
       logistics_fee_currency: String(raw.logistics_fee_currency || logistics.currency || 'CNY').toUpperCase(),
-      sales_total_amount: total.amount,
+      sales_total_amount: total.amount || '0',
       sales_total_currency: String(raw.sales_total_currency || total.currency || 'CNY').toUpperCase(),
       payment_category: paymentText ? paymentValue(raw.payment_category) : 'full',
       remarks: String(raw.remarks ?? '').trim(),

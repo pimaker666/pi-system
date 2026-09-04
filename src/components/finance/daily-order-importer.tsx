@@ -22,7 +22,7 @@ const fields = [
   ['order_number', '订单号', 'text'], ['shipping_date', '发货日期', 'date'], ['shipping_number', '发货单号', 'text'],
   ['shipping_category', '发货分类', 'shipping'], ['product_id', '产品名称', 'product'], ['quantity', '数量', 'number'],
   ['sales_unit_price_amount', '销售单价', 'money'], ['product_received_amount', '产品实收金额', 'money'],
-  ['logistics_fee_amount', '物流费用', 'money'], ['sales_total_amount', '销售总金额', 'money'],
+  ['logistics_fee_amount', '运费实收金额', 'money'], ['sales_total_amount', '销售总金额', 'money'],
   ['payment_category', '收款分类', 'payment'], ['remarks', '备注', 'text'],
 ] as const
 

@@ -197,6 +197,15 @@ export interface DailyOrderWorkflow {
   order_number: string
   customer_id: string | null
   customer_name_snapshot: string | null
+  total_product_received_amount: number
+  total_product_received_currency: CurrencyCode
+  total_product_received_overridden: boolean
+  total_shipping_received_amount: number
+  total_shipping_received_currency: CurrencyCode
+  total_shipping_received_overridden: boolean
+  total_sales_amount: number
+  total_sales_currency: CurrencyCode
+  total_sales_overridden: boolean
   claimed_at: string | null
   submitted_at: string | null
   reviewed_at: string | null

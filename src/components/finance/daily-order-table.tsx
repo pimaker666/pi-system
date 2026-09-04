@@ -40,7 +40,7 @@ export function DailyOrderTable({ orders, readOnly = false }: { orders: DailyOrd
     <div className="overflow-x-auto rounded-md border">
       <Table className="min-w-[2450px]">
         <TableHeader><TableRow>
-          {['序号','下单日期','店铺','业务员','订单号','发货日期','发货单号','发货分类','产品名称','数量','销售单价','产品实收金额','物流费用','销售总金额','收款分类','备注','截图'].map((label) => <TableHead key={label}>{label}</TableHead>)}
+          {['序号','下单日期','店铺','业务员','订单号','发货日期','发货单号','发货分类','产品名称','数量','销售单价','产品实收金额','运费实收金额','销售总金额','收款分类','备注','截图'].map((label) => <TableHead key={label}>{label}</TableHead>)}
         </TableRow></TableHeader>
         <TableBody>
           {orders.map((order, index) => (

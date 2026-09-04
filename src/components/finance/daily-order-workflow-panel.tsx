@@ -229,6 +229,18 @@ export function DailyOrderWorkflowPanel({
               {workflow.customer_name_snapshot || '未绑定'}
             </div>
             <div>
+              <span className="text-muted-foreground">总产品实收金额：</span>
+              {formatDailyMoney(workflow.total_product_received_amount, workflow.total_product_received_currency)}
+            </div>
+            <div>
+              <span className="text-muted-foreground">总运费实收金额：</span>
+              {formatDailyMoney(workflow.total_shipping_received_amount, workflow.total_shipping_received_currency)}
+            </div>
+            <div>
+              <span className="text-muted-foreground">销售总金额：</span>
+              {formatDailyMoney(workflow.total_sales_amount, workflow.total_sales_currency)}
+            </div>
+            <div>
               <span className="text-muted-foreground">认领时间：</span>
               {workflow.claimed_at ? formatDate(workflow.claimed_at) : '—'}
             </div>
@@ -601,8 +613,8 @@ const CHANGE_FIELDS = [
   { key: 'sales_unit_price_currency', label: '销售单价币种', type: 'currency' },
   { key: 'product_received_amount', label: '产品实收金额', type: 'number' },
   { key: 'product_received_currency', label: '产品实收币种', type: 'currency' },
-  { key: 'logistics_fee_amount', label: '物流费用', type: 'number' },
-  { key: 'logistics_fee_currency', label: '物流费用币种', type: 'currency' },
+  { key: 'logistics_fee_amount', label: '运费实收金额', type: 'number' },
+  { key: 'logistics_fee_currency', label: '运费实收币种', type: 'currency' },
   { key: 'sales_total_amount', label: '销售总金额', type: 'number' },
   { key: 'sales_total_currency', label: '销售总金额币种', type: 'currency' },
   { key: 'payment_category', label: '收款分类', type: 'payment' },
