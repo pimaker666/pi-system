@@ -94,9 +94,9 @@ export async function setUserRole(
 /**
  * Set or clear a user's reporting manager (superior). Admin-only.
  * The manager must be an approved supervisor or administrator, and the target
- * must be a sales or supervisor user. Cycle prevention and manager-role checks
- * are enforced server-side by the `set_user_manager` RPC and the profiles guard
- * trigger. Passing null clears the manager.
+ * must be a sales, supervisor, or admin user. Cycle prevention and manager-role
+ * checks are enforced server-side by the `set_user_manager` RPC and the profiles
+ * guard trigger. Passing null clears the manager.
  */
 export async function setUserManager(
   userId: string,
@@ -115,8 +115,8 @@ export async function setUserManager(
       ? '用户不存在'
       : error.message.includes('their own manager')
         ? '不能将用户设置为自己的上级'
-        : error.message.includes('sales or supervisor users can have a manager')
-          ? '只有业务员或业务主管可以设置上级'
+        : error.message.includes('users can have a manager')
+          ? '只有业务员、业务主管或管理员可以设置上级'
           : error.message.includes('approved supervisor or administrator')
             ? '上级必须是已通过审核的业务主管或管理员'
             : error.message.includes('cannot contain a cycle')
