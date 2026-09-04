@@ -190,8 +190,10 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
               const isSelf = u.id === currentUserId
               const isAdmin = u.role === 'admin'
               const isPending = u.status !== 'approved'
-              // Only sales and supervisors report to a superior.
-              const canHaveManager = u.role === 'sales' || u.role === 'supervisor'
+              // Sales、supervisor 及 admin 均可被指派汇报上级（管理员挂上级后，
+              // 其上级主管可只读查看该管理员个人名下的订单/业绩/客户）。
+              const canHaveManager =
+                u.role === 'sales' || u.role === 'supervisor' || u.role === 'admin'
               // Prevent demoting/deleting the last remaining admin.
               const lastAdmin = isAdmin && adminCount <= 1
               return (
