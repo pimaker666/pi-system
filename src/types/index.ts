@@ -88,7 +88,7 @@ export interface FinanceOrderCost {
   updated_at: string
 }
 
-export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'
+export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom'
 export type DailyOrderPaymentCategory = 'full' | 'deposit' | 'balance'
 
 export interface DailyOrderShop {
