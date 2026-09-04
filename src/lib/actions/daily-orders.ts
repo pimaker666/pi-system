@@ -166,6 +166,7 @@ export async function saveDailyOrderShop(raw: unknown): Promise<ActionResult> {
     p_group_id: parsed.data.group_id ?? null,
     p_is_active: parsed.data.is_active,
     p_salesperson_ids: parsed.data.salesperson_ids,
+    p_default_currency: parsed.data.default_currency,
   })
   if (error) return { ok: false, error: mapError(error.message) }
   revalidateDailyOrders()

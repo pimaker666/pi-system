@@ -228,8 +228,10 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
 
   function changeShop(value: string) {
     setShopId(value)
-    const ids = shops.find((shop) => shop.id === value)?.salespersonIds ?? []
+    const shop = shops.find((shop) => shop.id === value)
+    const ids = shop?.salespersonIds ?? []
     if (!ids.includes(salespersonId)) setSalespersonId('')
+    if (!isEdit && shop) changeCurrency(shop.default_currency)
   }
 
   function updateItem(index: number, patch: Partial<LineItem>) {
@@ -251,23 +253,16 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
     setItems((current) => current.map((item, i) => (i === index ? applyLineDerived(updater(item)) : item)))
   }
 
-  function changeItemCurrency(index: number, key: MoneyKey, currency: CurrencyCode) {
-    const currencyKey = `${key}_currency` as const
-    updateItem(index, { [currencyKey]: currency })
-    const totalKey = key === 'product_received'
-      ? 'product_received'
-      : key === 'logistics_fee'
-        ? 'shipping_received'
-        : key === 'sales_total'
-          ? 'sales'
-          : null
-    if (totalKey) {
-      setTotalOverrides((current) => {
-        const next = { ...current }
-        delete next[totalKey]
-        return next
-      })
-    }
+  // 币种全局同步：任意一处币种选择变更，所有产品行的全部币种字段一起同步；
+  // 订单总额币种取 items[0]，随之保持一致。
+  function changeCurrency(currency: CurrencyCode) {
+    setItems((current) => current.map((item) => ({
+      ...item,
+      sales_unit_price_currency: currency,
+      product_received_currency: currency,
+      logistics_fee_currency: currency,
+      sales_total_currency: currency,
+    })))
   }
 
   function addItem() {
@@ -492,7 +487,7 @@ export function DailyOrderForm({ profileId, shops, salespeople, products, initia
         <div className="flex gap-2">
           <Select
             value={item[currencyKey]}
-            onValueChange={(value) => changeItemCurrency(index, key, value as CurrencyCode)}
+            onValueChange={(value) => changeCurrency(value as CurrencyCode)}
           >
             <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
             <SelectContent><SelectItem value="CNY">CNY</SelectItem><SelectItem value="USD">USD</SelectItem></SelectContent>

@@ -61,6 +61,7 @@ export const dailyOrderShopSchema = z.object({
   name: z.string().trim().min(1, '请输入店铺名称').max(100),
   group_id: z.string().uuid().nullable().optional(),
   is_active: z.boolean(),
+  default_currency: z.enum(dailyOrderCurrencies),
   salesperson_ids: z.array(z.string().uuid()).max(200),
 })
 

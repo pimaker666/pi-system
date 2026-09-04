@@ -41,6 +41,7 @@ export function DailyOrderShopManager({ shops, groups, salespeople }: Props) {
         name: data.get('name'),
         group_id: typeof groupId === 'string' && groupId !== 'ungrouped' ? groupId : null,
         is_active: data.get('is_active') === 'on',
+        default_currency: data.get('default_currency'),
         salesperson_ids: data.getAll('salesperson_ids'),
       })
       if (!result.ok) {
@@ -84,7 +85,7 @@ export function DailyOrderShopManager({ shops, groups, salespeople }: Props) {
 
   const shopForm = (shop?: ShopRow) => (
     <form key={shop?.id ?? 'new'} className="space-y-4" onSubmit={(event) => submitShop(event, shop)}>
-      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,240px)_auto] md:items-end">
+      <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,200px)_minmax(0,120px)_auto] md:items-end">
         <div className="space-y-2">
           <Label>店铺名称</Label>
           <Input name="name" defaultValue={shop?.name ?? ''} required maxLength={100} />
@@ -96,6 +97,16 @@ export function DailyOrderShopManager({ shops, groups, salespeople }: Props) {
             <SelectContent>
               <SelectItem value="ungrouped">未分组</SelectItem>
               {groups.map((group) => <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>默认币种</Label>
+          <Select name="default_currency" defaultValue={shop?.default_currency ?? 'CNY'}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="CNY">CNY</SelectItem>
+              <SelectItem value="USD">USD</SelectItem>
             </SelectContent>
           </Select>
         </div>

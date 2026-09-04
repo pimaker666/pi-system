@@ -102,6 +102,7 @@ export interface DailyOrderShop {
   name: string
   group_id: string | null
   is_active: boolean
+  default_currency: CurrencyCode
   created_by: string | null
   created_at: string
   updated_at: string
