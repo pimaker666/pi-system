@@ -96,8 +96,8 @@ function parseRpcPaymentOrderId(data: unknown) {
 
 export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOrderActionResult> {
   const profile = await requireApproved()
-  if (profile.role !== 'sales') {
-    return { ok: false, error: '仅业务员可以创建业务订单' }
+  if (!['sales', 'supervisor'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员或业务主管可以创建业务订单' }
   }
 
   const parsed = businessOrderInputSchema.safeParse(rawInput)
@@ -132,7 +132,7 @@ export async function updateBusinessOrder(
   reason = '',
 ): Promise<BusinessOrderActionResult> {
   const profile = await requireApproved()
-  if (!['sales', 'admin', 'finance'].includes(profile.role)) {
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
     return { ok: false, error: '当前角色不能编辑业务订单' }
   }
   if ((profile.role === 'admin' || profile.role === 'finance') && !reason.trim()) {
@@ -298,7 +298,9 @@ async function transitionBusinessOrder(
 
 export async function submitBusinessOrder(id: string, note = ''): Promise<ActionResult> {
   const profile = await requireApproved()
-  if (profile.role !== 'sales') return { ok: false, error: '仅业务员可以提交订单' }
+  if (!['sales', 'supervisor'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员或业务主管可以提交订单' }
+  }
   return transitionBusinessOrder(id, 'submitted', note)
 }
 

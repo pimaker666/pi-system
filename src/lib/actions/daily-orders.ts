@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireFinanceAccess } from '@/lib/auth'
+import { requireApproved, requireFinanceAccess } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import {
   dailyOrderBatchSchema,
@@ -213,7 +213,10 @@ export async function removeDailyOrderScreenshot(id: string, orderId: string): P
 }
 
 export async function getDailyOrderScreenshotUrl(id: string): Promise<{ url?: string; error?: string }> {
-  await requireFinanceAccess()
+  const profile = await requireApproved()
+  if (!['admin', 'finance', 'supervisor'].includes(profile.role)) {
+    return { error: '当前角色无权查看每日订单截图' }
+  }
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('finance_daily_order_screenshots')

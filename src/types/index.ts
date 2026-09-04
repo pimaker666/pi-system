@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'finance' | 'sales'
+export type UserRole = 'admin' | 'finance' | 'sales' | 'supervisor'
 export type UserStatus = 'pending' | 'approved'
 export type CurrencyCode = 'USD' | 'EUR' | 'CNY' | 'GBP' | 'JPY'
 export type PiStatus = 'active' | 'void'
@@ -276,6 +276,7 @@ export interface Profile {
   chinese_name: string | null
   role: UserRole
   status: UserStatus
+  supervisor_id: string | null
   created_at: string
   updated_at: string
 }

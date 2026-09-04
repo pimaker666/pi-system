@@ -45,6 +45,7 @@ import type {
 
 interface BusinessOrderPaymentManagerProps {
   orderId: string
+  ownerId: string | null
   currency: CurrencyCode
   status: BusinessOrderStatus
   profile: Pick<Profile, 'id' | 'role'>
@@ -59,6 +60,7 @@ function toDateTimeLocal(value?: string) {
 
 export function BusinessOrderPaymentManager({
   orderId,
+  ownerId,
   currency,
   status,
   profile,
@@ -78,7 +80,9 @@ export function BusinessOrderPaymentManager({
   const [voidReason, setVoidReason] = useState('')
 
   const salesCanEdit =
-    profile.role === 'sales' && ['draft', 'rejected'].includes(status)
+    (profile.role === 'sales' || profile.role === 'supervisor') &&
+    ownerId === profile.id &&
+    ['draft', 'rejected'].includes(status)
   const privilegedCanCorrect =
     (profile.role === 'admin' || profile.role === 'finance') && status === 'completed'
   const canEditPayments = salesCanEdit || privilegedCanCorrect

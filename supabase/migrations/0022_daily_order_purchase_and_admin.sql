@@ -1,4 +1,4 @@
--- 0021_daily_order_purchase_and_admin.sql
+-- 0022_daily_order_purchase_and_admin.sql
 -- 每日订单增强：
 --  1) 发货分类新增 '外采'（purchase）。
 --  2) 店铺可分配业务员范围放宽到 approved 的 sales + admin；
@@ -202,6 +202,11 @@ begin
 end;
 $$;
 
+revoke all on function public.create_finance_daily_order(date, uuid, uuid, text, date, text, public.daily_order_shipping_category, uuid, numeric, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, public.daily_order_payment_category, text) from public, anon, authenticated, service_role;
+grant execute on function public.create_finance_daily_order(date, uuid, uuid, text, date, text, public.daily_order_shipping_category, uuid, numeric, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, public.daily_order_payment_category, text) to authenticated;
+revoke all on function public.update_finance_daily_order(uuid, int, date, uuid, uuid, text, date, text, public.daily_order_shipping_category, uuid, numeric, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, public.daily_order_payment_category, text) from public, anon, authenticated, service_role;
+grant execute on function public.update_finance_daily_order(uuid, int, date, uuid, uuid, text, date, text, public.daily_order_shipping_category, uuid, numeric, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, public.daily_order_payment_category, text) to authenticated;
+
 create or replace function public.save_finance_daily_order_shop_group(p_group_id uuid, p_name text)
 returns public.finance_daily_order_shop_groups
 language plpgsql
@@ -223,7 +228,7 @@ begin
   return v_group;
 end;
 $$;
-revoke all on function public.save_finance_daily_order_shop_group(uuid, text) from public;
+revoke all on function public.save_finance_daily_order_shop_group(uuid, text) from public, anon, authenticated, service_role;
 grant execute on function public.save_finance_daily_order_shop_group(uuid, text) to authenticated;
 
 create or replace function public.delete_finance_daily_order_shop_group(p_group_id uuid)
@@ -238,7 +243,7 @@ begin
   if not found then raise exception 'Shop group does not exist'; end if;
 end;
 $$;
-revoke all on function public.delete_finance_daily_order_shop_group(uuid) from public;
+revoke all on function public.delete_finance_daily_order_shop_group(uuid) from public, anon, authenticated, service_role;
 grant execute on function public.delete_finance_daily_order_shop_group(uuid) to authenticated;
 
 create or replace function public.save_finance_daily_order_shop(
@@ -278,10 +283,11 @@ begin
   return v_shop;
 end;
 $$;
-revoke all on function public.save_finance_daily_order_shop(uuid, text, uuid, boolean, uuid[]) from public;
+revoke all on function public.save_finance_daily_order_shop(uuid, text, uuid, boolean, uuid[]) from public, anon, authenticated, service_role;
 grant execute on function public.save_finance_daily_order_shop(uuid, text, uuid, boolean, uuid[]) to authenticated;
 
 -- 兼容迁移期间尚未切换的新版本容器；后续稳定版本可再移除此旧签名。
+-- 编辑已有店铺时保留现有分组，避免旧容器在滚动切换期间把 group_id 静默清空。
 create or replace function public.save_finance_daily_order_shop(
   p_shop_id uuid, p_name text, p_is_active boolean, p_salesperson_ids uuid[]
 )
@@ -290,7 +296,75 @@ language sql
 security definer
 set search_path = public
 as $$
-  select public.save_finance_daily_order_shop(p_shop_id, p_name, null, p_is_active, p_salesperson_ids);
+  select public.save_finance_daily_order_shop(
+    p_shop_id,
+    p_name,
+    case
+      when p_shop_id is null then null
+      else (select s.group_id from public.finance_daily_order_shops s where s.id = p_shop_id)
+    end,
+    p_is_active,
+    p_salesperson_ids
+  );
 $$;
-revoke all on function public.save_finance_daily_order_shop(uuid, text, boolean, uuid[]) from public;
+revoke all on function public.save_finance_daily_order_shop(uuid, text, boolean, uuid[]) from public, anon, authenticated, service_role;
 grant execute on function public.save_finance_daily_order_shop(uuid, text, boolean, uuid[]) to authenticated;
+
+-- 修复 0021 主管层级上线后与财务可见性、管理员订单归属组合产生的权限边界。
+-- 仅 approved 的 sales/supervisor 可作为主管链中的下属，避免遗留 supervisor_id
+-- 让主管读取已转为 admin/finance 或未审核账号所归属的数据。
+create or replace function public.is_my_subordinate(p_owner uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  with recursive chain as (
+    select p.id, p.supervisor_id, 1 as depth
+    from public.profiles p
+    where p.id = p_owner
+      and p.status::text = 'approved'
+      and p.role::text in ('sales', 'supervisor')
+    union all
+    select parent.id, parent.supervisor_id, c.depth + 1
+    from public.profiles parent
+    join chain c on parent.id = c.supervisor_id
+    where c.depth < 50
+  )
+  select
+    p_owner is not null
+    and (select auth.uid()) is not null
+    and public.is_active_supervisor()
+    and exists (
+      select 1 from chain where chain.supervisor_id = (select auth.uid())
+    );
+$$;
+revoke all on function public.is_my_subordinate(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.is_my_subordinate(uuid) to authenticated;
+
+-- 0021 扩展主管可见性时必须保留 0016 已授予财务的 PI 只读权限。
+drop policy if exists "pi_select_own" on public.proforma_invoices;
+create policy "pi_select_own" on public.proforma_invoices
+  for select to authenticated
+  using (
+    created_by = (select auth.uid())
+    or public.is_finance_or_admin()
+    or public.is_my_subordinate(created_by)
+  );
+
+drop policy if exists "pi_items_select_own" on public.pi_items;
+create policy "pi_items_select_own" on public.pi_items
+  for select to authenticated
+  using (
+    exists (
+      select 1
+      from public.proforma_invoices pi
+      where pi.id = pi_items.pi_id
+        and (
+          pi.created_by = (select auth.uid())
+          or public.is_finance_or_admin()
+          or public.is_my_subordinate(pi.created_by)
+        )
+    )
+  );

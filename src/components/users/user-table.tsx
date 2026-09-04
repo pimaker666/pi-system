@@ -26,6 +26,7 @@ import {
 import {
   approveUser,
   deleteUser,
+  setUserManager,
   setUserRole,
   updateUserChineseName,
 } from '@/lib/actions/users'
@@ -36,7 +37,7 @@ import type { Profile, UserRole } from '@/types'
 interface UserTableProps {
   users: Pick<
     Profile,
-    'id' | 'email' | 'full_name' | 'chinese_name' | 'role' | 'status' | 'created_at'
+    'id' | 'email' | 'full_name' | 'chinese_name' | 'role' | 'status' | 'supervisor_id' | 'created_at'
   >[]
   currentUserId: string
   currentUserRole: UserRole
@@ -104,13 +105,36 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
     admin: '管理员',
     finance: '财务',
     sales: '业务员',
+    supervisor: '业务主管',
   }
+
+  const NO_MANAGER = '__none__'
+  // Approved admins and supervisors are the only valid superiors.
+  const managerCandidates = users.filter(
+    (u) => u.status === 'approved' && (u.role === 'admin' || u.role === 'supervisor'),
+  )
+  const displayName = (u: (typeof users)[number]) =>
+    u.chinese_name?.trim() || u.full_name?.trim() || u.email
+  const nameById = new Map(users.map((u) => [u.id, displayName(u)]))
 
   function handleRoleChange(id: string, nextRole: UserRole) {
     startTransition(async () => {
       const result = await setUserRole(id, nextRole)
       if (result.ok) {
         toast.success('用户角色已更新')
+        router.refresh()
+      } else {
+        toast.error(result.error ?? '操作失败')
+      }
+    })
+  }
+
+  function handleManagerChange(id: string, value: string) {
+    const managerId = value === NO_MANAGER ? null : value
+    startTransition(async () => {
+      const result = await setUserManager(id, managerId)
+      if (result.ok) {
+        toast.success(managerId ? '上级已更新' : '已清除上级')
         router.refresh()
       } else {
         toast.error(result.error ?? '操作失败')
@@ -155,6 +179,7 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
               <TableHead>姓名</TableHead>
               <TableHead>中文名</TableHead>
               <TableHead>角色</TableHead>
+              <TableHead>上级</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>注册时间</TableHead>
               <TableHead className="text-right">操作</TableHead>
@@ -165,6 +190,8 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
               const isSelf = u.id === currentUserId
               const isAdmin = u.role === 'admin'
               const isPending = u.status !== 'approved'
+              // Only sales and supervisors report to a superior.
+              const canHaveManager = u.role === 'sales' || u.role === 'supervisor'
               // Prevent demoting/deleting the last remaining admin.
               const lastAdmin = isAdmin && adminCount <= 1
               return (
@@ -188,10 +215,39 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
                           <SelectItem value="admin">管理员</SelectItem>
                           <SelectItem value="finance">财务</SelectItem>
                           <SelectItem value="sales">业务员</SelectItem>
+                          <SelectItem value="supervisor">业务主管</SelectItem>
                         </SelectContent>
                       </Select>
                     ) : (
                       <Badge variant="outline">{roleLabels[u.role]}</Badge>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {canAdministerUsers ? (
+                      <Select
+                        value={u.supervisor_id ?? NO_MANAGER}
+                        disabled={pending || !canHaveManager}
+                        onValueChange={(value) => handleManagerChange(u.id, value)}
+                      >
+                        <SelectTrigger className="w-36">
+                          <SelectValue placeholder={canHaveManager ? '选择上级' : '不适用'} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={NO_MANAGER}>无上级</SelectItem>
+                          {managerCandidates
+                            .filter((m) => m.id !== u.id)
+                            .map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {displayName(m)}
+                                {m.role === 'admin' ? '（管理员）' : '（主管）'}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        {u.supervisor_id ? (nameById.get(u.supervisor_id) ?? '—') : '—'}
+                      </span>
                     )}
                   </TableCell>
                   <TableCell>
@@ -247,7 +303,7 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
             })}
             {users.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                   暂无注册用户
                 </TableCell>
               </TableRow>

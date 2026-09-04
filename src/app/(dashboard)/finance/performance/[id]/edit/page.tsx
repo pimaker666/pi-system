@@ -25,7 +25,7 @@ export default async function EditBusinessOrderPage({
   if (error || !data) notFound()
   const order = data as BusinessOrderWithDetails
   const salesCanEdit =
-    profile.role === 'sales' &&
+    (profile.role === 'sales' || profile.role === 'supervisor') &&
     order.salesperson_id === profile.id &&
     ['draft', 'rejected'].includes(order.status)
   const privilegedCanCorrect =
@@ -35,7 +35,7 @@ export default async function EditBusinessOrderPage({
   const [customersResult, groupsResult, productsResult] = await Promise.all([
     profile.role === 'finance'
       ? Promise.resolve({ data: [] as Customer[], error: null })
-      : supabase.from('customers').select('*').order('name'),
+      : supabase.from('customers').select('*').eq('created_by', order.salesperson_id).order('name'),
     profile.role === 'finance'
       ? Promise.resolve({ data: [] as CustomerGroup[], error: null })
       : supabase.from('customer_groups').select('*').order('name'),
@@ -66,7 +66,7 @@ export default async function EditBusinessOrderPage({
         <div>
           <h1 className="text-2xl font-semibold">编辑 {order.order_number}</h1>
           <p className="text-sm text-muted-foreground">
-            {profile.role === 'sales'
+            {profile.role === 'sales' || profile.role === 'supervisor'
               ? '订单提交后将锁定，驳回后可再次修改。'
               : '已完成订单的修正必须填写原因，并会写入审计记录。'}
           </p>

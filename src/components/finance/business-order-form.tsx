@@ -95,7 +95,7 @@ export function BusinessOrderForm({
     [items],
   )
   const total = subtotal + (Number(shippingFee) || 0)
-  const correctionRequired = Boolean(initialOrder && profile.role !== 'sales')
+  const correctionRequired = Boolean(initialOrder && ['admin', 'finance'].includes(profile.role))
 
   function addProduct() {
     const product = products.find((item) => item.id === selectedProductId)
@@ -195,7 +195,7 @@ export function BusinessOrderForm({
               groups={customerGroups}
               value={customer}
               onChange={setCustomer}
-              allowCreate={profile.role === 'sales'}
+              allowCreate={profile.role === 'sales' || profile.role === 'supervisor'}
             />
           </div>
           <div className="space-y-2">
