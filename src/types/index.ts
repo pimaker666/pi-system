@@ -159,6 +159,7 @@ export interface DailyOrder {
   sales_total_currency: CurrencyCode
   payment_category: DailyOrderPaymentCategory
   remarks: string | null
+  workflow_id: string | null
   created_by: string | null
   updated_by: string | null
   voided_by: string | null
@@ -166,6 +167,80 @@ export interface DailyOrder {
   created_at: string
   updated_at: string
   finance_daily_order_screenshots?: DailyOrderScreenshot[]
+}
+
+export type DailyOrderWorkflowStatus =
+  | 'unclaimed'
+  | 'claimed'
+  | 'submitted'
+  | 'approved'
+  | 'rejected'
+export type DailyOrderChangeStatus = 'pending' | 'approved' | 'rejected' | 'cancelled'
+export type DailyOrderWorkflowAuditAction =
+  | 'claim'
+  | 'bind_customer'
+  | 'submit'
+  | 'approve'
+  | 'reject'
+  | 'commission_saved'
+  | 'change_requested'
+  | 'change_approved'
+  | 'change_rejected'
+  | 'change_cancelled'
+
+export interface DailyOrderWorkflow {
+  id: string
+  version: number
+  status: DailyOrderWorkflowStatus
+  salesperson_id: string
+  salesperson_name_snapshot: string
+  order_number: string
+  customer_id: string | null
+  customer_name_snapshot: string | null
+  claimed_at: string | null
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  review_reason: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyOrderCommission {
+  id: string
+  workflow_id: string
+  commission_amount: number
+  commission_currency: CurrencyCode
+  remarks: string | null
+  created_by: string | null
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyOrderChangeRequest {
+  id: string
+  order_id: string
+  workflow_id: string
+  status: DailyOrderChangeStatus
+  payload: Record<string, string | number>
+  requested_by: string | null
+  requested_at: string
+  reviewed_by: string | null
+  reviewed_at: string | null
+  review_reason: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface DailyOrderWorkflowAuditLog {
+  id: string
+  workflow_id: string
+  action: DailyOrderWorkflowAuditAction
+  actor_id: string | null
+  detail: Record<string, unknown>
+  created_at: string
 }
 
 export interface BusinessOrder {

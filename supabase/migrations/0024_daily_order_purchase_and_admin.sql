@@ -37,6 +37,26 @@ drop policy if exists "daily_order_shop_groups_select" on public.finance_daily_o
 create policy "daily_order_shop_groups_select" on public.finance_daily_order_shop_groups
   for select to authenticated using (public.is_finance_or_admin());
 
+-- 管理员被分配为订单归属人时，也必须能以归属人身份完成认领、提交和改单；
+-- 具体 RPC 仍逐条校验 workflow.salesperson_id / requested_by，不能借此操作他人订单。
+create or replace function public.assert_daily_order_sales_actor()
+returns public.profiles
+language plpgsql
+security definer
+set search_path = public
+stable
+as $$
+declare v_actor public.profiles%rowtype;
+begin
+  select * into v_actor from public.profiles where id = (select auth.uid());
+  if not found or v_actor.status::text <> 'approved' or v_actor.role::text not in ('sales', 'admin') then
+    raise exception 'Only approved sales or admin users can perform this action';
+  end if;
+  return v_actor;
+end;
+$$;
+revoke all on function public.assert_daily_order_sales_actor() from public, anon, authenticated, service_role;
+
 create or replace function public.create_finance_daily_order(
   p_order_date date, p_shop_id uuid, p_salesperson_id uuid, p_order_number text,
   p_shipping_date date, p_shipping_number text, p_shipping_category public.daily_order_shipping_category,
@@ -58,6 +78,8 @@ declare
   v_sales public.profiles%rowtype;
   v_product public.products%rowtype;
   v_order public.finance_daily_orders%rowtype;
+  v_workflow_id uuid;
+  v_sales_name text;
 begin
   v_actor := public.assert_daily_order_finance_actor();
   if p_order_date is null or p_shipping_date is null then raise exception 'Order and shipping dates are required'; end if;
@@ -98,6 +120,9 @@ begin
   where products.id = p_product_id and products.is_active = true;
   if not found then raise exception 'Product does not exist or is inactive'; end if;
 
+  v_sales_name := coalesce(nullif(btrim(v_sales.full_name), ''), v_sales.email);
+  v_workflow_id := public.resolve_daily_order_workflow(v_sales.id, v_sales_name, p_order_number, v_actor.id);
+
   insert into public.finance_daily_orders (
     order_date, shop_id, shop_name_snapshot, salesperson_id, salesperson_name_snapshot,
     order_number, shipping_date, shipping_number, shipping_category,
@@ -105,15 +130,15 @@ begin
     sales_unit_price_amount, sales_unit_price_currency,
     product_received_amount, product_received_currency,
     logistics_fee_amount, logistics_fee_currency,
-    sales_total_amount, sales_total_currency, payment_category, remarks, created_by, updated_by
+    sales_total_amount, sales_total_currency, payment_category, remarks, workflow_id, created_by, updated_by
   ) values (
-    p_order_date, v_shop.id, v_shop.name, v_sales.id, coalesce(nullif(btrim(v_sales.full_name), ''), v_sales.email),
+    p_order_date, v_shop.id, v_shop.name, v_sales.id, v_sales_name,
     btrim(p_order_number), p_shipping_date, nullif(btrim(p_shipping_number), ''), p_shipping_category,
     v_product.id, v_product.name, v_product.sku, p_quantity,
     p_sales_unit_price_amount, p_sales_unit_price_currency,
     p_product_received_amount, p_product_received_currency,
     p_logistics_fee_amount, p_logistics_fee_currency,
-    p_sales_total_amount, p_sales_total_currency, p_payment_category, nullif(btrim(p_remarks), ''), v_actor.id, v_actor.id
+    p_sales_total_amount, p_sales_total_currency, p_payment_category, nullif(btrim(p_remarks), ''), v_workflow_id, v_actor.id, v_actor.id
   ) returning * into v_order;
   return query select v_order.id, v_order.version;
 end;
@@ -141,6 +166,8 @@ declare
   v_shop public.finance_daily_order_shops%rowtype;
   v_sales public.profiles%rowtype;
   v_product public.products%rowtype;
+  v_workflow_id uuid;
+  v_sales_name text;
 begin
   v_actor := public.assert_daily_order_finance_actor();
   select * into v_existing from public.finance_daily_orders where finance_daily_orders.id = p_order_id for update;
@@ -183,9 +210,12 @@ begin
   where products.id = p_product_id and products.is_active = true;
   if not found then raise exception 'Product does not exist or is inactive'; end if;
 
+  v_sales_name := coalesce(nullif(btrim(v_sales.full_name), ''), v_sales.email);
+  v_workflow_id := public.resolve_daily_order_workflow(v_sales.id, v_sales_name, p_order_number, v_actor.id);
+
   update public.finance_daily_orders as target set
     order_date = p_order_date, shop_id = v_shop.id, shop_name_snapshot = v_shop.name,
-    salesperson_id = v_sales.id, salesperson_name_snapshot = coalesce(nullif(btrim(v_sales.full_name), ''), v_sales.email),
+    salesperson_id = v_sales.id, salesperson_name_snapshot = v_sales_name,
     order_number = btrim(p_order_number), shipping_date = p_shipping_date,
     shipping_number = nullif(btrim(p_shipping_number), ''), shipping_category = p_shipping_category,
     product_id = v_product.id, product_name_snapshot = v_product.name, product_sku_snapshot = v_product.sku,
@@ -195,6 +225,7 @@ begin
     logistics_fee_amount = p_logistics_fee_amount, logistics_fee_currency = p_logistics_fee_currency,
     sales_total_amount = p_sales_total_amount, sales_total_currency = p_sales_total_currency,
     payment_category = p_payment_category, remarks = nullif(btrim(p_remarks), ''),
+    workflow_id = v_workflow_id,
     version = target.version + 1, updated_by = v_actor.id
   where target.id = p_order_id
   returning target.id, target.version into id, version;
@@ -206,6 +237,17 @@ revoke all on function public.create_finance_daily_order(date, uuid, uuid, text,
 grant execute on function public.create_finance_daily_order(date, uuid, uuid, text, date, text, public.daily_order_shipping_category, uuid, numeric, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, public.daily_order_payment_category, text) to authenticated;
 revoke all on function public.update_finance_daily_order(uuid, int, date, uuid, uuid, text, date, text, public.daily_order_shipping_category, uuid, numeric, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, public.daily_order_payment_category, text) from public, anon, authenticated, service_role;
 grant execute on function public.update_finance_daily_order(uuid, int, date, uuid, uuid, text, date, text, public.daily_order_shipping_category, uuid, numeric, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, numeric, public.currency_code, public.daily_order_payment_category, text) to authenticated;
+
+-- 0018 创建但本迁移未重定义的 SECURITY DEFINER RPC 也需显式清除默认角色权限。
+revoke all on function public.assert_daily_order_finance_actor() from public, anon, authenticated, service_role;
+revoke all on function public.bulk_create_finance_daily_orders(jsonb) from public, anon, authenticated, service_role;
+grant execute on function public.bulk_create_finance_daily_orders(jsonb) to authenticated;
+revoke all on function public.void_finance_daily_order(uuid, int) from public, anon, authenticated, service_role;
+grant execute on function public.void_finance_daily_order(uuid, int) to authenticated;
+revoke all on function public.bind_finance_daily_order_screenshot(uuid, text, text, text, bigint) from public, anon, authenticated, service_role;
+grant execute on function public.bind_finance_daily_order_screenshot(uuid, text, text, text, bigint) to authenticated;
+revoke all on function public.remove_finance_daily_order_screenshot(uuid) from public, anon, authenticated, service_role;
+grant execute on function public.remove_finance_daily_order_screenshot(uuid) to authenticated;
 
 create or replace function public.save_finance_daily_order_shop_group(p_group_id uuid, p_name text)
 returns public.finance_daily_order_shop_groups

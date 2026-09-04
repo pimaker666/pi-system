@@ -1,13 +1,17 @@
 import type {
   CurrencyCode,
   DailyOrder,
+  DailyOrderChangeStatus,
   DailyOrderPaymentCategory,
   DailyOrderShippingCategory,
   DailyOrderShop,
+  DailyOrderWorkflowStatus,
   Product,
   Profile,
 } from '@/types'
 import { dailyOrderFilterSchema, dailyOrderSchema, type DailyOrderFilters, type DailyOrderInput } from '@/schemas/daily-order'
+
+type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'muted'
 
 export const DAILY_ORDER_COLUMNS = [
   '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '发货单号', '发货分类',
@@ -19,6 +23,38 @@ export const SHIPPING_LABELS: Record<DailyOrderShippingCategory, string> = {
 }
 export const PAYMENT_LABELS: Record<DailyOrderPaymentCategory, string> = {
   full: '全款', deposit: '定金', balance: '尾款',
+}
+
+export const WORKFLOW_STATUS_LABELS: Record<DailyOrderWorkflowStatus, string> = {
+  unclaimed: '待认领', claimed: '已认领', submitted: '待审核', approved: '已通过', rejected: '已驳回',
+}
+export const WORKFLOW_STATUS_VARIANTS: Record<DailyOrderWorkflowStatus, BadgeVariant> = {
+  unclaimed: 'muted', claimed: 'secondary', submitted: 'default', approved: 'success', rejected: 'destructive',
+}
+
+export const CHANGE_STATUS_LABELS: Record<DailyOrderChangeStatus, string> = {
+  pending: '待审核', approved: '已通过', rejected: '已驳回', cancelled: '已撤销',
+}
+export const CHANGE_STATUS_VARIANTS: Record<DailyOrderChangeStatus, BadgeVariant> = {
+  pending: 'default', approved: 'success', rejected: 'destructive', cancelled: 'muted',
+}
+
+/** Chinese labels for whitelisted change-request payload keys (mirrors the DB whitelist). */
+export const CHANGE_FIELD_LABELS: Record<string, string> = {
+  shipping_date: '发货日期',
+  shipping_number: '发货单号',
+  shipping_category: '发货分类',
+  quantity: '数量',
+  sales_unit_price_amount: '销售单价',
+  sales_unit_price_currency: '销售单价币种',
+  product_received_amount: '产品实收金额',
+  product_received_currency: '产品实收币种',
+  logistics_fee_amount: '物流费用',
+  logistics_fee_currency: '物流费用币种',
+  sales_total_amount: '销售总金额',
+  sales_total_currency: '销售总金额币种',
+  payment_category: '收款分类',
+  remarks: '备注',
 }
 
 export function formatDailyMoney(amount: number | string, currency: CurrencyCode) {
