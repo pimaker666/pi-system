@@ -1,22 +1,46 @@
 import ExcelJS from 'exceljs'
 import { NextResponse } from 'next/server'
-import { requireFinanceAccess } from '@/lib/auth'
-import { DAILY_ORDER_COLUMNS, DAILY_ORDER_EXPORT_MAX_IMAGE_BYTES, dailyOrderExportLimitError, formatDailyMoney, parseDailyOrderFilters, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
-import { fetchDailyOrders } from '@/lib/daily-orders-server'
+import { requireApproved } from '@/lib/auth'
+import {
+  BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES,
+  buildBusinessDailyExportRows,
+  businessDailyExportLimitError,
+} from '@/lib/business-daily-orders'
+import { fetchBusinessDailyLedger } from '@/lib/business-daily-orders-server'
+import {
+  DAILY_ORDER_COLUMNS,
+  formatDailyMoney,
+  parseDailyOrderFilters,
+  PAYMENT_LABELS,
+  SHIPPING_LABELS,
+} from '@/lib/daily-orders'
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+/** 截图列（第 17 列）的 0 基列号，用于 addImage 定位。 */
+const SCREENSHOT_COLUMN_INDEX = DAILY_ORDER_COLUMNS.length - 1
+
 export async function GET(request: Request) {
-  await requireFinanceAccess()
+  // 每日订单台账对所有已审核角色开放（业务员也要能导出自己可见的订单），
+  // 可见范围由 business_orders 的 RLS 决定，而不是页面级角色门禁。
+  await requireApproved()
   const params = Object.fromEntries(new URL(request.url).searchParams.entries())
   const filters = parseDailyOrderFilters(params)
   const supabase = await createClient()
-  const orders = await fetchDailyOrders(supabase, filters, 500, true)
-  const imageLimitError = dailyOrderExportLimitError(orders)
+  const orders = await fetchBusinessDailyLedger(supabase, filters)
+  const imageLimitError = businessDailyExportLimitError(orders)
   if (imageLimitError) return NextResponse.json({ error: imageLimitError }, { status: 413 })
+
+  const rows = buildBusinessDailyExportRows(orders, {
+    money: formatDailyMoney,
+    shipping: (value) => (value ? SHIPPING_LABELS[value] : ''),
+    payment: (value) => (value ? PAYMENT_LABELS[value] : ''),
+    salesperson: (order) => displayProfileName(order.salesperson, order.salesperson_name_snapshot),
+  })
+
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'PI System'
   const sheet = workbook.addWorksheet('每日订单台账', { views: [{ state: 'frozen', ySplit: 1 }] })
@@ -30,43 +54,68 @@ export async function GET(request: Request) {
   })
 
   let downloadedImageBytes = 0
-  for (let index = 0; index < orders.length; index += 1) {
-    const order = orders[index]
+  for (const exportRow of rows) {
     const row = sheet.addRow([
-      index + 1, order.order_date, order.shop_name_snapshot, displayProfileName(order.salesperson, order.salesperson_name_snapshot),
-      order.order_number, order.shipping_date, order.shipping_number ?? '', SHIPPING_LABELS[order.shipping_category],
-      order.product_name_snapshot, Number(order.quantity),
-      formatDailyMoney(order.sales_unit_price_amount, order.sales_unit_price_currency),
-      formatDailyMoney(order.product_received_amount, order.product_received_currency),
-      formatDailyMoney(order.logistics_fee_amount, order.logistics_fee_currency),
-      formatDailyMoney(order.sales_total_amount, order.sales_total_currency),
-      PAYMENT_LABELS[order.payment_category], order.remarks ?? '', '',
+      exportRow.sequence,
+      exportRow.orderDate,
+      exportRow.shop,
+      exportRow.salesperson,
+      exportRow.orderNumber,
+      exportRow.shippingDate,
+      exportRow.shippingNumber,
+      exportRow.shippingCategory,
+      exportRow.productSku ? `${exportRow.productName}\n${exportRow.productSku}` : exportRow.productName,
+      exportRow.quantity ? Number(exportRow.quantity) : '',
+      exportRow.unitPrice,
+      exportRow.productReceived,
+      exportRow.logisticsFee,
+      exportRow.salesTotal,
+      exportRow.paymentCategory,
+      exportRow.remarks,
+      '',
     ])
     row.alignment = { vertical: 'middle', wrapText: true }
-    row.eachCell((cell) => { cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } } })
-    const shots = (order.finance_daily_order_screenshots ?? []).filter((shot) => shot.status === 'active').slice(0, 10)
-    const imageRows = Math.ceil(shots.length / 3)
-    if (shots.length) row.height = Math.max(56, imageRows * 42)
+    row.eachCell((cell) => {
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }
+    })
+
+    const attachments = exportRow.attachments
+    const imageRows = Math.ceil(attachments.length / 3)
+    if (attachments.length) row.height = Math.max(56, imageRows * 42)
     let unavailable = 0
-    for (let shotIndex = 0; shotIndex < shots.length; shotIndex += 1) {
-      const shot = shots[shotIndex]
-      const { data, error } = await supabase.storage.from('finance-daily-order-screenshots').download(shot.object_path)
-      if (error || !data) { unavailable += 1; continue }
+    for (let shotIndex = 0; shotIndex < attachments.length; shotIndex += 1) {
+      const attachment = attachments[shotIndex]
+      const { data, error } = await supabase.storage
+        .from('finance-daily-order-screenshots')
+        .download(attachment.object_path)
+      if (error || !data) {
+        unavailable += 1
+        continue
+      }
       const imageBuffer = Buffer.from(await data.arrayBuffer())
       downloadedImageBytes += imageBuffer.byteLength
-      if (downloadedImageBytes > DAILY_ORDER_EXPORT_MAX_IMAGE_BYTES) {
-        return NextResponse.json({ error: '实际下载的截图总大小超过 50MB，请缩小筛选范围' }, { status: 413 })
+      if (downloadedImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
+        return NextResponse.json(
+          { error: '实际下载的截图总大小超过 50MB，请缩小筛选范围' },
+          { status: 413 },
+        )
       }
-      const extension = shot.mime_type === 'image/png' ? 'png' : 'jpeg'
+      const extension = attachment.mime_type === 'image/png' ? 'png' : 'jpeg'
       const imageId = workbook.addImage({ base64: imageBuffer.toString('base64'), extension })
       const imageRow = Math.floor(shotIndex / 3)
       const imageColumnOffset = (shotIndex % 3) * 0.32
       sheet.addImage(imageId, {
-        tl: { col: 16 + imageColumnOffset, row: row.number - 1 + imageRow / imageRows + 0.02 },
-        ext: { width: 48, height: 48 }, editAs: 'oneCell',
+        tl: {
+          col: SCREENSHOT_COLUMN_INDEX + imageColumnOffset,
+          row: row.number - 1 + imageRow / imageRows + 0.02,
+        },
+        ext: { width: 48, height: 48 },
+        editAs: 'oneCell',
       })
     }
-    if (unavailable) sheet.getCell(row.number, 17).value = `${unavailable} 张图片不可用`
+    if (unavailable) {
+      sheet.getCell(row.number, DAILY_ORDER_COLUMNS.length).value = `${unavailable} 张图片不可用`
+    }
   }
 
   sheet.autoFilter = { from: 'A1', to: 'Q1' }

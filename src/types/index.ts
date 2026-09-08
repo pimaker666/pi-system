@@ -301,10 +301,18 @@ export interface BusinessOrder {
   completion_gate_version: 1 | 2
   customer_id: string | null
   customer_snapshot: CustomerSnapshot
+  shop_id: string | null
+  shop_name_snapshot: string | null
+  shop_group_id: string | null
+  shop_group_name_snapshot: string | null
   salesperson_id: string | null
   salesperson_name_snapshot: string | null
+  external_order_number: string | null
   order_date: string
   payment_due_date: string | null
+  daily_shipping_date: string | null
+  daily_shipping_number: string | null
+  daily_payment_category: DailyOrderPaymentCategory | null
   fulfillment_type: BusinessFulfillmentType
   currency: CurrencyCode
   exchange_rate_to_cny: number
@@ -312,6 +320,12 @@ export interface BusinessOrder {
   shipping_fee: number
   total_amount: number
   total_cny: number
+  total_product_received_amount: number | null
+  total_product_received_overridden: boolean
+  total_shipping_received_amount: number | null
+  total_shipping_received_overridden: boolean
+  total_sales_amount: number | null
+  total_sales_overridden: boolean
   tracking_number: string | null
   sales_notes: string | null
   review_note: string | null
@@ -347,9 +361,29 @@ export interface BusinessOrderItem {
   quantity: number
   unit_price: number
   line_amount: number
+  daily_shipping_category: DailyOrderShippingCategory | null
+  product_received_amount: number | null
+  product_received_overridden: boolean
+  logistics_fee_amount: number | null
+  sales_total_amount: number | null
+  sales_total_overridden: boolean
   sort_order: number
   created_at: string
   updated_at: string
+}
+
+export interface BusinessOrderAttachment {
+  id: string
+  order_id: string
+  object_path: string
+  original_name: string | null
+  mime_type: 'image/jpeg' | 'image/png'
+  size_bytes: number
+  status: FinanceRecordStatus
+  created_by: string | null
+  removed_by: string | null
+  removed_at: string | null
+  created_at: string
 }
 
 /**
@@ -661,6 +695,7 @@ export interface BusinessOrderAuditLog {
 
 export interface BusinessOrderWithDetails extends BusinessOrder {
   business_order_items: BusinessOrderItem[]
+  business_order_attachments?: BusinessOrderAttachment[]
   /** @deprecated Legacy rows retained only for historical compatibility. */
   business_order_payments: BusinessOrderPayment[]
   business_order_payment_allocations?: BusinessOrderPaymentAllocationWithTransfer[]

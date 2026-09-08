@@ -12,6 +12,7 @@ import {
   businessCustomProductLibraryFilterSchema,
   businessCustomProductStateInputSchema,
   businessCustomProductVersionInputSchema,
+  businessOrderAttachmentInputSchema,
   businessOrderFinanceSchema,
   businessOrderInputSchema,
   businessOrderReasonSchema,
@@ -28,6 +29,7 @@ import type {
   BusinessCustomProductLibraryItem,
   BusinessCustomProductListItem,
   BusinessCustomProductVersion,
+  BusinessOrderAttachment,
   BusinessOrderEditConstraints,
   BusinessOrderPaymentAllocation,
   BusinessOrderReturn,
@@ -43,6 +45,10 @@ export interface BusinessOrderActionResult extends ActionResult {
   id?: string
   order_number?: string
   version?: number
+}
+
+export interface BusinessOrderAttachmentActionResult extends ActionResult {
+  attachment?: BusinessOrderAttachment
 }
 
 export interface BusinessCustomProductActionResult extends ActionResult {
@@ -145,11 +151,39 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Catalog item requires only product_id', '目录产品明细只能指定产品 ID'],
     ['Custom item requires only', '定制产品明细必须指定产品及版本，且不能指定目录产品'],
     ['Invalid order item source_type', '订单明细来源类型不合法'],
+    ['Invalid daily shipping category', '每日订单发货分类不合法'],
+    ['Daily order item fields are incomplete', '每日订单明细字段不完整'],
+    ['Daily order item amounts are invalid', '每日订单明细金额不合法'],
+    ['Daily order item amounts must be non-negative', '每日订单明细金额不能为负且最多保留两位小数'],
+    ['Daily order totals are incomplete', '每日订单汇总字段不完整'],
+    ['Daily order totals must be non-negative', '每日订单汇总金额不能为负且最多保留两位小数'],
+    ['Total sales amount must equal', '总销售金额必须等于总产品实收加总运费实收'],
+    ['Daily order shop does not exist', '所选店铺不存在'],
+    ['Daily order shop is inactive', '所选店铺已停用'],
+    ['Salesperson is not actively assigned to this shop', '所选业务员未有效分配到该店铺'],
+    ['Assigned salesperson must be approved', '所选业务员尚未审核通过'],
+    ['Administrator can assign only approved sales or admin users', '管理员只能将订单归属给已审核的业务员或管理员'],
+    ['Sales or supervisor users can assign orders only to themselves', '业务员或主管只能将订单归属给自己'],
+    ['External order number is required', '订单号不能为空且不能超过 200 字'],
+    ['Daily shipping date is required', '请选择发货日期'],
+    ['Daily payment category is required', '请选择收款类型'],
     ['Business order does not exist', '业务订单不存在'],
     ['Business order is not accessible', '无权查看该业务订单'],
     ['Business order version conflict', '订单已被其他人修改，请刷新后重试'],
     ['Business order cannot be edited in current status', '当前订单状态不可编辑'],
     ['Completed or closed business order cannot be edited', '已完成或已关闭订单不可编辑'],
+    ['Business order daily fields cannot be changed after payment or shipment', '订单已有收款或发货记录，不能修改每日订单字段'],
+    ['Business order item daily fields cannot be changed after payment or shipment', '订单明细已有收款或发货记录，不能修改每日订单字段'],
+    ['Business order attachments cannot be changed in current status', '当前订单状态不能增删附件'],
+    ['Business order attachment does not exist', '业务订单附件不存在'],
+    ['Business order attachment is already removed', '业务订单附件已移除'],
+    ['Business order cannot have more than 10 attachments', '每条订单最多 10 张附件'],
+    ['Invalid attachment type or size', '附件必须为 JPEG/PNG，且单张不能超过 5MB'],
+    ['Invalid attachment path', '附件路径不合法'],
+    ['Attachment object does not exist', '附件尚未成功上传，请重新上传'],
+    ['Attachment object metadata does not match', '附件类型或大小与已上传文件不一致'],
+    ['Attachment path is already bound', '附件路径已绑定到其他记录'],
+    ['Attachment name cannot exceed', '附件名称不能超过 255 字'],
     ['Sales user cannot edit another owner business order', '不能编辑其他业务员名下的订单'],
     ['Salesperson cannot edit', '当前状态下业务员不能编辑此订单'],
     ['Finance users cannot create business orders', '财务不能创建业务订单'],
@@ -332,7 +366,7 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
 
   const input = parsed.data
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('create_business_order_v2', {
+  const { data, error } = await supabase.rpc('create_business_order_v3', {
     p_customer_id: input.customer_id,
     p_order_date: input.order_date,
     p_fulfillment_type: input.fulfillment_type,
@@ -343,6 +377,18 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
     p_sales_notes: nullableText(input.sales_notes),
     p_items: orderItemsPayload(input.items),
     p_payment_due_date: nullableText(input.payment_due_date),
+    p_shop_id: input.shop_id,
+    p_salesperson_id: input.salesperson_id,
+    p_external_order_number: input.external_order_number,
+    p_daily_shipping_date: input.daily_shipping_date,
+    p_daily_shipping_number: nullableText(input.daily_shipping_number),
+    p_daily_payment_category: input.daily_payment_category,
+    p_total_product_received_amount: input.total_product_received_amount,
+    p_total_product_received_overridden: input.total_product_received_overridden,
+    p_total_shipping_received_amount: input.total_shipping_received_amount,
+    p_total_shipping_received_overridden: input.total_shipping_received_overridden,
+    p_total_sales_amount: input.total_sales_amount,
+    p_total_sales_overridden: input.total_sales_overridden,
   })
 
   if (error) return { ok: false, error: businessOrderError(error.message, '创建业务订单失败') }
@@ -377,7 +423,7 @@ export async function updateBusinessOrder(
 
   const input = parsed.data
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('update_business_order_v2', {
+  const { data, error } = await supabase.rpc('update_business_order_v3', {
     p_order_id: id,
     p_expected_version: expectedVersion,
     p_customer_id: input.customer_id,
@@ -391,6 +437,18 @@ export async function updateBusinessOrder(
     p_items: orderItemsPayload(input.items),
     p_payment_due_date: nullableText(input.payment_due_date),
     p_reason: nullableText(parsedReason.data),
+    p_shop_id: input.shop_id,
+    p_salesperson_id: input.salesperson_id,
+    p_external_order_number: input.external_order_number,
+    p_daily_shipping_date: input.daily_shipping_date,
+    p_daily_shipping_number: nullableText(input.daily_shipping_number),
+    p_daily_payment_category: input.daily_payment_category,
+    p_total_product_received_amount: input.total_product_received_amount,
+    p_total_product_received_overridden: input.total_product_received_overridden,
+    p_total_shipping_received_amount: input.total_shipping_received_amount,
+    p_total_shipping_received_overridden: input.total_shipping_received_overridden,
+    p_total_sales_amount: input.total_sales_amount,
+    p_total_sales_overridden: input.total_sales_overridden,
   })
 
   if (error) return { ok: false, error: businessOrderError(error.message, '更新业务订单失败') }
@@ -399,6 +457,80 @@ export async function updateBusinessOrder(
 
   revalidateBusinessOrders(id)
   return { ok: true, ...order }
+}
+
+export async function bindBusinessOrderAttachment(
+  rawInput: unknown,
+): Promise<BusinessOrderAttachmentActionResult> {
+  const profile = await requireApproved()
+  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管或管理员可以绑定订单附件' }
+  }
+
+  const parsed = businessOrderAttachmentInputSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const input = parsed.data
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('bind_business_order_attachment', {
+    p_order_id: input.order_id,
+    p_object_path: input.object_path,
+    p_original_name: nullableText(input.original_name),
+    p_mime_type: input.mime_type,
+    p_size_bytes: input.size_bytes,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '绑定订单附件失败') }
+
+  const attachment = firstRpcRow<BusinessOrderAttachment>(data)
+  if (!attachment) return { ok: false, error: '数据库未返回订单附件信息' }
+  revalidateBusinessOrders(attachment.order_id)
+  return { ok: true, attachment }
+}
+
+export async function getBusinessOrderAttachmentUrl(
+  attachmentId: string,
+): Promise<{ url?: string; error?: string }> {
+  await requireApproved()
+  const parsedId = z.string().uuid('附件 ID 不合法').safeParse(attachmentId)
+  if (!parsedId.success) return { error: firstValidationError(parsedId.error) }
+
+  const supabase = await createClient()
+  const { data: attachment, error } = await supabase
+    .from('business_order_attachments')
+    .select('object_path')
+    .eq('id', parsedId.data)
+    .eq('status', 'active')
+    .single()
+  if (error || !attachment?.object_path) return { error: '订单附件不存在或无权查看' }
+
+  const admin = createAdminClient()
+  const { data: signed, error: signError } = await admin.storage
+    .from('finance-daily-order-screenshots')
+    .createSignedUrl(attachment.object_path, 60 * 10)
+  if (signError) return { error: '生成订单附件链接失败' }
+  return { url: signed.signedUrl }
+}
+
+export async function removeBusinessOrderAttachment(
+  attachmentId: string,
+): Promise<BusinessOrderAttachmentActionResult> {
+  const profile = await requireApproved()
+  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管或管理员可以移除订单附件' }
+  }
+  const parsedId = z.string().uuid('附件 ID 不合法').safeParse(attachmentId)
+  if (!parsedId.success) return { ok: false, error: firstValidationError(parsedId.error) }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('remove_business_order_attachment', {
+    p_attachment_id: parsedId.data,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '移除订单附件失败') }
+
+  const attachment = firstRpcRow<BusinessOrderAttachment>(data)
+  if (!attachment) return { ok: false, error: '数据库未返回订单附件信息' }
+  revalidateBusinessOrders(attachment.order_id)
+  return { ok: true, attachment }
 }
 
 export async function createBusinessCustomProduct(
