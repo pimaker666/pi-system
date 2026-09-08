@@ -115,11 +115,30 @@ const SHIPPING_OPTIONS: Array<{ value: DailyOrderShippingCategory; label: string
   { value: 'purchase', label: '外采' },
 ]
 
+function randomHexNibble() {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const buffer = new Uint8Array(1)
+    crypto.getRandomValues(buffer)
+    return buffer[0] % 16
+  }
+  return Math.floor(Math.random() * 16)
+}
+
+/**
+ * 始终返回合法的 v4 UUID。
+ * 生产通过 http 访问时属于非安全上下文，crypto.randomUUID 不可用，
+ * 而该 id 会拼进截图对象路径并被 Storage RLS 的 UUID 正则校验，
+ * 因此回退实现必须仍然产出 UUID 而非任意字符串。
+ */
 function newLocalId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
   }
-  return `business-order-item-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
+    const random = randomHexNibble()
+    const value = token === 'x' ? random : (random & 0x3) | 0x8
+    return value.toString(16)
+  })
 }
 
 function roundMoney(value: number) {
