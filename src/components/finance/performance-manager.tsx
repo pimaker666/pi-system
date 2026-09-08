@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Eye, Plus, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -23,21 +24,41 @@ import {
 } from '@/components/ui/table'
 import {
   BUSINESS_FULFILLMENT_LABELS,
+  BUSINESS_FULFILLMENT_STATUS_LABELS,
+  BUSINESS_FULFILLMENT_STATUS_VARIANTS,
   BUSINESS_ORDER_STATUS_LABELS,
   BUSINESS_ORDER_STATUS_VARIANTS,
+  BUSINESS_PAYMENT_STATUS_LABELS,
+  BUSINESS_PAYMENT_STATUS_VARIANTS,
   getBusinessOrderCustomerName,
+  getBusinessOverdueDays,
 } from '@/lib/business-orders'
 import { formatCny } from '@/lib/finance'
-import { formatCurrency, formatDate, displayProfileName } from '@/lib/utils'
+import { displayProfileName, formatCurrency, formatDate } from '@/lib/utils'
 import type { BusinessOrder, BusinessOrderStatus, Profile } from '@/types'
 
+interface AllocationListRow {
+  amount: number
+  voided_at: string | null
+  transfer: {
+    voided_at: string | null
+    exchange_rate_to_cny: number
+  } | null
+}
+
 export interface BusinessOrderListRow extends BusinessOrder {
-  business_order_payments: Array<{ amount: number; voided_at: string | null }>
+  business_order_payment_allocations: AllocationListRow[]
 }
 
 export interface PerformanceManagerProps {
   profile: Pick<Profile, 'id' | 'role'>
   orders: BusinessOrderListRow[]
+}
+
+function effectiveAllocations(order: BusinessOrderListRow) {
+  return order.business_order_payment_allocations.filter(
+    (allocation) => !allocation.voided_at && allocation.transfer && !allocation.transfer.voided_at,
+  )
 }
 
 export function PerformanceManager({ profile, orders }: PerformanceManagerProps) {
@@ -61,8 +82,43 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
     })
   }, [orders, query, status])
 
+  const summary = useMemo(
+    () =>
+      filteredOrders.reduce(
+        (result, order) => {
+          const activeAllocations = effectiveAllocations(order)
+          const received = activeAllocations.reduce(
+            (sum, allocation) => sum + Number(allocation.amount),
+            0,
+          )
+          const receivedCny = activeAllocations.reduce(
+            (sum, allocation) =>
+              sum + Number(allocation.amount) * Number(allocation.transfer?.exchange_rate_to_cny ?? 0),
+            0,
+          )
+          result.orderTotalCny += Number(order.total_cny)
+          result.receivedCny += receivedCny
+          result.outstandingCny +=
+            Math.max(Number(order.total_amount) - received, 0) * Number(order.exchange_rate_to_cny)
+          if (getBusinessOverdueDays(order.payment_due_date, order.payment_status === 'fully_paid') > 0) {
+            result.overdueCount += 1
+          }
+          return result
+        },
+        { orderTotalCny: 0, receivedCny: 0, outstandingCny: 0, overdueCount: 0 },
+      ),
+    [filteredOrders],
+  )
+
   return (
     <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">筛选订单</div><div className="mt-1 text-xl font-semibold">{filteredOrders.length}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">订单总额</div><div className="mt-1 text-xl font-semibold tabular-nums">{formatCny(summary.orderTotalCny)}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">有效分摊已收</div><div className="mt-1 text-xl font-semibold tabular-nums text-green-700">{formatCny(summary.receivedCny)}</div></CardContent></Card>
+        <Card className={summary.overdueCount > 0 ? 'border-destructive/40' : undefined}><CardContent className="p-4"><div className="text-xs text-muted-foreground">未收 / 逾期订单</div><div className="mt-1 text-xl font-semibold tabular-nums">{formatCny(summary.outstandingCny)} <span className={summary.overdueCount > 0 ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>/ {summary.overdueCount} 单</span></div></CardContent></Card>
+      </div>
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-1 flex-col gap-2 sm:flex-row">
           <div className="relative max-w-md flex-1">
@@ -98,8 +154,8 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
         )}
       </div>
 
-      <div className="overflow-hidden rounded-md border">
-        <Table>
+      <div className="overflow-x-auto rounded-md border">
+        <Table className="min-w-[1120px]">
           <TableHeader>
             <TableRow>
               <TableHead>订单 / 客户</TableHead>
@@ -107,16 +163,25 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
               <TableHead>属性</TableHead>
               <TableHead>业务员</TableHead>
               <TableHead className="text-right">订单金额</TableHead>
-              <TableHead className="text-right">已收款</TableHead>
-              <TableHead>状态</TableHead>
+              <TableHead className="text-right">已收 / 未收</TableHead>
+              <TableHead>付款 / 发货</TableHead>
+              <TableHead>流程状态</TableHead>
               <TableHead className="w-16" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredOrders.map((order) => {
-              const received = order.business_order_payments
-                .filter((payment) => !payment.voided_at)
-                .reduce((sum, payment) => sum + Number(payment.amount), 0)
+              const received = effectiveAllocations(order).reduce(
+                (sum, allocation) => sum + Number(allocation.amount),
+                0,
+              )
+              const outstanding = Math.max(Number(order.total_amount) - received, 0)
+              const daysOverdue = getBusinessOverdueDays(
+                order.payment_due_date,
+                order.payment_status === 'fully_paid',
+              )
+              const isLegacyCompleted =
+                order.status === 'completed' && order.completion_gate_version < 2
               return (
                 <TableRow key={order.id}>
                   <TableCell>
@@ -130,7 +195,13 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
                       {getBusinessOrderCustomerName(order.customer_snapshot)}
                     </div>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap">{formatDate(order.order_date)}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    <div>{formatDate(order.order_date)}</div>
+                    {order.payment_due_date && (
+                      <div className="text-xs text-muted-foreground">尾款 {formatDate(order.payment_due_date)}</div>
+                    )}
+                    {daysOverdue > 0 && <Badge variant="destructive" className="mt-1">逾期 {daysOverdue} 天</Badge>}
+                  </TableCell>
                   <TableCell>{BUSINESS_FULFILLMENT_LABELS[order.fulfillment_type]}</TableCell>
                   <TableCell>{displayProfileName(order.salesperson, order.salesperson_name_snapshot)}</TableCell>
                   <TableCell className="whitespace-nowrap text-right font-medium">
@@ -139,8 +210,29 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
                       {formatCny(Number(order.total_cny))}
                     </div>
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-right">
-                    {formatCurrency(received, order.currency)}
+                  <TableCell className="whitespace-nowrap text-right tabular-nums">
+                    <div className="text-green-700">{formatCurrency(received, order.currency)}</div>
+                    <div className={outstanding > 0.005 ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
+                      未收 {formatCurrency(outstanding, order.currency)}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col items-start gap-1">
+                      <Badge variant={BUSINESS_PAYMENT_STATUS_VARIANTS[order.payment_status]}>
+                        {BUSINESS_PAYMENT_STATUS_LABELS[order.payment_status]}
+                      </Badge>
+                      <Badge
+                        variant={
+                          isLegacyCompleted
+                            ? 'secondary'
+                            : BUSINESS_FULFILLMENT_STATUS_VARIANTS[order.fulfillment_status]
+                        }
+                      >
+                        {isLegacyCompleted
+                          ? '历史完成·发货未追溯'
+                          : BUSINESS_FULFILLMENT_STATUS_LABELS[order.fulfillment_status]}
+                      </Badge>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge variant={BUSINESS_ORDER_STATUS_VARIANTS[order.status]}>
@@ -159,7 +251,7 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
             })}
             {filteredOrders.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="py-12 text-center text-muted-foreground">
+                <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
                   暂无符合条件的业务订单
                 </TableCell>
               </TableRow>

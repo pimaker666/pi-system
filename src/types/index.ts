@@ -20,6 +20,13 @@ export type BusinessOrderStatus =
   | 'completed'
 export type BusinessFulfillmentType = 'custom' | 'stock'
 export type BusinessPaymentType = 'full' | 'deposit' | 'balance'
+export type BusinessOrderItemSourceType = 'catalog' | 'custom' | 'legacy'
+export type BusinessApprovalStatus = 'draft' | 'submitted' | 'rejected' | 'approved'
+export type BusinessPaymentStatus = 'unpaid' | 'partially_paid' | 'fully_paid'
+export type BusinessFulfillmentStatus =
+  | 'unshipped'
+  | 'partially_shipped'
+  | 'fully_shipped'
 export type BusinessAuditAction =
   | 'create'
   | 'update'
@@ -92,6 +99,24 @@ export interface FinanceOrderCost {
   created_by: string | null
   created_at: string
   updated_at: string
+}
+
+export interface DailyOrderProductCost {
+  daily_order_id: string
+  shipping_date: string
+  order_date: string
+  order_number: string
+  shop_name: string
+  salesperson_name: string
+  shipping_category: DailyOrderShippingCategory
+  sales_product_name: string
+  sales_product_sku: string
+  quantity: number
+  financial_number: string | null
+  financial_product_name: string | null
+  catalog_cost: number | null
+  cost: number | null
+  cost_overridden: boolean
 }
 
 export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'
@@ -269,12 +294,17 @@ export interface BusinessOrder {
   id: string
   order_number: string
   status: BusinessOrderStatus
+  approval_status: BusinessApprovalStatus
+  payment_status: BusinessPaymentStatus
+  fulfillment_status: BusinessFulfillmentStatus
   version: number
+  completion_gate_version: 1 | 2
   customer_id: string | null
   customer_snapshot: CustomerSnapshot
   salesperson_id: string | null
   salesperson_name_snapshot: string | null
   order_date: string
+  payment_due_date: string | null
   fulfillment_type: BusinessFulfillmentType
   currency: CurrencyCode
   exchange_rate_to_cny: number
@@ -301,7 +331,10 @@ export interface BusinessOrder {
 export interface BusinessOrderItem {
   id: string
   order_id: string
+  source_type: BusinessOrderItemSourceType
   product_id: string | null
+  custom_product_id: string | null
+  custom_product_version_id: string | null
   sku_snapshot: string
   name_snapshot: string
   description_snapshot: string | null
@@ -316,6 +349,10 @@ export interface BusinessOrderItem {
   updated_at: string
 }
 
+/**
+ * Legacy read-only payment row retained for existing screens.
+ * @deprecated New writes use BusinessCustomerTransfer and BusinessOrderPaymentAllocation.
+ */
 export interface BusinessOrderPayment {
   id: string
   order_id: string
@@ -334,6 +371,140 @@ export interface BusinessOrderPayment {
   updated_at: string
 }
 
+export interface BusinessCustomProduct {
+  id: string
+  customer_id: string
+  is_shared: boolean
+  is_archived: boolean
+  created_by: string | null
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BusinessCustomProductVersion {
+  id: string
+  custom_product_id: string
+  version_no: number
+  code: string
+  name: string
+  description: string | null
+  specification: string | null
+  unit: string
+  image_url: string | null
+  default_unit_price: number
+  default_currency: CurrencyCode
+  created_by: string | null
+  created_at: string
+}
+
+export interface BusinessCustomProductListItem {
+  custom_product_id: string
+  owner_customer_id: string
+  is_shared: boolean
+  is_archived: boolean
+  version_id: string
+  version_no: number
+  code: string
+  name: string
+  description: string | null
+  specification: string | null
+  unit: string
+  image_url: string | null
+  default_unit_price: number
+  default_currency: CurrencyCode
+}
+
+export interface BusinessCustomerTransfer {
+  id: string
+  customer_id: string
+  currency: CurrencyCode
+  amount: number
+  exchange_rate_to_cny: number
+  received_at: string
+  payment_type: BusinessPaymentType
+  proof_path: string
+  notes: string | null
+  idempotency_key: string | null
+  payload_hash: string | null
+  created_by: string | null
+  created_at: string
+  updated_by: string | null
+  updated_at: string
+  voided_at: string | null
+  voided_by: string | null
+  void_reason: string | null
+  legacy_payment_id: string | null
+}
+
+export interface BusinessOrderPaymentAllocation {
+  id: string
+  transfer_id: string
+  order_id: string
+  amount: number
+  payment_type: BusinessPaymentType
+  created_by: string | null
+  created_at: string
+  voided_at: string | null
+  voided_by: string | null
+  void_reason: string | null
+  legacy_payment_id: string | null
+}
+
+export interface BusinessOrderShipment {
+  id: string
+  order_id: string
+  shipped_at: string
+  tracking_number: string | null
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  voided_at: string | null
+  voided_by: string | null
+  void_reason: string | null
+}
+
+export interface BusinessOrderShipmentItem {
+  id: string
+  shipment_id: string
+  order_item_id: string
+  quantity: number
+  created_at: string
+}
+
+export interface BusinessOrderPaymentAllocationWithTransfer
+  extends BusinessOrderPaymentAllocation {
+  transfer: BusinessCustomerTransfer
+}
+
+export interface BusinessOrderShipmentWithItems extends BusinessOrderShipment {
+  business_order_shipment_items: BusinessOrderShipmentItem[]
+}
+
+export interface BusinessCustomerTransferWithAllocations extends BusinessCustomerTransfer {
+  business_order_payment_allocations: BusinessOrderPaymentAllocation[]
+}
+
+export interface BusinessCustomerPrepayment {
+  currency: CurrencyCode
+  total_received: number
+  total_allocated: number
+  available_balance: number
+}
+
+export interface BusinessOrderSettlementSummary {
+  order_id: string
+  currency: CurrencyCode
+  total_amount: number
+  allocated_amount: number
+  outstanding_amount: number
+  payment_status: BusinessPaymentStatus
+  payment_due_date: string | null
+  item_quantity: number
+  shipped_quantity: number
+  fulfillment_status: BusinessFulfillmentStatus
+}
+
 export interface BusinessOrderFinanceDetail {
   order_id: string
   wage_amount_cny: number
@@ -341,6 +512,34 @@ export interface BusinessOrderFinanceDetail {
   updated_by: string | null
   created_at: string
   updated_at: string
+}
+
+export type BusinessLifecycleEntityType =
+  | 'custom_product'
+  | 'custom_product_version'
+  | 'transfer'
+  | 'allocation'
+  | 'shipment'
+
+export interface BusinessLifecycleAuditLog {
+  id: number
+  order_id: string | null
+  customer_id: string | null
+  entity_type: BusinessLifecycleEntityType
+  entity_id: string
+  action: 'create' | 'version_create' | 'state_change' | 'void'
+  old_data: Record<string, unknown> | null
+  new_data: Record<string, unknown> | null
+  reason: string | null
+  actor_id: string | null
+  actor_snapshot: {
+    id: string
+    email: string | null
+    full_name: string | null
+    role: UserRole
+  }
+  created_at: string
+  actor?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
 
 export interface BusinessOrderAuditLog {
@@ -369,7 +568,10 @@ export interface BusinessOrderAuditLog {
 
 export interface BusinessOrderWithDetails extends BusinessOrder {
   business_order_items: BusinessOrderItem[]
+  /** @deprecated Legacy rows retained only for historical compatibility. */
   business_order_payments: BusinessOrderPayment[]
+  business_order_payment_allocations?: BusinessOrderPaymentAllocationWithTransfer[]
+  business_order_shipments?: BusinessOrderShipmentWithItems[]
 }
 
 export interface Profile {

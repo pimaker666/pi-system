@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireFinanceAccess } from '@/lib/auth'
-import { financeCostSchema, financeTransactionSchema } from '@/schemas/finance'
+import { chinaToday } from '@/lib/daily-order-costs-server'
+import { dailyOrderCostOverrideSchema, financeCostSchema, financeTransactionSchema } from '@/schemas/finance'
 import type { ActionResult } from './products'
 import type { CurrencyCode } from '@/types'
 
@@ -137,6 +138,53 @@ export async function createFinanceCost(formData: FormData): Promise<ActionResul
   if (error) return { ok: false, error: error.message }
 
   revalidateFinance()
+  return { ok: true }
+}
+
+export async function updateDailyOrderCostOverride(input: {
+  daily_order_id: string
+  cost: number | null
+}): Promise<ActionResult> {
+  const profile = await requireFinanceAccess()
+  const parsed = dailyOrderCostOverrideSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  if (parsed.data.cost === null) {
+    const { error } = await supabase
+      .from('finance_daily_order_cost_overrides')
+      .delete()
+      .eq('daily_order_id', parsed.data.daily_order_id)
+    if (error) return { ok: false, error: error.message }
+    revalidatePath('/finance/costs')
+    return { ok: true }
+  }
+
+  const { data: order, error: orderError } = await supabase
+    .from('finance_daily_orders')
+    .select('id')
+    .eq('id', parsed.data.daily_order_id)
+    .eq('status', 'active')
+    .lte('shipping_date', chinaToday())
+    .maybeSingle()
+  if (orderError) return { ok: false, error: orderError.message }
+  if (!order) return { ok: false, error: '订单行不存在、已作废或尚未发货' }
+
+  const { error } = await supabase
+    .from('finance_daily_order_cost_overrides')
+    .upsert(
+      {
+        daily_order_id: parsed.data.daily_order_id,
+        cost: parsed.data.cost,
+        updated_by: profile.id,
+      },
+      { onConflict: 'daily_order_id' },
+    )
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/finance/costs')
   return { ok: true }
 }
 

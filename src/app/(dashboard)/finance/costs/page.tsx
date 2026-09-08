@@ -1,8 +1,10 @@
+import { DailyOrderCostManager } from '@/components/finance/daily-order-cost-manager'
 import {
   PiCostManager,
   type CostOrderOption,
 } from '@/components/finance/pi-cost-manager'
 import { requireFinanceAccess } from '@/lib/auth'
+import { fetchDailyOrderProductCosts } from '@/lib/daily-order-costs-server'
 import { createClient } from '@/lib/supabase/server'
 import type { FinanceOrderCost } from '@/types'
 
@@ -10,7 +12,7 @@ export default async function FinanceCostsPage() {
   await requireFinanceAccess()
   const supabase = await createClient()
 
-  const [legacyOrdersResult, businessOrdersResult, costsResult] = await Promise.all([
+  const [legacyOrdersResult, businessOrdersResult, costsResult, dailyOrderCosts] = await Promise.all([
     supabase
       .from('finance_orders')
       .select('id, pi_number_snapshot, customer_name_snapshot')
@@ -22,6 +24,7 @@ export default async function FinanceCostsPage() {
       .in('status', ['approved', 'completed'])
       .order('order_date', { ascending: false }),
     supabase.from('finance_order_costs').select('*').order('incurred_date', { ascending: false }),
+    fetchDailyOrderProductCosts(supabase),
   ])
 
   const loadError = legacyOrdersResult.error || businessOrdersResult.error || costsResult.error
@@ -46,14 +49,21 @@ export default async function FinanceCostsPage() {
   const costs = (costsResult.data ?? []) as FinanceOrderCost[]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">订单成本</h1>
         <p className="text-sm text-muted-foreground">
-          按历史 PI 或已审核业务订单归集采购、物流、关税、平台费和收款手续费等成本。
+          已发货每日订单自动匹配产品库财务资料；修改成本仅覆盖当前订单产品行，不反写产品库。
         </p>
       </div>
-      <PiCostManager orders={orders} costs={costs} />
+      <DailyOrderCostManager rows={dailyOrderCosts} />
+      <div className="border-t pt-8">
+        <h2 className="mb-1 text-lg font-semibold">其他订单费用</h2>
+        <p className="mb-4 text-sm text-muted-foreground">
+          按历史 PI 或已审核业务订单归集采购、物流、关税、平台费和收款手续费等成本。
+        </p>
+        <PiCostManager orders={orders} costs={costs} />
+      </div>
     </div>
   )
 }

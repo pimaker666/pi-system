@@ -5,7 +5,9 @@ import {
   BusinessOrderActions,
   BusinessOrderFinancePanel,
 } from '@/components/finance/business-order-actions'
+import { BusinessLifecycleStatus } from '@/components/finance/business-lifecycle-status'
 import { BusinessOrderPaymentManager } from '@/components/finance/business-order-payment-manager'
+import { BusinessShipmentManager } from '@/components/finance/business-shipment-manager'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -17,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { getBusinessOrderSettlementSummary } from '@/lib/actions/business-orders'
 import { requireApproved } from '@/lib/auth'
 import {
   BUSINESS_FULFILLMENT_LABELS,
@@ -29,6 +32,8 @@ import { createClient } from '@/lib/supabase/server'
 import { formatCurrency, formatDate, displayProfileName } from '@/lib/utils'
 import type {
   BusinessAuditAction,
+  BusinessLifecycleAuditLog,
+  BusinessLifecycleEntityType,
   BusinessOrderAuditLog,
   BusinessOrderFinanceDetail,
   BusinessOrderWithDetails,
@@ -48,6 +53,21 @@ const auditLabels: Record<BusinessAuditAction, string> = {
   correct: '修正已完成订单',
 }
 
+const lifecycleEntityLabels: Record<BusinessLifecycleEntityType, string> = {
+  custom_product: '定制产品',
+  custom_product_version: '定制产品版本',
+  transfer: '客户转账',
+  allocation: '收款分摊',
+  shipment: '发货批次',
+}
+
+const lifecycleActionLabels: Record<BusinessLifecycleAuditLog['action'], string> = {
+  create: '创建',
+  version_create: '创建版本',
+  state_change: '变更状态',
+  void: '作废',
+}
+
 export default async function BusinessOrderDetailPage({
   params,
 }: {
@@ -59,7 +79,7 @@ export default async function BusinessOrderDetailPage({
   const { data, error } = await supabase
     .from('business_orders')
     .select(
-      '*, business_order_items(*), business_order_payments(*), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)',
+      '*, business_order_items(*), business_order_payments(*), business_order_shipments(*, business_order_shipment_items(*)), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)',
     )
     .eq('id', id)
     .single()
@@ -70,13 +90,28 @@ export default async function BusinessOrderDetailPage({
   order.business_order_payments.sort(
     (a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime(),
   )
+  const shipments = (order.business_order_shipments ?? []).sort(
+    (a, b) => new Date(b.shipped_at).getTime() - new Date(a.shipped_at).getTime(),
+  )
+  const shipmentItems = shipments.flatMap((shipment) => shipment.business_order_shipment_items)
+  const settlementResult = await getBusinessOrderSettlementSummary(order.id)
+  if (!settlementResult.ok || !settlementResult.data) {
+    throw new Error(settlementResult.error ?? '订单结算汇总读取失败')
+  }
+  const settlement = settlementResult.data
 
   let auditLogs: BusinessOrderAuditLog[] = []
+  let lifecycleAuditLogs: BusinessLifecycleAuditLog[] = []
   let financeDetail: BusinessOrderFinanceDetail | null = null
   if (profile.role === 'admin' || profile.role === 'finance') {
-    const [auditResult, financeResult] = await Promise.all([
+    const [auditResult, lifecycleAuditResult, financeResult] = await Promise.all([
       supabase
         .from('business_order_audit_logs')
+        .select('*, actor:profiles!actor_id(id, chinese_name, full_name, email)')
+        .eq('order_id', id)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('business_lifecycle_audit_logs')
         .select('*, actor:profiles!actor_id(id, chinese_name, full_name, email)')
         .eq('order_id', id)
         .order('created_at', { ascending: false }),
@@ -86,13 +121,22 @@ export default async function BusinessOrderDetailPage({
         .eq('order_id', id)
         .maybeSingle(),
     ])
-    if (auditResult.error) throw new Error(`审计记录读取失败：${auditResult.error.message}`)
+    if (auditResult.error) throw new Error(`订单审计记录读取失败：${auditResult.error.message}`)
+    if (lifecycleAuditResult.error) {
+      throw new Error(`生命周期审计记录读取失败：${lifecycleAuditResult.error.message}`)
+    }
     if (financeResult.error) throw new Error(`财务核算读取失败：${financeResult.error.message}`)
     auditLogs = (auditResult.data ?? []) as BusinessOrderAuditLog[]
+    lifecycleAuditLogs = (lifecycleAuditResult.data ?? []) as BusinessLifecycleAuditLog[]
     financeDetail = financeResult.data as BusinessOrderFinanceDetail | null
   }
 
   const customer = order.customer_snapshot
+  const financeReady = Boolean(
+    financeDetail &&
+      Number(financeDetail.wage_amount_cny) >= 0 &&
+      financeDetail.calculation_notes.trim(),
+  )
 
   return (
     <div className="space-y-6">
@@ -113,7 +157,7 @@ export default async function BusinessOrderDetailPage({
             </p>
           </div>
         </div>
-        <BusinessOrderActions order={order} profile={profile} />
+        <BusinessOrderActions order={order} profile={profile} financeReady={financeReady} />
       </div>
 
       {order.review_note && (
@@ -121,6 +165,8 @@ export default async function BusinessOrderDetailPage({
           <span className="font-medium">审核说明：</span>{order.review_note}
         </div>
       )}
+
+      <BusinessLifecycleStatus order={order} summary={settlement} />
 
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
         <div className="space-y-6">
@@ -202,8 +248,17 @@ export default async function BusinessOrderDetailPage({
             ownerId={order.salesperson_id}
             currency={order.currency}
             status={order.status}
+            completionGateVersion={order.completion_gate_version}
             profile={profile}
             payments={order.business_order_payments}
+          />
+
+          <BusinessShipmentManager
+            order={order}
+            profile={profile}
+            orderItems={order.business_order_items}
+            shipments={shipments}
+            shipmentItems={shipmentItems}
           />
 
           {(profile.role === 'admin' || profile.role === 'finance') && (
@@ -211,7 +266,7 @@ export default async function BusinessOrderDetailPage({
               <CardHeader><CardTitle className="text-base">审计记录</CardTitle></CardHeader>
               <CardContent className="space-y-3">
                 {auditLogs.map((log) => (
-                  <div key={log.id} className="border-l-2 pl-3 text-sm">
+                  <div key={`order-${log.id}`} className="border-l-2 pl-3 text-sm">
                     <div className="font-medium">{auditLabels[log.action]}</div>
                     <div className="text-muted-foreground">
                       {displayProfileName(log.actor, log.actor_snapshot.full_name || log.actor_snapshot.email)} · {formatDate(log.created_at, true)}
@@ -219,7 +274,20 @@ export default async function BusinessOrderDetailPage({
                     {log.reason && <div className="mt-1">说明：{log.reason}</div>}
                   </div>
                 ))}
-                {auditLogs.length === 0 && <div className="text-sm text-muted-foreground">暂无审计记录</div>}
+                {lifecycleAuditLogs.map((log) => (
+                  <div key={`lifecycle-${log.id}`} className="border-l-2 border-blue-300 pl-3 text-sm">
+                    <div className="font-medium">
+                      {lifecycleEntityLabels[log.entity_type]} · {lifecycleActionLabels[log.action]}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {displayProfileName(log.actor, log.actor_snapshot.full_name || log.actor_snapshot.email)} · {formatDate(log.created_at, true)}
+                    </div>
+                    {log.reason && <div className="mt-1">说明：{log.reason}</div>}
+                  </div>
+                ))}
+                {auditLogs.length === 0 && lifecycleAuditLogs.length === 0 && (
+                  <div className="text-sm text-muted-foreground">暂无审计记录</div>
+                )}
               </CardContent>
             </Card>
           )}

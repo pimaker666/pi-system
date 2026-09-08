@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Check, Pencil, Send, X } from 'lucide-react'
+import { AlertCircle, Check, Pencil, Send, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -28,11 +28,24 @@ import {
 import type { BusinessOrder, BusinessOrderFinanceDetail, Profile } from '@/types'
 
 interface BusinessOrderActionsProps {
-  order: Pick<BusinessOrder, 'id' | 'status' | 'salesperson_id'>
+  order: Pick<
+    BusinessOrder,
+    | 'id'
+    | 'status'
+    | 'salesperson_id'
+    | 'approval_status'
+    | 'payment_status'
+    | 'fulfillment_status'
+  >
   profile: Pick<Profile, 'id' | 'role'>
+  financeReady: boolean
 }
 
-export function BusinessOrderActions({ order, profile }: BusinessOrderActionsProps) {
+export function BusinessOrderActions({
+  order,
+  profile,
+  financeReady,
+}: BusinessOrderActionsProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [rejectOpen, setRejectOpen] = useState(false)
@@ -44,6 +57,14 @@ export function BusinessOrderActions({ order, profile }: BusinessOrderActionsPro
     ['draft', 'rejected'].includes(order.status)
   const canCorrect =
     (profile.role === 'admin' || profile.role === 'finance') && order.status === 'completed'
+  const completionMissing = [
+    order.approval_status !== 'approved' ? '审核尚未通过' : null,
+    order.payment_status !== 'fully_paid' ? '款项尚未收齐' : null,
+    order.fulfillment_status !== 'fully_shipped' ? '商品尚未全部发货' : null,
+    !financeReady ? '财务核算尚未完整保存' : null,
+  ].filter((item): item is string => Boolean(item))
+  const canComplete =
+    profile.role === 'finance' && order.status === 'approved' && completionMissing.length === 0
 
   function runAction(action: () => Promise<{ ok: boolean; error?: string }>, success: string) {
     startTransition(async () => {
@@ -91,12 +112,20 @@ export function BusinessOrderActions({ order, profile }: BusinessOrderActionsPro
         </>
       )}
       {profile.role === 'finance' && order.status === 'approved' && (
-        <Button
-          disabled={pending}
-          onClick={() => runAction(() => completeBusinessOrder(order.id), '订单已完成并锁定')}
-        >
-          <Check className="h-4 w-4" />完成订单
-        </Button>
+        <div className="flex w-full flex-col items-end gap-1 sm:w-auto">
+          <Button
+            disabled={pending || !canComplete}
+            onClick={() => runAction(() => completeBusinessOrder(order.id), '订单已完成并锁定')}
+          >
+            <Check className="h-4 w-4" />完成订单
+          </Button>
+          {completionMissing.length > 0 && (
+            <div className="flex max-w-full items-start gap-1 text-right text-xs text-muted-foreground">
+              <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>暂不可完成：{completionMissing.join('、')}</span>
+            </div>
+          )}
+        </div>
       )}
 
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>

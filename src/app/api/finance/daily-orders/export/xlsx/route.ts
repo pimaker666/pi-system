@@ -71,11 +71,16 @@ export async function GET(request: Request) {
 
   sheet.autoFilter = { from: 'A1', to: 'Q1' }
   const buffer = await workbook.xlsx.writeBuffer()
-  return new NextResponse(new Uint8Array(buffer as ArrayBuffer), {
+  const body = new Uint8Array(buffer as ArrayBuffer)
+  const date = new Date().toISOString().slice(0, 10)
+  const fileName = `财务每日订单台账_${date}.xlsx`
+  return new NextResponse(body, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`财务每日订单台账_${new Date().toISOString().slice(0, 10)}.xlsx`)}`,
+      'Content-Disposition': `attachment; filename="finance-daily-orders-${date}.xlsx"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      'Content-Length': String(body.byteLength),
       'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
     },
   })
 }

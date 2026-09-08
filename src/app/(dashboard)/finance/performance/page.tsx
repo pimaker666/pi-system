@@ -12,7 +12,7 @@ export default async function FinancePerformancePage() {
   const { data, error } = await supabase
     .from('business_orders')
     .select(
-      '*, business_order_payments(amount, voided_at), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)',
+      '*, business_order_payment_allocations(amount, voided_at, transfer:business_customer_transfers!business_order_payment_allocations_transfer_id_fkey(voided_at, exchange_rate_to_cny)), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)',
     )
     .order('order_date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -28,8 +28,8 @@ export default async function FinancePerformancePage() {
         </h1>
         <p className="text-sm text-muted-foreground">
           {profile.role === 'sales'
-            ? '从客户和产品库创建业务订单，登记收款凭证后提交管理员审核。'
-            : '查看业务订单、审核进度、收款与工资核算状态。'}
+            ? '从客户和产品库创建业务订单，跟踪有效收款分摊、发货进度与逾期尾款。'
+            : '查看业务订单、有效收款分摊、付款与发货状态及逾期尾款。'}
         </p>
       </div>
       <PerformanceManager profile={profile} orders={orders} />
