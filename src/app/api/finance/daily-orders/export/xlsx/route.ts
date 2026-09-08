@@ -14,6 +14,7 @@ import {
   PAYMENT_LABELS,
   SHIPPING_LABELS,
 } from '@/lib/daily-orders'
+import { isRenderableExportImage } from '@/lib/export-image-guard'
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
 
@@ -101,6 +102,10 @@ export async function GET(request: Request) {
         )
       }
       const extension = attachment.mime_type === 'image/png' ? 'png' : 'jpeg'
+      if (!(await isRenderableExportImage(imageBuffer))) {
+        unavailable += 1
+        continue
+      }
       const imageId = workbook.addImage({ base64: imageBuffer.toString('base64'), extension })
       const imageRow = Math.floor(shotIndex / 3)
       const imageColumnOffset = (shotIndex % 3) * 0.32

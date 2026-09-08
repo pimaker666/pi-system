@@ -7,6 +7,7 @@ import {
   businessDailyExportLimitError,
 } from '@/lib/business-daily-orders'
 import { fetchBusinessDailyLedger } from '@/lib/business-daily-orders-server'
+import { isRenderableExportImage } from '@/lib/export-image-guard'
 import {
   formatDailyMoney,
   parseDailyOrderFilters,
@@ -57,7 +58,11 @@ export async function GET(request: Request) {
           { status: 413 },
         )
       }
-      imageSources.push(`data:${attachment.mime_type};base64,${imageBuffer.toString('base64')}`)
+      imageSources.push(
+        (await isRenderableExportImage(imageBuffer))
+          ? `data:${attachment.mime_type};base64,${imageBuffer.toString('base64')}`
+          : null,
+      )
     }
     rows.push({ ...exportRow, imageSources })
   }
@@ -66,7 +71,13 @@ export async function GET(request: Request) {
     import('@react-pdf/renderer'),
     import('@/components/finance/daily-orders-pdf'),
   ])
-  const buffer = await renderToBuffer(createElement(DailyOrdersPdf, { orders: rows }) as never)
+  let buffer: Buffer
+  try {
+    buffer = await renderToBuffer(createElement(DailyOrdersPdf, { orders: rows }) as never)
+  } catch (error) {
+    console.error('[daily-orders/export/pdf] renderToBuffer failed', error)
+    return NextResponse.json({ error: 'PDF 生成失败，请稍后重试或缩小筛选范围' }, { status: 500 })
+  }
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       'Content-Type': 'application/pdf',
