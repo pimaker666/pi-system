@@ -27,6 +27,7 @@ import { formatCurrency } from '@/lib/utils'
 import type {
   BusinessCustomProductListItem,
   BusinessFulfillmentType,
+  BusinessOrderEditConstraints,
   BusinessOrderItemSourceType,
   BusinessOrderWithDetails,
   CurrencyCode,
@@ -38,6 +39,7 @@ import type {
 
 interface EditableItem {
   key: string
+  order_item_id: string | null
   source_type: BusinessOrderItemSourceType
   product_id: string | null
   custom_product_id: string | null
@@ -59,6 +61,20 @@ interface BusinessOrderFormProps {
   customerGroups: CustomerGroup[]
   products: Product[]
   initialOrder?: BusinessOrderWithDetails
+  editConstraints?: BusinessOrderEditConstraints
+}
+
+interface NormalizedItemConstraint {
+  orderItemId: string
+  hasActiveAllocation: boolean
+  shippedQuantity: number
+  returnedQuantity: number
+  netShippedQuantity: number
+  minimumQuantity: number
+  canDelete: boolean
+  identityLocked: boolean
+  unitPriceLocked: boolean
+  quantityLocked: boolean
 }
 
 const currencies: CurrencyCode[] = ['USD', 'EUR', 'CNY', 'GBP', 'JPY']
@@ -70,12 +86,102 @@ function newLocalId() {
   return `business-order-item-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 }
 
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
+
+function numericValue(value: unknown) {
+  const number = Number(value ?? 0)
+  return Number.isFinite(number) ? number : 0
+}
+
+function booleanValue(...values: unknown[]) {
+  return values.some((value) => value === true)
+}
+
+function normalizeEditConstraints(value: unknown) {
+  const root = recordValue(value)
+  const rowsValue = Array.isArray(value)
+    ? value
+    : root && Array.isArray(root.items)
+      ? root.items
+      : root && Array.isArray(root.item_constraints)
+        ? root.item_constraints
+        : root && Array.isArray(root.rows)
+          ? root.rows
+          : []
+  const hasActiveAllocation = booleanValue(
+    root?.has_active_allocation,
+    root?.has_active_allocations,
+  )
+  const constraints = new Map<string, NormalizedItemConstraint>()
+
+  for (const candidate of rowsValue) {
+    const row = recordValue(candidate)
+    if (!row || typeof row.order_item_id !== 'string') continue
+    const shippedQuantity = numericValue(
+      row.gross_shipped_quantity ?? row.shipped_quantity ?? row.total_shipped_quantity,
+    )
+    const returnedQuantity = numericValue(row.returned_quantity ?? row.total_returned_quantity)
+    const netShippedQuantity = Math.max(
+      0,
+      numericValue(row.net_shipped_quantity ?? shippedQuantity - returnedQuantity),
+    )
+    const minimumQuantity = Math.max(
+      netShippedQuantity,
+      numericValue(row.minimum_quantity ?? netShippedQuantity),
+    )
+    const rowHasAllocation = booleanValue(
+      row.has_active_allocation,
+      row.has_active_allocations,
+      hasActiveAllocation,
+    )
+    const identityLocked = booleanValue(
+      row.identity_locked,
+      row.product_identity_locked,
+      row.lock_identity,
+      row.can_replace_product === false,
+      rowHasAllocation,
+      shippedQuantity > 0,
+    )
+    constraints.set(row.order_item_id, {
+      orderItemId: row.order_item_id,
+      hasActiveAllocation: rowHasAllocation,
+      shippedQuantity,
+      returnedQuantity,
+      netShippedQuantity,
+      minimumQuantity,
+      canDelete:
+        typeof row.can_delete === 'boolean'
+          ? row.can_delete
+          : !identityLocked,
+      identityLocked,
+      unitPriceLocked: booleanValue(
+        row.unit_price_locked,
+        row.lock_unit_price,
+        row.can_change_unit_price === false,
+        rowHasAllocation,
+      ),
+      quantityLocked: booleanValue(row.quantity_locked, row.lock_quantity),
+    })
+  }
+
+  return {
+    hasActiveAllocation:
+      hasActiveAllocation || [...constraints.values()].some((row) => row.hasActiveAllocation),
+    constraints,
+  }
+}
+
 export function BusinessOrderForm({
   profile,
   customers,
   customerGroups,
   products,
   initialOrder,
+  editConstraints,
 }: BusinessOrderFormProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -96,7 +202,6 @@ export function BusinessOrderForm({
   const [shippingFee, setShippingFee] = useState(String(initialOrder?.shipping_fee ?? 0))
   const [trackingNumber, setTrackingNumber] = useState(initialOrder?.tracking_number ?? '')
   const [salesNotes, setSalesNotes] = useState(initialOrder?.sales_notes ?? '')
-  const [correctionReason, setCorrectionReason] = useState('')
   const [selectedProductId, setSelectedProductId] = useState('')
   const [selectedCustomProduct, setSelectedCustomProduct] =
     useState<BusinessCustomProductListItem | null>(null)
@@ -106,6 +211,7 @@ export function BusinessOrderForm({
       .sort((a, b) => a.sort_order - b.sort_order)
       .map((item) => ({
         key: item.id,
+        order_item_id: item.id,
         source_type: item.source_type ?? (item.product_id ? 'catalog' : 'legacy'),
         product_id: item.product_id,
         custom_product_id: item.custom_product_id,
@@ -126,12 +232,19 @@ export function BusinessOrderForm({
     () => items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0),
     [items],
   )
-  const total = subtotal + (Number(shippingFee) || 0)
-  const correctionRequired = Boolean(initialOrder && ['admin', 'finance'].includes(profile.role))
-  const hasLegacyItems = items.some((item) => item.source_type === 'legacy')
-  const productRowsLocked = Boolean(
-    initialOrder?.status === 'completed' && initialOrder.completion_gate_version === 2,
+  const normalizedConstraints = useMemo(
+    () => normalizeEditConstraints(editConstraints),
+    [editConstraints],
   )
+  const total = subtotal + (Number(shippingFee) || 0)
+  const orderWithClosure = initialOrder as
+    | (BusinessOrderWithDetails & { closed_at?: string | null })
+    | undefined
+  const lifecycleLocked = Boolean(
+    initialOrder?.status === 'completed' || orderWithClosure?.closed_at,
+  )
+  const hasLegacyItems = items.some((item) => item.source_type === 'legacy')
+  const productRowsLocked = lifecycleLocked
   const productControlsDisabled = pending || productRowsLocked || hasLegacyItems
 
   function handleCustomerChange(nextCustomer: Customer) {
@@ -160,6 +273,7 @@ export function BusinessOrderForm({
       ...current,
       {
         key: newLocalId(),
+        order_item_id: null,
         source_type: 'catalog',
         product_id: product.id,
         custom_product_id: null,
@@ -189,6 +303,7 @@ export function BusinessOrderForm({
       ...current,
       {
         key: newLocalId(),
+        order_item_id: null,
         source_type: 'custom',
         product_id: null,
         custom_product_id: product.custom_product_id,
@@ -242,6 +357,23 @@ export function BusinessOrderForm({
       toast.error('订单含历史明细，V2 暂不支持写回，请联系管理员迁移或替换后再编辑')
       return
     }
+    if (lifecycleLocked) {
+      toast.error('已完成或特殊关闭的订单不可修改')
+      return
+    }
+    const belowMinimum = items.find((item) => {
+      const constraint = item.order_item_id
+        ? normalizedConstraints.constraints.get(item.order_item_id)
+        : undefined
+      return constraint && item.quantity < constraint.minimumQuantity
+    })
+    if (belowMinimum) {
+      const minimum = normalizedConstraints.constraints.get(
+        belowMinimum.order_item_id as string,
+      )?.minimumQuantity
+      toast.error(`“${belowMinimum.product_name}”数量不能低于净已发数量 ${minimum}`)
+      return
+    }
     if (!customer) {
       toast.error('请选择客户')
       return
@@ -269,6 +401,7 @@ export function BusinessOrderForm({
       items: items.map((item) => {
         if (item.source_type === 'catalog' && item.product_id) {
           return {
+            ...(item.order_item_id ? { order_item_id: item.order_item_id } : {}),
             source_type: 'catalog' as const,
             product_id: item.product_id,
             quantity: item.quantity,
@@ -281,6 +414,7 @@ export function BusinessOrderForm({
           item.custom_product_version_id
         ) {
           return {
+            ...(item.order_item_id ? { order_item_id: item.order_item_id } : {}),
             source_type: 'custom' as const,
             custom_product_id: item.custom_product_id,
             custom_product_version_id: item.custom_product_version_id,
@@ -294,12 +428,7 @@ export function BusinessOrderForm({
 
     startTransition(async () => {
       const result = initialOrder
-        ? await updateBusinessOrder(
-            initialOrder.id,
-            initialOrder.version,
-            input,
-            correctionReason,
-          )
+        ? await updateBusinessOrder(initialOrder.id, initialOrder.version, input)
         : await createBusinessOrder(input)
 
       if (!result.ok) {
@@ -308,7 +437,7 @@ export function BusinessOrderForm({
       }
 
       toast.success(initialOrder ? '业务订单已更新' : '业务订单草稿已创建')
-      router.push(`/finance/performance/${result.id ?? initialOrder?.id}`)
+      router.push(`/finance/daily-orders/${result.id ?? initialOrder?.id}`)
       router.refresh()
     })
   }
@@ -327,7 +456,17 @@ export function BusinessOrderForm({
         </div>
       )}
 
-      <fieldset disabled={hasLegacyItems} className="space-y-6 disabled:opacity-70">
+      {lifecycleLocked && (
+        <div className="flex gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+          <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-medium">订单已{orderWithClosure?.closed_at ? '特殊关闭' : '完成'}，全部字段只读</div>
+            <div className="mt-1">页面仅展示锁定原因；数据库仍会拒绝任何绕过界面的修改。</div>
+          </div>
+        </div>
+      )}
+
+      <fieldset disabled={hasLegacyItems || lifecycleLocked} className="space-y-6 disabled:opacity-70">
         <Card>
           <CardHeader>
             <CardTitle className="text-base">订单信息</CardTitle>
@@ -340,7 +479,13 @@ export function BusinessOrderForm({
                 groups={customerGroups}
                 value={customer}
                 onChange={handleCustomerChange}
-                allowCreate={!hasLegacyItems && (profile.role === 'sales' || profile.role === 'supervisor')}
+                allowCreate={
+                  !hasLegacyItems &&
+                  !lifecycleLocked &&
+                  (profile.role === 'sales' ||
+                    profile.role === 'supervisor' ||
+                    profile.role === 'admin')
+                }
               />
             </div>
             <div className="space-y-2">
@@ -437,7 +582,12 @@ export function BusinessOrderForm({
               产品明细
               {productRowsLocked && (
                 <Badge variant="outline" className="gap-1 font-normal">
-                  <LockKeyhole className="h-3 w-3" />已完成订单，产品行已锁定
+                  <LockKeyhole className="h-3 w-3" />订单已锁定
+                </Badge>
+              )}
+              {!productRowsLocked && normalizedConstraints.hasActiveAllocation && (
+                <Badge variant="outline" className="gap-1 font-normal">
+                  <LockKeyhole className="h-3 w-3" />已有有效分摊，产品身份及成交单价锁定
                 </Badge>
               )}
             </CardTitle>
@@ -494,7 +644,20 @@ export function BusinessOrderForm({
 
             <div className="space-y-3">
               {items.map((item) => {
-                const rowLocked = productControlsDisabled || item.source_type === 'legacy'
+                const constraint = item.order_item_id
+                  ? normalizedConstraints.constraints.get(item.order_item_id)
+                  : undefined
+                const identityLocked =
+                  productRowsLocked || item.source_type === 'legacy' || Boolean(constraint?.identityLocked)
+                const unitPriceLocked =
+                  pending || productRowsLocked || item.source_type === 'legacy' || Boolean(constraint?.unitPriceLocked)
+                const quantityLocked =
+                  pending || productRowsLocked || item.source_type === 'legacy' || Boolean(constraint?.quantityLocked)
+                const minimumQuantity = Math.max(constraint?.minimumQuantity ?? 0, 0.0001)
+                const deleteLocked =
+                  pending ||
+                  identityLocked ||
+                  (constraint ? !constraint.canDelete : false)
                 return (
                   <div
                     key={item.key}
@@ -527,16 +690,30 @@ export function BusinessOrderForm({
                       {item.source_type === 'legacy' && (
                         <div className="mt-1 text-xs text-destructive">此行仅保留展示，不可修改或删除。</div>
                       )}
+                      {constraint && !productRowsLocked && (
+                        <div className="mt-1 space-y-0.5 text-xs text-amber-700">
+                          {constraint.hasActiveAllocation && (
+                            <div>已有有效收款分摊：产品身份与成交单价不可修改。</div>
+                          )}
+                          {constraint.shippedQuantity > 0 && (
+                            <div>
+                              累计发货 {constraint.shippedQuantity.toLocaleString('zh-CN')}、累计退货{' '}
+                              {constraint.returnedQuantity.toLocaleString('zh-CN')}，数量不得低于净已发{' '}
+                              {constraint.netShippedQuantity.toLocaleString('zh-CN')}。
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-1">
                       <Label>数量</Label>
                       <Input
                         type="number"
-                        min="0.0001"
+                        min={minimumQuantity}
                         step="0.0001"
                         value={item.quantity}
                         onChange={(event) => updateItem(item.key, 'quantity', event.target.value)}
-                        disabled={rowLocked}
+                        disabled={quantityLocked}
                         required
                       />
                     </div>
@@ -548,7 +725,7 @@ export function BusinessOrderForm({
                         step="0.01"
                         value={item.unit_price}
                         onChange={(event) => updateItem(item.key, 'unit_price', event.target.value)}
-                        disabled={rowLocked}
+                        disabled={unitPriceLocked}
                         required
                       />
                     </div>
@@ -561,7 +738,7 @@ export function BusinessOrderForm({
                       size="icon"
                       onClick={() => setItems((current) => current.filter((row) => row.key !== item.key))}
                       aria-label="移除产品"
-                      disabled={rowLocked}
+                      disabled={deleteLocked}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -582,29 +759,21 @@ export function BusinessOrderForm({
             </div>
           </CardContent>
         </Card>
-
-        {correctionRequired && (
-          <Card>
-            <CardHeader><CardTitle className="text-base">修正说明</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
-              <Label htmlFor="correction_reason">已完成订单的修正原因</Label>
-              <Textarea
-                id="correction_reason"
-                value={correctionReason}
-                onChange={(event) => setCorrectionReason(event.target.value)}
-                maxLength={1000}
-                required
-              />
-            </CardContent>
-          </Card>
-        )}
       </fieldset>
 
       <div className="flex justify-end gap-2">
         <Button asChild type="button" variant="outline">
-          <Link href={initialOrder ? `/finance/performance/${initialOrder.id}` : '/finance/performance'}>取消</Link>
+          <Link
+            href={
+              initialOrder
+                ? `/finance/daily-orders/${initialOrder.id}`
+                : '/finance/daily-orders'
+            }
+          >
+            取消
+          </Link>
         </Button>
-        <Button type="submit" disabled={pending || hasLegacyItems}>
+        <Button type="submit" disabled={pending || hasLegacyItems || lifecycleLocked}>
           {pending ? '保存中…' : initialOrder ? '保存修改' : '创建草稿'}
         </Button>
       </div>

@@ -321,6 +321,9 @@ export interface BusinessOrder {
   reviewed_at: string | null
   completed_by: string | null
   completed_at: string | null
+  closed_at: string | null
+  closed_by: string | null
+  close_reason: string | null
   created_at: string
   updated_at: string
   /** Live-joined salesperson profile (PostgREST embed on salesperson_id) used to
@@ -415,6 +418,29 @@ export interface BusinessCustomProductListItem {
   default_currency: CurrencyCode
 }
 
+export interface BusinessCustomProductLibraryItem {
+  custom_product_id: string
+  customer_id: string
+  customer_name: string
+  is_shared: boolean
+  is_archived: boolean
+  created_by: string | null
+  created_at: string
+  updated_by: string | null
+  updated_at: string
+  latest_version_id: string | null
+  latest_version_no: number | null
+  version_count: number
+  code: string | null
+  name: string | null
+  description: string | null
+  specification: string | null
+  unit: string | null
+  image_url: string | null
+  default_unit_price: number | null
+  default_currency: CurrencyCode | null
+}
+
 export interface BusinessCustomerTransfer {
   id: string
   customer_id: string
@@ -472,6 +498,60 @@ export interface BusinessOrderShipmentItem {
   created_at: string
 }
 
+export interface BusinessOrderReturn {
+  id: string
+  order_id: string
+  returned_at: string
+  notes: string | null
+  idempotency_key: string | null
+  payload_hash: string | null
+  created_by: string | null
+  created_at: string
+  voided_at: string | null
+  voided_by: string | null
+  void_reason: string | null
+}
+
+export interface BusinessOrderReturnItem {
+  id: string
+  return_id: string
+  order_id: string
+  shipment_item_id: string
+  order_item_id: string
+  quantity: number
+  created_at: string
+}
+
+export interface BusinessOrderItemEditConstraint {
+  order_item_id: string
+  source_type: BusinessOrderItemSourceType
+  product_id: string | null
+  custom_product_id: string | null
+  custom_product_version_id: string | null
+  ordered_quantity: number
+  gross_shipped_quantity: number
+  returned_quantity: number
+  net_shipped_quantity: number
+  minimum_quantity: number
+  can_delete: boolean
+  can_replace_product: boolean
+  can_change_unit_price: boolean
+}
+
+export interface BusinessOrderEditConstraints {
+  order_id: string
+  version: number
+  status: BusinessOrderStatus
+  is_closed: boolean
+  is_completed: boolean
+  has_active_allocation: boolean
+  active_allocated_amount: number
+  can_edit_order: boolean
+  can_add_allocation: boolean
+  can_add_shipment: boolean
+  items: BusinessOrderItemEditConstraint[]
+}
+
 export interface BusinessOrderPaymentAllocationWithTransfer
   extends BusinessOrderPaymentAllocation {
   transfer: BusinessCustomerTransfer
@@ -479,6 +559,10 @@ export interface BusinessOrderPaymentAllocationWithTransfer
 
 export interface BusinessOrderShipmentWithItems extends BusinessOrderShipment {
   business_order_shipment_items: BusinessOrderShipmentItem[]
+}
+
+export interface BusinessOrderReturnWithItems extends BusinessOrderReturn {
+  business_order_return_items: BusinessOrderReturnItem[]
 }
 
 export interface BusinessCustomerTransferWithAllocations extends BusinessCustomerTransfer {
@@ -520,6 +604,15 @@ export type BusinessLifecycleEntityType =
   | 'transfer'
   | 'allocation'
   | 'shipment'
+  | 'return'
+  | 'closure'
+
+export type BusinessLifecycleAuditAction =
+  | 'create'
+  | 'version_create'
+  | 'state_change'
+  | 'void'
+  | 'special_close'
 
 export interface BusinessLifecycleAuditLog {
   id: number
@@ -527,7 +620,7 @@ export interface BusinessLifecycleAuditLog {
   customer_id: string | null
   entity_type: BusinessLifecycleEntityType
   entity_id: string
-  action: 'create' | 'version_create' | 'state_change' | 'void'
+  action: BusinessLifecycleAuditAction
   old_data: Record<string, unknown> | null
   new_data: Record<string, unknown> | null
   reason: string | null
@@ -572,6 +665,7 @@ export interface BusinessOrderWithDetails extends BusinessOrder {
   business_order_payments: BusinessOrderPayment[]
   business_order_payment_allocations?: BusinessOrderPaymentAllocationWithTransfer[]
   business_order_shipments?: BusinessOrderShipmentWithItems[]
+  business_order_returns?: BusinessOrderReturnWithItems[]
 }
 
 export interface Profile {

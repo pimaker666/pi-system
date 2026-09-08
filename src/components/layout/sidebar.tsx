@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard,
   Package,
+  PackageSearch,
   Boxes,
   Users,
   UsersRound,
@@ -40,14 +41,30 @@ const NAV: NavItem[] = [
     href: '/products',
     label: '产品库',
     icon: Package,
-    match: (p) => p.startsWith('/products') && !p.startsWith('/products/groups'),
+    match: (p) =>
+      p.startsWith('/products') && !p.startsWith('/products/groups'),
   },
   { href: '/products/groups', label: '产品分组', icon: Boxes },
+  {
+    href: '/finance/custom-products',
+    label: '定制产品库',
+    icon: PackageSearch,
+    allowedRoles: ['sales', 'supervisor', 'admin', 'finance'],
+    match: (p) => p.startsWith('/finance/custom-products'),
+  },
+  {
+    href: '/finance/daily-orders',
+    label: '每日订单',
+    icon: FileText,
+    allowedRoles: ['sales', 'supervisor', 'admin', 'finance'],
+    match: (p) => p.startsWith('/finance/daily-orders'),
+  },
   {
     href: '/customers',
     label: '客户',
     icon: Users,
-    match: (p) => p.startsWith('/customers') && !p.startsWith('/customers/groups'),
+    match: (p) =>
+      p.startsWith('/customers') && !p.startsWith('/customers/groups'),
   },
   { href: '/customers/groups', label: '客户分组', icon: UsersRound },
   {
@@ -55,13 +72,17 @@ const NAV: NavItem[] = [
     label: '财务管理',
     icon: Landmark,
     allowedRoles: ['admin', 'finance'],
-    match: (p) => p.startsWith('/finance'),
+    match: (p) =>
+      p.startsWith('/finance') &&
+      !p.startsWith('/finance/custom-products') &&
+      !p.startsWith('/finance/daily-orders'),
   },
   {
     href: '/finance/performance',
     label: '我的业绩',
     icon: Landmark,
     allowedRoles: ['sales', 'supervisor'],
+    match: (p) => p.startsWith('/finance/performance'),
   },
   { href: '/settings', label: '公司设置', icon: Settings },
   {
@@ -72,9 +93,17 @@ const NAV: NavItem[] = [
   },
 ]
 
-export function Sidebar({ role, fullName }: { role: UserRole; fullName: string | null }) {
+export function Sidebar({
+  role,
+  fullName,
+}: {
+  role: UserRole
+  fullName: string | null
+}) {
   const pathname = usePathname()
-  const items = NAV.filter((item) => !item.allowedRoles || item.allowedRoles.includes(role))
+  const items = NAV.filter(
+    (item) => !item.allowedRoles || item.allowedRoles.includes(role),
+  )
 
   return (
     <aside className="flex h-full w-60 flex-col border-r bg-muted/30">
@@ -85,7 +114,9 @@ export function Sidebar({ role, fullName }: { role: UserRole; fullName: string |
 
       <nav className="flex-1 space-y-1 p-3">
         {items.map((item) => {
-          const active = item.match ? item.match(pathname) : pathname === item.href
+          const active = item.match
+            ? item.match(pathname)
+            : pathname === item.href
           const Icon = item.icon
           return (
             <Link

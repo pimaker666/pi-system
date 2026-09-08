@@ -6,7 +6,7 @@ import { requireApproved } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
 export default async function FinancePerformancePage() {
-  const profile = await requireApproved()
+  await requireApproved()
   const supabase = await createClient()
 
   const { data, error } = await supabase
@@ -23,16 +23,12 @@ export default async function FinancePerformancePage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">
-          {profile.role === 'sales' ? '我的业绩' : '业务业绩'}
-        </h1>
+        <h1 className="text-2xl font-semibold">业务业绩</h1>
         <p className="text-sm text-muted-foreground">
-          {profile.role === 'sales'
-            ? '从客户和产品库创建业务订单，跟踪有效收款分摊、发货进度与逾期尾款。'
-            : '查看业务订单、有效收款分摊、付款与发货状态及逾期尾款。'}
+          本页为业务订单的只读汇总，数据与每日订单同源；请前往每日订单查看详情或维护订单。
         </p>
       </div>
-      <PerformanceManager profile={profile} orders={orders} />
+      <PerformanceManager orders={orders} />
     </div>
   )
 }

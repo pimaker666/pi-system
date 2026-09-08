@@ -1,6 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAdmin, requireApproved, requireFinanceAccess } from '@/lib/auth'
@@ -8,22 +9,29 @@ import {
   businessCustomerTransferAllocationInputSchema,
   businessCustomerTransferInputSchema,
   businessCustomProductInputSchema,
+  businessCustomProductLibraryFilterSchema,
   businessCustomProductStateInputSchema,
   businessCustomProductVersionInputSchema,
   businessOrderFinanceSchema,
   businessOrderInputSchema,
-  businessOrderPaymentInputSchema,
   businessOrderReasonSchema,
+  businessOrderReturnInputSchema,
+  businessOrderReturnVoidInputSchema,
   businessOrderShipmentInputSchema,
+  businessOrderSpecialCloseInputSchema,
   businessOrderVoidReasonSchema,
 } from '@/schemas/business-order'
 import type {
   BusinessCustomerPrepayment,
   BusinessCustomerTransfer,
   BusinessCustomProduct,
+  BusinessCustomProductLibraryItem,
   BusinessCustomProductListItem,
   BusinessCustomProductVersion,
+  BusinessOrderEditConstraints,
   BusinessOrderPaymentAllocation,
+  BusinessOrderReturn,
+  BusinessOrderReturnItem,
   BusinessOrderSettlementSummary,
   BusinessOrderShipment,
   BusinessOrderShipmentItem,
@@ -52,8 +60,21 @@ export interface BusinessOrderShipmentActionResult extends ActionResult {
   items?: BusinessOrderShipmentItem[]
 }
 
+export interface BusinessOrderReturnActionResult extends ActionResult {
+  return?: BusinessOrderReturn
+  items?: BusinessOrderReturnItem[]
+}
+
+export interface BusinessOrderEditConstraintsResult extends ActionResult {
+  data?: BusinessOrderEditConstraints
+}
+
 export interface BusinessCustomProductListResult extends ActionResult {
   data?: BusinessCustomProductListItem[]
+}
+
+export interface BusinessCustomProductLibraryResult extends ActionResult {
+  data?: BusinessCustomProductLibraryItem[]
 }
 
 export interface BusinessCustomerPrepaymentResult extends ActionResult {
@@ -71,20 +92,18 @@ interface BusinessOrderRpcRow {
 }
 
 function revalidateBusinessOrders(id?: string) {
-  revalidatePath('/business-orders')
+  revalidatePath('/finance/daily-orders')
   revalidatePath('/finance/performance')
   revalidatePath('/finance')
   if (id) {
-    revalidatePath(`/business-orders/${id}`)
-    revalidatePath(`/finance/performance/${id}`)
+    revalidatePath(`/finance/daily-orders/${id}`)
   }
 }
 
 function revalidateBusinessOrderIds(ids: string[]) {
   revalidateBusinessOrders()
   for (const id of new Set(ids)) {
-    revalidatePath(`/business-orders/${id}`)
-    revalidatePath(`/finance/performance/${id}`)
+    revalidatePath(`/finance/daily-orders/${id}`)
   }
 }
 
@@ -94,10 +113,16 @@ function firstValidationError(error: { issues: Array<{ message: string }> }) {
 
 function businessOrderError(message: string, fallback = '业务订单操作失败') {
   const mappings: Array<[string, string]> = [
+    ['Only approved sales, supervisor, or admin users', '仅已审核的业务员、主管或管理员可以创建订单'],
+    ['Approved sales, supervisor, or admin account required', '仅已审核的业务员、主管或管理员可以编辑订单'],
     ['Only approved sales users', '仅已审核通过的业务员或业务主管可以执行此操作'],
+    ['Only approved administrators or finance users can register returns', '仅管理员或财务可以登记退货'],
+    ['Only approved administrators or finance users can void returns', '仅管理员或财务可以作废退货'],
     ['Only approved administrators or finance users', '仅管理员或财务可以执行此操作'],
+    ['Only an approved administrator', '仅已审核通过的管理员可以执行此操作'],
     ['Approved business role required', '当前账号无业务操作权限'],
     ['Approved account required', '账号尚未审核通过'],
+    ['Customer does not exist or is not manageable by current user', '客户不存在或当前账号无权管理'],
     ['Customer does not exist or is not owned', '客户不存在或不属于当前业务员'],
     ['Customer does not exist', '客户不存在或不属于该业务员'],
     ['Customer context is not accessible', '无权访问该客户的定制产品'],
@@ -123,10 +148,26 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Business order does not exist', '业务订单不存在'],
     ['Business order is not accessible', '无权查看该业务订单'],
     ['Business order version conflict', '订单已被其他人修改，请刷新后重试'],
+    ['Business order cannot be edited in current status', '当前订单状态不可编辑'],
+    ['Completed or closed business order cannot be edited', '已完成或已关闭订单不可编辑'],
+    ['Sales user cannot edit another owner business order', '不能编辑其他业务员名下的订单'],
     ['Salesperson cannot edit', '当前状态下业务员不能编辑此订单'],
+    ['Finance users cannot create business orders', '财务不能创建业务订单'],
+    ['Finance users cannot edit business orders', '财务不能编辑业务订单'],
+    ['Each order item id must be unique', '同一订单明细 ID 不能重复'],
+    ['Order item id does not belong to order', '订单明细 ID 不属于当前订单'],
+    ['Order item product identity cannot be replaced', '已有订单明细不能更换产品'],
+    ['Order items cannot be deleted after an active payment allocation', '已有有效收款分摊，不能删除订单明细'],
+    ['Order item product cannot be replaced after an active payment allocation', '已有有效收款分摊，不能更换订单产品'],
+    ['Order item price cannot be changed after an active payment allocation', '已有有效收款分摊，不能修改订单单价'],
+    ['Shipped order items cannot be deleted', '已发货订单明细不能删除'],
+    ['Shipped order item product cannot be replaced', '已发货订单明细不能更换产品'],
+    ['Order item quantity cannot be less than net shipped quantity', '订单数量不能低于净发货数量'],
     ['Cannot change customer after payment allocation', '已有分摊或订单已完成，不能更换客户'],
     ['Cannot change currency after payment allocation', '已有分摊或订单已完成，不能更换币种'],
     ['Order total cannot be less than active payment allocations', '订单总额不能低于有效收款分摊'],
+    ['Order item is locked', '订单明细已被发货或退货记录引用，不能删除或更换产品'],
+    ['Referenced order item cannot be deleted', '订单明细已被发货或退货记录引用，不能删除'],
     ['Completed order items cannot be changed', '已完成并发货的订单不能修改产品明细'],
     ['Completed order correction must preserve', '已完成订单的审批、收款和发货状态必须保持完成'],
     ['Customer transfer does not exist', '客户转账不存在'],
@@ -140,6 +181,7 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Exchange rate is invalid', '汇率必须大于 0 且不能超过上限'],
     ['CNY exchange rate must equal one', '人民币汇率必须为 1'],
     ['Received time is required', '请选择收款时间'],
+    ['Idempotency key is invalid', '缺少有效幂等键或幂等键超过 200 字'],
     ['Idempotency key is required', '缺少有效幂等键'],
     ['Transfer notes cannot exceed', '转账备注不能超过 1000 字'],
     ['Allocations must be a JSON array', '分摊数据格式不正确'],
@@ -183,6 +225,29 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Only approved orders can have shipments voided', '仅已审批订单可以作废发货'],
     ['Sales user cannot void another salesperson shipment', '业务员不能作废其他业务员的发货批次'],
     ['Role cannot void shipments', '当前角色不能作废发货批次'],
+    ['Shipment with active returns cannot be voided', '该发货批次已被有效退货引用，不能作废'],
+    ['Shipment has active return references', '该发货批次已被有效退货引用，不能作废'],
+    ['Shipment item is referenced by an active return', '该发货明细已被有效退货引用，不能作废发货'],
+    ['Returned time is required', '请选择退货时间'],
+    ['Return notes cannot exceed', '退货备注不能超过 1000 字'],
+    ['Return items count must be between', '退货明细必须为 1 至 500 条'],
+    ['Each return shipment_item_id must be unique', '同一发货明细不能重复退货'],
+    ['Return shipment item does not belong to an active shipment of order', '退货来源不是该订单的有效发货明细'],
+    ['Return source shipment is invalid or voided', '退货来源发货明细无效或已作废'],
+    ['Return quantity is invalid', '退货数量不合法'],
+    ['Return quantity exceeds source shipment item quantity', '退货数量超过该发货明细的可退数量'],
+    ['Voiding return would make net shipped quantity exceed ordered quantity', '作废退货后净发货数量将超过订单数量'],
+    ['Active business order return does not exist', '有效退货记录不存在'],
+    ['Close reason is required', '请填写不超过 1000 字的特殊关闭原因'],
+    ['Completed business order cannot be specially closed', '已完成订单不能特殊关闭'],
+    ['Business order is already closed', '订单已特殊关闭，请勿重复操作'],
+    ['Closed business order cannot be transitioned', '已关闭订单不能变更状态'],
+    ['Completed business order is immutable', '已完成订单不可修改'],
+    ['Closed business order cannot receive new shipments', '已关闭订单不能新增发货'],
+    ['Invalid custom product library scope', '定制产品库查看范围不合法'],
+    ['Invalid custom product library status', '定制产品库状态筛选不合法'],
+    ['Only administrators or finance can list all custom products', '仅管理员或财务可以查看全部定制产品'],
+    ['Customer scope requires customer_id', '按客户筛选时请选择客户'],
     ['Void reason is required', '请填写作废原因'],
     ['At least one order item', '订单至少需要一条产品明细'],
     ['Order items count must be between', '订单明细必须为 1 至 500 条'],
@@ -245,10 +310,21 @@ function allocationPayload(
   }))
 }
 
+function orderItemsPayload(
+  items: ReturnType<typeof businessOrderInputSchema.parse>['items'],
+) {
+  return items.map(({ order_item_id: orderItemId, ...item }) =>
+    orderItemId ? { id: orderItemId, ...item } : item,
+  )
+}
+
 export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOrderActionResult> {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor'].includes(profile.role)) {
-    return { ok: false, error: '仅业务员或业务主管可以创建业务订单' }
+  if (profile.role === 'finance') {
+    return { ok: false, error: '财务不能创建业务订单' }
+  }
+  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管或管理员可以创建业务订单' }
   }
 
   const parsed = businessOrderInputSchema.safeParse(rawInput)
@@ -265,7 +341,7 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
     p_shipping_fee: input.shipping_fee,
     p_tracking_number: nullableText(input.tracking_number),
     p_sales_notes: nullableText(input.sales_notes),
-    p_items: input.items,
+    p_items: orderItemsPayload(input.items),
     p_payment_due_date: nullableText(input.payment_due_date),
   })
 
@@ -284,11 +360,11 @@ export async function updateBusinessOrder(
   reason = '',
 ): Promise<BusinessOrderActionResult> {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '当前角色不能编辑业务订单' }
+  if (profile.role === 'finance') {
+    return { ok: false, error: '财务不能编辑业务订单' }
   }
-  if ((profile.role === 'admin' || profile.role === 'finance') && !reason.trim()) {
-    return { ok: false, error: '修正已完成订单时必须填写原因' }
+  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
+    return { ok: false, error: '当前角色不能编辑业务订单' }
   }
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
     return { ok: false, error: '订单版本无效，请刷新后重试' }
@@ -312,7 +388,7 @@ export async function updateBusinessOrder(
     p_shipping_fee: input.shipping_fee,
     p_tracking_number: nullableText(input.tracking_number),
     p_sales_notes: nullableText(input.sales_notes),
-    p_items: input.items,
+    p_items: orderItemsPayload(input.items),
     p_payment_due_date: nullableText(input.payment_due_date),
     p_reason: nullableText(parsedReason.data),
   })
@@ -425,6 +501,25 @@ export async function listBusinessCustomProductsForCustomer(
   if (error) return { ok: false, error: businessOrderError(error.message, '读取定制产品失败') }
 
   return { ok: true, data: (data ?? []) as BusinessCustomProductListItem[] }
+}
+
+export async function listBusinessCustomProductsLibrary(
+  rawFilters: unknown = {},
+): Promise<BusinessCustomProductLibraryResult> {
+  await requireApproved()
+  const parsed = businessCustomProductLibraryFilterSchema.safeParse(rawFilters)
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('list_business_custom_products_library', {
+    p_search: nullableText(parsed.data.search),
+    p_customer_id: parsed.data.customer_id ?? null,
+    p_scope: parsed.data.scope,
+    p_status: parsed.data.status,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '读取定制产品库失败') }
+
+  return { ok: true, data: (data ?? []) as BusinessCustomProductLibraryItem[] }
 }
 
 export async function recordBusinessCustomerTransfer(
@@ -603,6 +698,58 @@ export async function voidBusinessOrderShipment(
   return { ok: true }
 }
 
+export async function createBusinessOrderReturn(
+  orderId: string,
+  rawInput: unknown,
+): Promise<BusinessOrderReturnActionResult> {
+  await requireFinanceAccess()
+  const parsedOrderId = z.string().uuid('请选择有效订单').safeParse(orderId)
+  if (!parsedOrderId.success) return { ok: false, error: firstValidationError(parsedOrderId.error) }
+
+  const parsed = businessOrderReturnInputSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+  const input = parsed.data
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('create_business_order_return', {
+    p_order_id: parsedOrderId.data,
+    p_returned_at: new Date(input.returned_at).toISOString(),
+    p_notes: nullableText(input.notes),
+    p_items: input.items,
+    p_idempotency_key: input.idempotency_key,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '登记退货失败') }
+
+  const result = firstRpcRow<{
+    return: BusinessOrderReturn
+    items: BusinessOrderReturnItem[]
+  }>(data)
+  if (!result?.return) return { ok: false, error: '数据库未返回退货记录' }
+
+  revalidateBusinessOrders(parsedOrderId.data)
+  return { ok: true, return: result.return, items: result.items ?? [] }
+}
+
+export async function voidBusinessOrderReturn(
+  returnId: string,
+  reason: string,
+): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const parsed = businessOrderReturnVoidInputSchema.safeParse({ return_id: returnId, reason })
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('void_business_order_return', {
+    p_return_id: parsed.data.return_id,
+    p_reason: parsed.data.reason,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '作废退货失败') }
+
+  const orderReturn = firstRpcRow<BusinessOrderReturn>(data)
+  revalidateBusinessOrders(orderReturn?.order_id)
+  return { ok: true }
+}
+
 export async function getBusinessCustomerPrepayment(
   customerId: string,
 ): Promise<BusinessCustomerPrepaymentResult> {
@@ -631,62 +778,19 @@ export async function getBusinessOrderSettlementSummary(
   return { ok: true, data: summary }
 }
 
-/**
- * Legacy export for existing callers. A payment is now recorded as one customer transfer
- * allocated to the supplied order, so customer/currency/rate/idempotency are mandatory.
- */
-export async function addBusinessOrderPayment(
+export async function getBusinessOrderEditConstraints(
   orderId: string,
-  rawInput: unknown,
-): Promise<ActionResult> {
-  const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '当前角色不能登记客户转账' }
-  }
-
-  const parsed = businessOrderPaymentInputSchema.safeParse(rawInput)
-  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
-  const input = parsed.data
-
-  const allocations = allocationPayload([
-    { order_id: orderId, amount: input.amount, payment_type: input.payment_type },
-  ])
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('record_business_customer_transfer', {
-    p_customer_id: input.customer_id,
-    p_currency: input.currency,
-    p_amount: input.amount,
-    p_exchange_rate_to_cny: input.exchange_rate_to_cny,
-    p_received_at: new Date(input.received_at).toISOString(),
-    p_payment_type: input.payment_type,
-    p_proof_path: input.proof_path,
-    p_notes: nullableText(input.notes),
-    p_idempotency_key: input.idempotency_key,
-    p_allocations: allocations,
-  })
-
-  if (error) return { ok: false, error: businessOrderError(error.message, '新增收款失败') }
-  revalidateBusinessOrders(orderId)
-  return { ok: true }
-}
-
-/** Legacy export: payment IDs are now allocation IDs. */
-export async function voidBusinessOrderPayment(
-  allocationId: string,
-  reason = '',
-): Promise<ActionResult> {
-  return voidBusinessOrderPaymentAllocation(allocationId, reason)
-}
-
-/** Legacy payment rows are immutable after migration 0028. */
-export async function updateBusinessOrderPayment(
-  paymentId: string,
-  rawInput: unknown,
-): Promise<ActionResult> {
+): Promise<BusinessOrderEditConstraintsResult> {
   await requireApproved()
-  void paymentId
-  void rawInput
-  return { ok: false, error: '不再支持原地修改收款，请作废分摊后重新登记' }
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_business_order_edit_constraints', {
+    p_order_id: orderId,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '读取订单编辑约束失败') }
+
+  const constraints = firstRpcRow<BusinessOrderEditConstraints>(data)
+  if (!constraints) return { ok: false, error: '订单编辑约束不存在' }
+  return { ok: true, data: constraints }
 }
 
 export async function getBusinessOrderPaymentProofUrl(
@@ -723,6 +827,33 @@ export async function getBusinessOrderPaymentProofUrl(
   return { url: signed.signedUrl }
 }
 
+export async function closeBusinessOrderSpecial(
+  orderId: string,
+  expectedVersion: number,
+  reason: string,
+): Promise<BusinessOrderActionResult> {
+  await requireAdmin()
+  const parsed = businessOrderSpecialCloseInputSchema.safeParse({
+    order_id: orderId,
+    reason,
+    expected_version: expectedVersion,
+  })
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('close_business_order_special', {
+    p_order_id: parsed.data.order_id,
+    p_reason: parsed.data.reason,
+    p_expected_version: parsed.data.expected_version,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '特殊关闭订单失败') }
+
+  const order = parseRpcOrder(data)
+  if (!order) return { ok: false, error: '数据库未返回关闭后的订单信息' }
+  revalidateBusinessOrders(order.id)
+  return { ok: true, ...order }
+}
+
 async function transitionBusinessOrder(
   id: string,
   target: BusinessOrderStatus,
@@ -745,8 +876,8 @@ async function transitionBusinessOrder(
 
 export async function submitBusinessOrder(id: string, note = ''): Promise<ActionResult> {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor'].includes(profile.role)) {
-    return { ok: false, error: '仅业务员或业务主管可以提交订单' }
+  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管或管理员可以提交订单' }
   }
   return transitionBusinessOrder(id, 'submitted', note)
 }
@@ -767,11 +898,11 @@ export async function saveBusinessOrderFinance(
   rawInput: unknown,
 ): Promise<ActionResult> {
   const profile = await requireFinanceAccess()
+  if (profile.role !== 'finance') {
+    return { ok: false, error: '仅财务可以填写订单核算信息' }
+  }
   const parsed = businessOrderFinanceSchema.safeParse(rawInput)
   if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
-  if (profile.role === 'admin' && !parsed.data.reason.trim()) {
-    return { ok: false, error: '管理员修正已完成订单时必须填写原因' }
-  }
 
   const supabase = await createClient()
   const { error } = await supabase.rpc('save_business_order_finance', {

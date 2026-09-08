@@ -63,6 +63,7 @@ const exchangeRateSchema = roundedNumber(8).pipe(
 
 const catalogOrderItemSchema = z
   .object({
+    order_item_id: z.string().uuid('订单明细 ID 不合法').optional(),
     source_type: z.literal('catalog'),
     product_id: z.string().uuid('请选择有效产品'),
     quantity: positiveQuantitySchema,
@@ -72,6 +73,7 @@ const catalogOrderItemSchema = z
 
 const customOrderItemSchema = z
   .object({
+    order_item_id: z.string().uuid('订单明细 ID 不合法').optional(),
     source_type: z.literal('custom'),
     custom_product_id: z.string().uuid('请选择有效定制产品'),
     custom_product_version_id: z.string().uuid('请选择有效定制产品版本'),
@@ -109,6 +111,18 @@ export const businessOrderInputSchema = z
       .max(MAX_BATCH_SIZE, '订单明细不能超过 500 条'),
   })
   .superRefine((value, ctx) => {
+    const seenItemIds = new Set<string>()
+    value.items.forEach((item, index) => {
+      if (!item.order_item_id) return
+      if (seenItemIds.has(item.order_item_id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['items', index, 'order_item_id'],
+          message: '同一订单明细 ID 不能重复',
+        })
+      }
+      seenItemIds.add(item.order_item_id)
+    })
     if (value.currency === 'CNY' && value.exchange_rate_to_cny !== 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -284,6 +298,76 @@ export const businessOrderShipmentInputSchema = z
   })
   .strict()
 
+export const businessOrderReturnItemInputSchema = z
+  .object({
+    shipment_item_id: z.string().uuid('请选择有效发货明细'),
+    quantity: positiveQuantitySchema,
+  })
+  .strict()
+
+const businessOrderReturnItemsSchema = z
+  .array(businessOrderReturnItemInputSchema)
+  .min(1, '请至少添加一条退货明细')
+  .max(MAX_BATCH_SIZE, '退货明细不能超过 500 条')
+  .superRefine((items, ctx) => {
+    const seen = new Set<string>()
+    items.forEach((item, index) => {
+      if (seen.has(item.shipment_item_id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [index, 'shipment_item_id'],
+          message: '同一发货明细不能重复退货',
+        })
+      }
+      seen.add(item.shipment_item_id)
+    })
+  })
+
+export const businessOrderReturnInputSchema = z
+  .object({
+    returned_at: dateTimeSchema,
+    notes: optionalText(1000, '退货备注不能超过 1000 字'),
+    items: businessOrderReturnItemsSchema,
+    idempotency_key: z.string().trim().min(1, '缺少幂等键').max(200, '幂等键不能超过 200 字'),
+  })
+  .strict()
+
+export const businessOrderReturnVoidInputSchema = z
+  .object({
+    return_id: z.string().uuid('请选择有效退货记录'),
+    reason: z.string().trim().min(1, '请填写作废原因').max(1000, '作废原因不能超过 1000 字'),
+  })
+  .strict()
+
+export const businessOrderSpecialCloseInputSchema = z
+  .object({
+    order_id: z.string().uuid('请选择有效订单'),
+    reason: z.string().trim().min(1, '请填写特殊关闭原因').max(1000, '关闭原因不能超过 1000 字'),
+    expected_version: z.coerce.number().int('订单版本无效').positive('订单版本无效'),
+  })
+  .strict()
+
+export const businessCustomProductLibraryFilterSchema = z
+  .object({
+    search: z.string().trim().max(200, '搜索内容不能超过 200 字').optional().default(''),
+    customer_id: z.string().uuid('请选择有效客户').optional(),
+    scope: z
+      .enum(['accessible', 'owned', 'shared', 'customer', 'all'])
+      .optional()
+      .default('accessible'),
+    status: z.enum(['active', 'archived', 'all']).optional().default('active'),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.scope === 'customer' && !value.customer_id) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['customer_id'],
+        message: '按客户筛选时请选择客户',
+      })
+    }
+  })
+
 export const businessOrderVoidReasonSchema = z
   .string()
   .trim()
@@ -322,5 +406,12 @@ export type BusinessCustomerTransferAllocationInput = z.infer<
 >
 export type BusinessOrderShipmentItemInput = z.infer<typeof businessOrderShipmentItemInputSchema>
 export type BusinessOrderShipmentInput = z.infer<typeof businessOrderShipmentInputSchema>
+export type BusinessOrderReturnItemInput = z.infer<typeof businessOrderReturnItemInputSchema>
+export type BusinessOrderReturnInput = z.infer<typeof businessOrderReturnInputSchema>
+export type BusinessOrderReturnVoidInput = z.infer<typeof businessOrderReturnVoidInputSchema>
+export type BusinessOrderSpecialCloseInput = z.infer<typeof businessOrderSpecialCloseInputSchema>
+export type BusinessCustomProductLibraryFilter = z.infer<
+  typeof businessCustomProductLibraryFilterSchema
+>
 export type BusinessOrderPaymentInput = z.infer<typeof businessOrderPaymentInputSchema>
 export type BusinessOrderFinanceInput = z.infer<typeof businessOrderFinanceSchema>

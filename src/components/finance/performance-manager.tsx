@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Eye, Plus, Search } from 'lucide-react'
+import { Eye, Search } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -35,7 +35,7 @@ import {
 } from '@/lib/business-orders'
 import { formatCny } from '@/lib/finance'
 import { displayProfileName, formatCurrency, formatDate } from '@/lib/utils'
-import type { BusinessOrder, BusinessOrderStatus, Profile } from '@/types'
+import type { BusinessOrder, BusinessOrderStatus } from '@/types'
 
 interface AllocationListRow {
   amount: number
@@ -50,8 +50,9 @@ export interface BusinessOrderListRow extends BusinessOrder {
   business_order_payment_allocations: AllocationListRow[]
 }
 
+type OrderStatusFilter = 'all' | 'special_closed' | BusinessOrderStatus
+
 export interface PerformanceManagerProps {
-  profile: Pick<Profile, 'id' | 'role'>
   orders: BusinessOrderListRow[]
 }
 
@@ -61,14 +62,15 @@ function effectiveAllocations(order: BusinessOrderListRow) {
   )
 }
 
-export function PerformanceManager({ profile, orders }: PerformanceManagerProps) {
+export function PerformanceManager({ orders }: PerformanceManagerProps) {
   const [query, setQuery] = useState('')
-  const [status, setStatus] = useState<'all' | BusinessOrderStatus>('all')
+  const [status, setStatus] = useState<OrderStatusFilter>('all')
 
   const filteredOrders = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase('zh-CN')
     return orders.filter((order) => {
-      if (status !== 'all' && order.status !== status) return false
+      if (status === 'special_closed' && !order.closed_at) return false
+      if (status !== 'all' && status !== 'special_closed' && order.status !== status) return false
       if (!normalized) return true
       const customer = getBusinessOrderCustomerName(order.customer_snapshot)
       return [
@@ -136,6 +138,7 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部状态</SelectItem>
+              <SelectItem value="special_closed">特殊关闭</SelectItem>
               {Object.entries(BUSINESS_ORDER_STATUS_LABELS).map(([value, label]) => (
                 <SelectItem key={value} value={value}>
                   {label}
@@ -144,14 +147,6 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
             </SelectContent>
           </Select>
         </div>
-        {(profile.role === 'sales' || profile.role === 'supervisor') && (
-          <Button asChild>
-            <Link href="/finance/performance/new">
-              <Plus className="h-4 w-4" />
-              新建业务订单
-            </Link>
-          </Button>
-        )}
       </div>
 
       <div className="overflow-x-auto rounded-md border">
@@ -186,7 +181,7 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
                 <TableRow key={order.id}>
                   <TableCell>
                     <Link
-                      href={`/finance/performance/${order.id}`}
+                      href={`/finance/daily-orders/${order.id}`}
                       className="font-medium hover:underline"
                     >
                       {order.order_number}
@@ -235,13 +230,17 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={BUSINESS_ORDER_STATUS_VARIANTS[order.status]}>
-                      {BUSINESS_ORDER_STATUS_LABELS[order.status]}
-                    </Badge>
+                    {order.closed_at ? (
+                      <Badge variant="secondary">特殊关闭</Badge>
+                    ) : (
+                      <Badge variant={BUSINESS_ORDER_STATUS_VARIANTS[order.status]}>
+                        {BUSINESS_ORDER_STATUS_LABELS[order.status]}
+                      </Badge>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Button asChild variant="ghost" size="icon">
-                      <Link href={`/finance/performance/${order.id}`} aria-label="查看订单">
+                      <Link href={`/finance/daily-orders/${order.id}`} aria-label="查看订单">
                         <Eye className="h-4 w-4" />
                       </Link>
                     </Button>

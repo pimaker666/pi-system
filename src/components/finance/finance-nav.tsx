@@ -7,19 +7,19 @@ import type { UserRole } from '@/types'
 
 const financeItems = [
   { href: '/finance', label: '财务总览', financeOnly: true },
-  { href: '/finance/daily-orders', label: '每日订单', financeOnly: true },
+  { href: '/finance/daily-orders', label: '每日订单', financeOnly: false },
   { href: '/finance/transactions', label: '收支流水', financeOnly: true },
   { href: '/finance/costs', label: '订单成本', financeOnly: true },
+  { href: '/finance/custom-products', label: '定制产品库', financeOnly: false },
   { href: '/finance/performance', label: '业务业绩', financeOnly: false },
-  { href: '/finance/performance/orders', label: '每日订单认领', financeOnly: false },
-  { href: '/finance/performance/daily-orders', label: '团队每日订单', supervisorOnly: true },
 ] as const
 
 export function FinanceNav({ role }: { role: UserRole }) {
   const pathname = usePathname()
   const canManageFinance = role === 'admin' || role === 'finance'
   const items = financeItems.filter((item) => {
-    if ('supervisorOnly' in item && item.supervisorOnly) return role === 'supervisor'
+    if ('supervisorOnly' in item && item.supervisorOnly)
+      return role === 'supervisor'
     if ('financeOnly' in item && item.financeOnly) return canManageFinance
     return true
   })
@@ -34,7 +34,10 @@ export function FinanceNav({ role }: { role: UserRole }) {
   }, '')
 
   return (
-    <nav className="mb-6 flex flex-wrap gap-2 border-b pb-3" aria-label="财务模块导航">
+    <nav
+      className="mb-6 flex flex-wrap gap-2 border-b pb-3"
+      aria-label="财务模块导航"
+    >
       {items.map((item) => {
         const active = item.href === activeHref
         return (

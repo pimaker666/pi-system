@@ -39,11 +39,13 @@ interface BusinessShipmentManagerProps {
   order: Pick<
     BusinessOrder,
     'id' | 'status' | 'approval_status' | 'salesperson_id' | 'completion_gate_version'
-  >
+  > & { closed_at?: string | null }
   profile: Pick<Profile, 'id' | 'role'>
   orderItems: BusinessOrderItem[]
   shipments: BusinessOrderShipment[]
   shipmentItems: BusinessOrderShipmentItem[]
+  returns?: Array<{ id: string; voided_at: string | null }>
+  returnItems?: Array<{ return_id?: string; order_return_id?: string; order_item_id: string; quantity: number }>
 }
 
 function newUuid() {
@@ -67,6 +69,8 @@ export function BusinessShipmentManager({
   orderItems,
   shipments,
   shipmentItems,
+  returns = [],
+  returnItems = [],
 }: BusinessShipmentManagerProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -88,19 +92,35 @@ export function BusinessShipmentManager({
     }
     return totals
   }, {})
+  const activeReturnIds = new Set(
+    returns.filter((returnRecord) => !returnRecord.voided_at).map((returnRecord) => returnRecord.id),
+  )
+  const returnedByOrderItem = returnItems.reduce<Record<string, number>>((totals, item) => {
+    const returnId = item.return_id ?? item.order_return_id
+    if (returnId && activeReturnIds.has(returnId)) {
+      totals[item.order_item_id] = (totals[item.order_item_id] ?? 0) + Number(item.quantity)
+    }
+    return totals
+  }, {})
   const itemRows = orderItems.map((item) => {
     const total = Number(item.quantity)
     const shipped = shippedByOrderItem[item.id] ?? 0
-    return { item, total, shipped, remaining: Math.max(0, total - shipped) }
+    const returned = returnedByOrderItem[item.id] ?? 0
+    const netShipped = Math.max(0, shipped - returned)
+    return { item, total, shipped, returned, netShipped, remaining: Math.max(0, total - netShipped) }
   })
 
   const hasRemaining = itemRows.some((row) => row.remaining > 0)
   const hasRolePermission =
-    (profile.role === 'admin' || profile.role === 'finance') ||
+    profile.role === 'admin' ||
+    profile.role === 'finance' ||
     ((profile.role === 'sales' || profile.role === 'supervisor') &&
       order.salesperson_id === profile.id)
   const canManage =
-    hasRolePermission && order.status === 'approved' && order.approval_status === 'approved'
+    hasRolePermission &&
+    !order.closed_at &&
+    order.status === 'approved' &&
+    order.approval_status === 'approved'
   const isLockedCompletedOrder = order.status === 'completed' && order.completion_gate_version >= 2
   const isLegacyCompletedOrder = order.status === 'completed' && order.completion_gate_version < 2
   const canVoid = canManage && !isLockedCompletedOrder
@@ -175,7 +195,12 @@ export function BusinessShipmentManager({
     startTransition(async () => {
       const result = await voidBusinessOrderShipment(voiding.id, voidReason)
       if (!result.ok) {
-        toast.error(result.error ?? '作废发货批次失败')
+        const message = result.error ?? '作废发货批次失败'
+        toast.error(
+          /return|退货|referenc/i.test(message)
+            ? '该发货批次已被有效退货引用，不能作废；请先作废相关退货记录。'
+            : message,
+        )
         return
       }
 
@@ -204,7 +229,7 @@ export function BusinessShipmentManager({
       <CardHeader className="flex flex-col gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <CardTitle className="text-base">发货管理</CardTitle>
-          <p className="mt-1 text-sm text-muted-foreground">按产品记录分批发货，作废批次不会计入已发数量。</p>
+          <p className="mt-1 text-sm text-muted-foreground">按产品记录分批发货；剩余数量按累计发货减有效退货后的净已发计算。</p>
         </div>
         {canManage && hasRemaining && (
           <Button size="sm" onClick={openCreateForm}>
@@ -216,10 +241,10 @@ export function BusinessShipmentManager({
         <div className="space-y-2">
           <h3 className="text-sm font-medium">产品发货进度</h3>
           <div className="grid gap-2">
-            {itemRows.map(({ item, total, shipped, remaining }) => (
+            {itemRows.map(({ item, shipped, returned, netShipped, remaining }) => (
               <div
                 key={item.id}
-                className="grid gap-2 rounded-md border p-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto_auto_auto] sm:items-center sm:gap-5"
+                className="grid gap-2 rounded-md border p-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] sm:items-center sm:gap-5"
               >
                 <div className="min-w-0">
                   <div className="truncate font-medium">{item.name_snapshot}</div>
@@ -228,12 +253,16 @@ export function BusinessShipmentManager({
                   </div>
                 </div>
                 <div className="flex justify-between gap-3 sm:block sm:text-right">
-                  <span className="text-muted-foreground sm:block">总数量</span>
-                  <span className="font-medium tabular-nums">{formatQuantity(total)}</span>
+                  <span className="text-muted-foreground sm:block">累计发货</span>
+                  <span className="font-medium tabular-nums">{formatQuantity(shipped)}</span>
                 </div>
                 <div className="flex justify-between gap-3 sm:block sm:text-right">
-                  <span className="text-muted-foreground sm:block">有效已发</span>
-                  <span className="font-medium tabular-nums">{formatQuantity(shipped)}</span>
+                  <span className="text-muted-foreground sm:block">累计退货</span>
+                  <span className="font-medium tabular-nums">{formatQuantity(returned)}</span>
+                </div>
+                <div className="flex justify-between gap-3 sm:block sm:text-right">
+                  <span className="text-muted-foreground sm:block">净已发</span>
+                  <span className="font-medium tabular-nums">{formatQuantity(netShipped)}</span>
                 </div>
                 <div className="flex justify-between gap-3 sm:block sm:text-right">
                   <span className="text-muted-foreground sm:block">剩余</span>
@@ -326,6 +355,7 @@ export function BusinessShipmentManager({
                   id="shipment_shipped_at"
                   type="datetime-local"
                   value={shippedAt}
+                  max={getBusinessDateTimeLocal()}
                   onChange={(event) => setShippedAt(event.target.value)}
                   required
                 />
