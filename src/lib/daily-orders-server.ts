@@ -99,6 +99,7 @@ export async function fetchDailyOrderWorkflows(
   let query = supabase
     .from('finance_daily_order_workflows')
     .select(`*, finance_daily_orders(count), ${SALESPERSON_EMBED}`)
+    .eq('finance_daily_orders.status', 'active')
     .order('updated_at', { ascending: false })
     .limit(Math.min(options.limit ?? WORKFLOW_LIST_LIMIT, WORKFLOW_LIST_LIMIT))
   if (options.statuses && options.statuses.length > 0) query = query.in('status', options.statuses)

@@ -188,32 +188,34 @@ export async function updateDailyOrderCostOverride(input: {
   return { ok: true }
 }
 
-export async function deleteFinanceTransaction(id: string): Promise<ActionResult> {
+export async function voidFinanceTransaction(id: string, reason: string): Promise<ActionResult> {
   await requireFinanceAccess()
+  const normalizedReason = reason.trim()
+  if (!normalizedReason) return { ok: false, error: '请填写作废原因' }
+  if (normalizedReason.length > 1000) return { ok: false, error: '作废原因不能超过 1000 个字符' }
+
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('finance_transactions')
-    .delete()
-    .eq('id', id)
-    .select('id')
-    .maybeSingle()
+  const { error } = await supabase.rpc('void_finance_transaction', {
+    p_transaction_id: id,
+    p_reason: normalizedReason,
+  })
   if (error) return { ok: false, error: error.message }
-  if (!data) return { ok: false, error: '收支记录不存在或无权删除' }
   revalidateFinance()
   return { ok: true }
 }
 
-export async function deleteFinanceCost(id: string): Promise<ActionResult> {
+export async function voidFinanceCost(id: string, reason: string): Promise<ActionResult> {
   await requireFinanceAccess()
+  const normalizedReason = reason.trim()
+  if (!normalizedReason) return { ok: false, error: '请填写作废原因' }
+  if (normalizedReason.length > 1000) return { ok: false, error: '作废原因不能超过 1000 个字符' }
+
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('finance_order_costs')
-    .delete()
-    .eq('id', id)
-    .select('id')
-    .maybeSingle()
+  const { error } = await supabase.rpc('void_finance_order_cost', {
+    p_cost_id: id,
+    p_reason: normalizedReason,
+  })
   if (error) return { ok: false, error: error.message }
-  if (!data) return { ok: false, error: '订单成本不存在或无权删除' }
   revalidateFinance()
   return { ok: true }
 }

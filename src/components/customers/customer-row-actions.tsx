@@ -87,7 +87,7 @@ export function CustomerRowActions({
           ? await transferCustomer(customer.id, targetId)
           : await copyCustomer(customer.id, targetId)
       if (result.ok) {
-        toast.success(moveMode === 'transfer' ? '客户已转移（含其 PI）' : '客户已复制')
+        toast.success(moveMode === 'transfer' ? '客户负责人已转移，历史 PI 保持原归属' : '客户已复制')
         setMoveOpen(false)
         router.refresh()
       } else {
@@ -104,7 +104,7 @@ export function CustomerRowActions({
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            title="转移到其他账号（含 PI）"
+            title="转移客户负责人"
             onClick={() => openMove('transfer')}
           >
             <ArrowRightLeft className="h-4 w-4" />
@@ -171,7 +171,7 @@ export function CustomerRowActions({
             </Select>
             <p className="text-xs text-muted-foreground">
               {moveMode === 'transfer'
-                ? '转移后该客户及其名下已开的 PI 将归属所选账号。'
+                ? '只改变客户当前负责人；历史 PI 的创建人和姓名保持不变，接手人仍可查看该客户资料。'
                 : '复制会为所选账号新建一份相同客户信息，不复制 PI。'}
             </p>
           </div>

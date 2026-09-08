@@ -226,7 +226,7 @@ export async function removeDailyOrderScreenshot(id: string, orderId: string): P
 
 export async function getDailyOrderScreenshotUrl(id: string): Promise<{ url?: string; error?: string }> {
   const profile = await requireApproved()
-  if (!['admin', 'finance', 'supervisor'].includes(profile.role)) {
+  if (!['admin', 'finance', 'supervisor', 'sales'].includes(profile.role)) {
     return { error: '当前角色无权查看每日订单截图' }
   }
   const supabase = await createClient()

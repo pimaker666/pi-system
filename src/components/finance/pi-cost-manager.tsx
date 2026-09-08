@@ -2,8 +2,9 @@
 
 import { FormEvent, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2 } from 'lucide-react'
+import { Ban, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -31,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { createFinanceCost, deleteFinanceCost } from '@/lib/actions/finance'
+import { createFinanceCost, voidFinanceCost } from '@/lib/actions/finance'
 import { FINANCE_COST_LABELS, formatCny } from '@/lib/finance'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { financeCostTypes, financeCurrencies } from '@/schemas/finance'
@@ -92,17 +93,22 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
     })
   }
 
-  function handleDelete(id: string) {
-    if (!window.confirm('确定删除这条订单成本吗？此操作不可撤销。')) return
+  function handleVoid(id: string) {
+    const reason = window.prompt('请输入作废原因（原记录和金额会保留）：')
+    if (reason === null) return
+    if (!reason.trim()) {
+      toast.error('请填写作废原因')
+      return
+    }
 
     startTransition(async () => {
-      const result = await deleteFinanceCost(id)
+      const result = await voidFinanceCost(id, reason)
       if (!result.ok) {
-        toast.error(result.error ?? '删除失败')
+        toast.error(result.error ?? '作废失败')
         return
       }
 
-      toast.success('订单成本已删除')
+      toast.success('订单成本已作废')
       router.refresh()
     })
   }
@@ -251,8 +257,13 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="font-medium">{FINANCE_COST_LABELS[cost.cost_type]}</div>
-                    <div className="text-xs text-muted-foreground">{cost.description || '—'}</div>
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="font-medium">{FINANCE_COST_LABELS[cost.cost_type]}</span>
+                      {cost.status === 'void' && <Badge variant="outline">已作废</Badge>}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {cost.status === 'void' ? cost.void_reason || '已作废' : cost.description || '—'}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right">
                     {formatCurrency(Number(cost.amount_original), cost.currency)}
@@ -264,15 +275,17 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
                     {formatCny(Number(cost.amount_cny))}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      disabled={pending}
-                      onClick={() => handleDelete(cost.id)}
-                      aria-label="删除订单成本"
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {cost.status === 'active' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={pending}
+                        onClick={() => handleVoid(cost.id)}
+                        aria-label="作废订单成本"
+                      >
+                        <Ban className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               )

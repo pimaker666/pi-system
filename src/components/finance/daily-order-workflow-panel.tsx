@@ -222,7 +222,10 @@ export function DailyOrderWorkflowPanel({
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div>
               <span className="text-muted-foreground">业务员：</span>
-              {displayProfileName(workflow.salesperson, workflow.salesperson_name_snapshot)}
+              {displayProfileName(
+                workflow.salesperson,
+                workflow.salesperson_display_name_snapshot || workflow.salesperson_name_snapshot,
+              )}
             </div>
             <div>
               <span className="text-muted-foreground">客户：</span>

@@ -7,6 +7,16 @@ import { requireAdmin, requireFinanceAccess } from '@/lib/auth'
 import type { ActionResult } from './products'
 import type { UserRole } from '@/types'
 
+export interface HandoverSummary {
+  customer_count: number
+  business_order_count: number
+  daily_workflow_count: number
+  daily_order_count: number
+  cancelled_change_request_count: number
+  shop_assignment_count: number
+  source_disabled: boolean
+}
+
 /** Update the separately managed Chinese name. Approved admin/finance only. */
 export async function updateUserChineseName(
   userId: string,
@@ -55,37 +65,25 @@ export async function setUserRole(
   if (!(['admin', 'finance', 'sales', 'supervisor'] as const).includes(role)) {
     return { ok: false, error: '无效的用户角色' }
   }
-
-  if (userId === me.id) {
-    return { ok: false, error: '不能修改自己的角色' }
-  }
+  if (userId === me.id) return { ok: false, error: '不能修改自己的角色' }
 
   const supabase = await createClient()
-
-  // When changing an admin to any non-admin role, ensure at least one admin remains.
-  if (role !== 'admin') {
-    const { data: target } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', userId)
-      .single()
-
-    if (target?.role === 'admin') {
-      const { count } = await supabase
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
-        .eq('role', 'admin')
-      if ((count ?? 0) <= 1) {
-        return { ok: false, error: '至少需保留一名管理员，无法取消' }
-      }
-    }
+  const { error } = await supabase.rpc('admin_set_user_role', {
+    p_user_id: userId,
+    p_role: role,
+  })
+  if (error) {
+    const message = error.message.includes('Disabled accounts')
+      ? '停用账号需先恢复后才能修改角色'
+      : error.message.includes('At least one approved administrator')
+        ? '至少需保留一名已通过审核的管理员'
+        : error.message.includes('Only approved administrators')
+          ? '只有已通过审核的管理员可以修改角色'
+          : error.message.includes('own role')
+            ? '不能修改自己的角色'
+            : error.message
+    return { ok: false, error: message }
   }
-
-  const { error } = await supabase
-    .from('profiles')
-    .update({ role })
-    .eq('id', userId)
-  if (error) return { ok: false, error: error.message }
 
   revalidatePath('/users')
   return { ok: true }
@@ -121,9 +119,13 @@ export async function setUserManager(
             ? '上级必须是已通过审核的业务主管或管理员'
             : error.message.includes('cannot contain a cycle')
               ? '上级关系不能形成环'
-              : error.message.includes('Only administrators')
-                ? '只有管理员可以设置上级'
-                : error.message
+              : error.message.includes('Disabled accounts')
+                ? '停用账号需先恢复后才能修改上级'
+                : error.message.includes('Only approved administrators')
+                  ? '只有已通过审核的管理员可以设置上级'
+                  : error.message.includes('Only administrators')
+                    ? '只有管理员可以设置上级'
+                    : error.message
     return { ok: false, error: message }
   }
 
@@ -187,6 +189,96 @@ export async function resetUserPassword(
   return { ok: true }
 }
 
+/** Disable or restore an existing approved account without deleting its history. */
+export async function setUserDisabled(
+  userId: string,
+  disabled: boolean,
+  reason: string,
+): Promise<ActionResult> {
+  await requireAdmin()
+
+  const normalizedReason = reason.trim()
+  if (disabled && !normalizedReason) return { ok: false, error: '请填写停用原因' }
+  if (normalizedReason.length > 1000) return { ok: false, error: '原因不能超过 1000 个字符' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('admin_set_user_disabled', {
+    p_user_id: userId,
+    p_disabled: disabled,
+    p_reason: normalizedReason || null,
+  })
+  if (error) {
+    const message = error.message.includes('own account')
+      ? '不能停用自己的账号'
+      : error.message.includes('At least one approved administrator')
+        ? '至少需保留一名已通过审核的管理员'
+        : error.message.includes('Only approved administrators') ||
+            error.message.includes('Only administrators can change account status') ||
+            error.message.includes('permission was revoked while waiting for the account lock')
+          ? '只有已通过审核的管理员可以停用或恢复账号'
+          : error.message.includes('Only approved accounts')
+            ? '只有已通过审核的账号可以停用'
+            : error.message.includes('Only disabled accounts')
+              ? '只有已停用的账号可以恢复'
+              : error.message
+    return { ok: false, error: message }
+  }
+
+  revalidatePath('/users')
+  return { ok: true }
+}
+
+/** Atomically transfer current assets and open orders, optionally disabling the source account. */
+export async function handoverUser(input: {
+  sourceUserId: string
+  targetUserId: string
+  transferCustomers: boolean
+  transferOpenOrders: boolean
+  disableSource: boolean
+  reason: string
+}): Promise<ActionResult & { summary?: HandoverSummary }> {
+  await requireAdmin()
+
+  if (!input.targetUserId) return { ok: false, error: '请选择接手账号' }
+  if (input.sourceUserId === input.targetUserId) return { ok: false, error: '接手账号不能与原账号相同' }
+  const reason = input.reason.trim()
+  if (!reason) return { ok: false, error: '请填写交接原因' }
+  if (reason.length > 1000) return { ok: false, error: '交接原因不能超过 1000 个字符' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('admin_handover_user', {
+    p_from_user_id: input.sourceUserId,
+    p_to_user_id: input.targetUserId,
+    p_customer_ids: input.transferCustomers ? null : [],
+    p_transfer_open_orders: input.transferCustomers && input.transferOpenOrders,
+    p_disable_source: input.disableSource,
+    p_reason: reason,
+  })
+  if (error) {
+    const message = error.message.includes('same order number')
+      ? '接手账号已有相同订单号的每日订单，请先处理冲突后重试'
+      : error.message.includes('approved sales or admin')
+        ? '接手账号必须是已通过审核的业务员或管理员'
+        : error.message.includes('own account')
+          ? '不能在本次交接中停用自己的账号'
+          : error.message.includes('At least one approved administrator')
+            ? '至少需保留一名已通过审核的管理员'
+            : error.message.includes('Only approved administrators') ||
+                error.message.includes('Only administrators can hand over accounts') ||
+                error.message.includes('permission was revoked while waiting for the handover lock')
+              ? '只有已通过审核的管理员可以执行账号交接'
+              : error.message
+    return { ok: false, error: message }
+  }
+
+  revalidatePath('/users')
+  revalidatePath('/customers')
+  revalidatePath('/finance')
+  revalidatePath('/finance/daily-orders')
+  revalidatePath('/finance/performance')
+  return { ok: true, summary: data as unknown as HandoverSummary }
+}
+
 /**
  * Permanently delete a registered user. Admin-only.
  * Removes the auth account; the profiles row is removed automatically via the
@@ -203,24 +295,19 @@ export async function deleteUser(userId: string): Promise<ActionResult> {
   }
 
   const supabase = await createClient()
-
-  // If the target is an admin, ensure at least one admin remains afterwards.
-  const { data: target } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', userId)
-    .single()
-  if (target?.role === 'admin') {
-    const { count } = await supabase
-      .from('profiles')
-      .select('id', { count: 'exact', head: true })
-      .eq('role', 'admin')
-    if ((count ?? 0) <= 1) {
-      return { ok: false, error: '至少需保留一名管理员，无法删除' }
+  const { data: canDelete, error: eligibilityError } = await supabase.rpc(
+    'admin_can_delete_pending_user',
+    { p_user_id: userId },
+  )
+  if (eligibilityError) return { ok: false, error: eligibilityError.message }
+  if (!canDelete) {
+    return {
+      ok: false,
+      error: '只能永久删除从未产生任何业务引用的待审核误建账号；离职账号请使用停用或离职交接',
     }
   }
 
-  // Deleting the auth user cascades to the profiles row (FK on delete cascade).
+  // 资格已由数据库按全部外键引用检查；随后删除 auth 账号并级联移除空 profile。
   const admin = createAdminClient()
   try {
     const { error } = await admin.auth.admin.deleteUser(userId)

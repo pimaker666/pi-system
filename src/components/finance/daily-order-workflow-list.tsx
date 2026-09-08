@@ -41,7 +41,10 @@ export function DailyOrderWorkflowList({ workflows }: DailyOrderWorkflowListProp
       if (!normalized) return true
       return [
         workflow.order_number,
-        displayProfileName(workflow.salesperson, workflow.salesperson_name_snapshot),
+        displayProfileName(
+          workflow.salesperson,
+          workflow.salesperson_display_name_snapshot || workflow.salesperson_name_snapshot,
+        ),
         workflow.customer_name_snapshot ?? '',
       ]
         .join(' ')
@@ -101,7 +104,12 @@ export function DailyOrderWorkflowList({ workflows }: DailyOrderWorkflowListProp
                     {workflow.order_number}
                   </Link>
                 </TableCell>
-                <TableCell>{displayProfileName(workflow.salesperson, workflow.salesperson_name_snapshot)}</TableCell>
+                <TableCell>
+                  {displayProfileName(
+                    workflow.salesperson,
+                    workflow.salesperson_display_name_snapshot || workflow.salesperson_name_snapshot,
+                  )}
+                </TableCell>
                 <TableCell>{workflow.customer_name_snapshot || '—'}</TableCell>
                 <TableCell className="text-right">{workflow.order_line_count}</TableCell>
                 <TableCell>

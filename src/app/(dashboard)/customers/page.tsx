@@ -40,18 +40,24 @@ export default async function CustomersPage({
     await Promise.all([
       customerQuery,
       supabase.from('customer_groups').select('*').order('name'),
-      supabase.from('profiles').select('id, full_name, email, chinese_name').order('full_name'),
+      supabase.from('profiles').select('id, full_name, email, chinese_name, status').order('full_name'),
       supabase.from('customers').select('country'),
     ])
 
   const customers = (customerData ?? []) as CustomerRow[]
   const groups = (groupData ?? []) as CustomerGroup[]
-  const profiles = (profileData ?? []) as Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
+  const profiles = (profileData ?? []) as Pick<
+    Profile,
+    'id' | 'full_name' | 'email' | 'chinese_name' | 'status'
+  >[]
 
   const owners: OwnerOption[] = profiles.map((p) => ({
     id: p.id,
     label: displayProfileName(p),
   }))
+  const transferOwners: OwnerOption[] = profiles
+    .filter((p) => p.status === 'approved')
+    .map((p) => ({ id: p.id, label: displayProfileName(p) }))
 
   const countries = Array.from(
     new Set(
@@ -91,6 +97,7 @@ export default async function CustomersPage({
         customers={customers}
         groups={groups}
         owners={owners}
+        transferOwners={transferOwners}
         isAdmin={isAdmin}
       />
     </div>

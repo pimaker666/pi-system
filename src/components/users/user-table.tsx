@@ -31,13 +31,21 @@ import {
   updateUserChineseName,
 } from '@/lib/actions/users'
 import { ResetPasswordDialog } from './reset-password-dialog'
+import { AccountLifecycleActions } from './account-lifecycle-actions'
 import { formatDate } from '@/lib/utils'
 import type { Profile, UserRole } from '@/types'
 
 interface UserTableProps {
   users: Pick<
     Profile,
-    'id' | 'email' | 'full_name' | 'chinese_name' | 'role' | 'status' | 'supervisor_id' | 'created_at'
+    | 'id'
+    | 'email'
+    | 'full_name'
+    | 'chinese_name'
+    | 'role'
+    | 'status'
+    | 'supervisor_id'
+    | 'created_at'
   >[]
   currentUserId: string
   currentUserRole: UserRole
@@ -100,7 +108,7 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
   const [pending, startTransition] = useTransition()
 
   const canAdministerUsers = currentUserRole === 'admin'
-  const adminCount = users.filter((u) => u.role === 'admin').length
+  const adminCount = users.filter((u) => u.role === 'admin' && u.status === 'approved').length
   const roleLabels: Record<UserRole, string> = {
     admin: '管理员',
     finance: '财务',
@@ -155,7 +163,7 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
   }
 
   function handleDelete(id: string, email: string) {
-    if (!window.confirm(`确定删除用户「${email}」吗？此操作不可撤销，将永久删除其账号。`)) {
+    if (!window.confirm(`确定删除待审核误建账号「${email}」吗？仅无任何业务引用时允许删除。`)) {
       return
     }
     startTransition(async () => {
@@ -189,13 +197,15 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
             {users.map((u) => {
               const isSelf = u.id === currentUserId
               const isAdmin = u.role === 'admin'
-              const isPending = u.status !== 'approved'
+              const isPending = u.status === 'pending'
+              const isDisabled = u.status === 'disabled'
               // Sales、supervisor 及 admin 均可被指派汇报上级（管理员挂上级后，
               // 其上级主管可只读查看该管理员个人名下的订单/业绩/客户）。
               const canHaveManager =
-                u.role === 'sales' || u.role === 'supervisor' || u.role === 'admin'
-              // Prevent demoting/deleting the last remaining admin.
-              const lastAdmin = isAdmin && adminCount <= 1
+                !isDisabled &&
+                (u.role === 'sales' || u.role === 'supervisor' || u.role === 'admin')
+              // Prevent demoting/disabling the last remaining approved admin.
+              const lastAdmin = isAdmin && u.status === 'approved' && adminCount <= 1
               return (
                 <TableRow key={u.id}>
                   <TableCell className="font-medium">{u.email}</TableCell>
@@ -207,7 +217,7 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
                     {canAdministerUsers ? (
                       <Select
                         value={u.role}
-                        disabled={pending || isSelf || lastAdmin}
+                        disabled={pending || isSelf || lastAdmin || isDisabled}
                         onValueChange={(value) => handleRoleChange(u.id, value as UserRole)}
                       >
                         <SelectTrigger className="w-28">
@@ -255,6 +265,8 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
                   <TableCell>
                     {isPending ? (
                       <Badge variant="destructive">待审核</Badge>
+                    ) : isDisabled ? (
+                      <Badge variant="secondary">已停用</Badge>
                     ) : (
                       <Badge variant="outline">已通过</Badge>
                     )}
@@ -276,25 +288,30 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
                           </Button>
                         )}
 
+                        {(u.status === 'approved' || isDisabled) && !isSelf && (
+                          <AccountLifecycleActions
+                            user={u}
+                            users={users}
+                            disabled={isDisabled}
+                            canDisable={!lastAdmin}
+                          />
+                        )}
+
                         <ResetPasswordDialog userId={u.id} email={u.email} />
 
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-destructive"
-                          disabled={pending || isSelf || lastAdmin}
-                          title={
-                            isSelf
-                              ? '不能删除自己的账号'
-                              : lastAdmin
-                                ? '至少需保留一名管理员'
-                                : undefined
-                          }
-                          onClick={() => handleDelete(u.id, u.email)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          删除
-                        </Button>
+                        {isPending && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-destructive"
+                            disabled={pending || isSelf}
+                            title="仅可删除无任何业务引用的待审核误建账号"
+                            onClick={() => handleDelete(u.id, u.email)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            删除误建账号
+                          </Button>
+                        )}
                       </div>
                     ) : (
                       <span className="text-muted-foreground">—</span>

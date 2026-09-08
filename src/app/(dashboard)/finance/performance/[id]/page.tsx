@@ -68,6 +68,17 @@ const lifecycleActionLabels: Record<BusinessLifecycleAuditLog['action'], string>
   void: '作废',
 }
 
+function getHistoricalAuditActorName(
+  log: BusinessOrderAuditLog | BusinessLifecycleAuditLog,
+) {
+  return displayProfileName(
+    log.actor,
+    log.actor_display_name_snapshot?.trim() ||
+      log.actor_snapshot.full_name?.trim() ||
+      log.actor_snapshot.email,
+  )
+}
+
 export default async function BusinessOrderDetailPage({
   params,
 }: {
@@ -180,7 +191,11 @@ export default async function BusinessOrderDetailPage({
               {customer.address && <div className="text-muted-foreground">{customer.address}</div>}
               <div className="border-t pt-2">
                 <span className="text-muted-foreground">业务员：</span>
-                {displayProfileName(order.salesperson, order.salesperson_name_snapshot)}
+                {displayProfileName(
+                  order.salesperson,
+                  order.salesperson_display_name_snapshot?.trim() ||
+                    order.salesperson_name_snapshot,
+                )}
               </div>
               <div>
                 <span className="text-muted-foreground">货运单号：</span>
@@ -269,7 +284,7 @@ export default async function BusinessOrderDetailPage({
                   <div key={`order-${log.id}`} className="border-l-2 pl-3 text-sm">
                     <div className="font-medium">{auditLabels[log.action]}</div>
                     <div className="text-muted-foreground">
-                      {displayProfileName(log.actor, log.actor_snapshot.full_name || log.actor_snapshot.email)} · {formatDate(log.created_at, true)}
+                      {getHistoricalAuditActorName(log)} · {formatDate(log.created_at, true)}
                     </div>
                     {log.reason && <div className="mt-1">说明：{log.reason}</div>}
                   </div>
@@ -280,7 +295,7 @@ export default async function BusinessOrderDetailPage({
                       {lifecycleEntityLabels[log.entity_type]} · {lifecycleActionLabels[log.action]}
                     </div>
                     <div className="text-muted-foreground">
-                      {displayProfileName(log.actor, log.actor_snapshot.full_name || log.actor_snapshot.email)} · {formatDate(log.created_at, true)}
+                      {getHistoricalAuditActorName(log)} · {formatDate(log.created_at, true)}
                     </div>
                     {log.reason && <div className="mt-1">说明：{log.reason}</div>}
                   </div>

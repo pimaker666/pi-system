@@ -97,7 +97,10 @@ export function DailyOrderTable({ orders, readOnly = false }: { orders: DailyOrd
             const rowSpan = group.rows.length
             const orderDates = distinctValues(group.rows, (order) => order.order_date)
             const shops = distinctValues(group.rows, (order) => order.shop_name_snapshot)
-            const salespeople = distinctValues(group.rows, (order) => displayProfileName(order.salesperson, order.salesperson_name_snapshot))
+            const salespeople = distinctValues(group.rows, (order) => displayProfileName(
+              order.salesperson,
+              order.salesperson_display_name_snapshot || order.salesperson_name_snapshot,
+            ))
             const orderNumbers = distinctValues(group.rows, (order) => order.order_number)
             const shippingDates = distinctValues(group.rows, (order) => order.shipping_date)
             const shippingNumbers = distinctValues(group.rows, (order) => order.shipping_number || '—')

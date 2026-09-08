@@ -33,7 +33,10 @@ export async function GET(request: Request) {
   for (let index = 0; index < orders.length; index += 1) {
     const order = orders[index]
     const row = sheet.addRow([
-      index + 1, order.order_date, order.shop_name_snapshot, displayProfileName(order.salesperson, order.salesperson_name_snapshot),
+      index + 1, order.order_date, order.shop_name_snapshot, displayProfileName(
+        order.salesperson,
+        order.salesperson_display_name_snapshot || order.salesperson_name_snapshot,
+      ),
       order.order_number, order.shipping_date, order.shipping_number ?? '', SHIPPING_LABELS[order.shipping_category],
       order.product_name_snapshot, Number(order.quantity),
       formatDailyMoney(order.sales_unit_price_amount, order.sales_unit_price_currency),

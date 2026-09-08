@@ -126,9 +126,10 @@ export async function GET() {
   const otherSheet = workbook.addWorksheet('其他订单费用', {
     views: [{ state: 'frozen', ySplit: 1 }],
   })
-  otherSheet.columns = [13, 22, 16, 16, 14, 16, 16, 32].map((width) => ({ width }))
+  otherSheet.columns = [13, 22, 16, 16, 14, 16, 16, 12, 32, 32].map((width) => ({ width }))
   styleHeader(otherSheet.addRow([
-    '发生日期', '订单', '成本类型', '原币金额', '币种', '兑人民币汇率', '折合人民币', '备注',
+    '发生日期', '订单', '成本类型', '原币金额', '币种', '兑人民币汇率', '折合人民币',
+    '状态', '备注', '作废原因',
   ]))
 
   costs.forEach((cost) => {
@@ -145,14 +146,16 @@ export async function GET() {
       cost.currency,
       Number(cost.exchange_rate_to_cny),
       Number(cost.amount_cny),
+      cost.status === 'void' ? '已作废' : '有效',
       cost.description ?? '',
+      cost.void_reason ?? '',
     ])
     row.getCell(4).numFmt = '#,##0.00'
     row.getCell(6).numFmt = '0.00000000'
     row.getCell(7).numFmt = '¥#,##0.00'
     styleBody(row)
   })
-  otherSheet.autoFilter = { from: 'A1', to: 'H1' }
+  otherSheet.autoFilter = { from: 'A1', to: 'J1' }
 
   const buffer = await workbook.xlsx.writeBuffer()
   const body = new Uint8Array(buffer as ArrayBuffer)

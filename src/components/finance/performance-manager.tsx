@@ -61,6 +61,13 @@ function effectiveAllocations(order: BusinessOrderListRow) {
   )
 }
 
+function getHistoricalSalespersonName(order: BusinessOrder) {
+  return displayProfileName(
+    order.salesperson,
+    order.salesperson_display_name_snapshot?.trim() || order.salesperson_name_snapshot,
+  )
+}
+
 export function PerformanceManager({ profile, orders }: PerformanceManagerProps) {
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<'all' | BusinessOrderStatus>('all')
@@ -71,11 +78,7 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
       if (status !== 'all' && order.status !== status) return false
       if (!normalized) return true
       const customer = getBusinessOrderCustomerName(order.customer_snapshot)
-      return [
-        order.order_number,
-        customer,
-        displayProfileName(order.salesperson, order.salesperson_name_snapshot),
-      ]
+      return [order.order_number, customer, getHistoricalSalespersonName(order)]
         .join(' ')
         .toLocaleLowerCase('zh-CN')
         .includes(normalized)
@@ -203,7 +206,7 @@ export function PerformanceManager({ profile, orders }: PerformanceManagerProps)
                     {daysOverdue > 0 && <Badge variant="destructive" className="mt-1">逾期 {daysOverdue} 天</Badge>}
                   </TableCell>
                   <TableCell>{BUSINESS_FULFILLMENT_LABELS[order.fulfillment_type]}</TableCell>
-                  <TableCell>{displayProfileName(order.salesperson, order.salesperson_name_snapshot)}</TableCell>
+                  <TableCell>{getHistoricalSalespersonName(order)}</TableCell>
                   <TableCell className="whitespace-nowrap text-right font-medium">
                     <div>{formatCurrency(Number(order.total_amount), order.currency)}</div>
                     <div className="text-xs font-normal text-muted-foreground">

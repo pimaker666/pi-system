@@ -90,8 +90,8 @@ export async function deleteCustomer(id: string): Promise<ActionResult> {
 }
 
 /**
- * 将客户转移到另一账号，并将该客户名下的 PI 一并转移。
- * RLS 限制：业务员只能转移自己的客户，管理员可转移任意客户。
+ * 转移客户的当前负责人。历史 PI 创建人和姓名快照保持不变；
+ * 新负责人通过客户归属继续访问该客户的历史资料。
  */
 export async function transferCustomer(
   id: string,
@@ -101,26 +101,14 @@ export async function transferCustomer(
   if (!targetUserId) return { ok: false, error: '请选择目标账号' }
 
   const supabase = await createClient()
-
-  const { data: target } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', targetUserId)
-    .single()
-  if (!target) return { ok: false, error: '目标账号不存在' }
-
-  const { error: custErr } = await supabase
-    .from('customers')
-    .update({ created_by: targetUserId })
-    .eq('id', id)
-  if (custErr) return { ok: false, error: custErr.message }
-
-  // PI 归属一并转移
-  const { error: piErr } = await supabase
-    .from('proforma_invoices')
-    .update({ created_by: targetUserId })
-    .eq('customer_id', id)
-  if (piErr) return { ok: false, error: piErr.message }
+  const { error } = await supabase.rpc('transfer_customers', {
+    p_customer_ids: [id],
+    p_target_user_id: targetUserId,
+    p_country: null,
+    p_company: null,
+    p_contact_person: null,
+  })
+  if (error) return { ok: false, error: error.message }
 
   revalidatePath('/customers')
   revalidatePath('/pi/history')
@@ -129,7 +117,7 @@ export async function transferCustomer(
 
 /**
  * 将客户复制一份给另一账号（不复制 PI）。
- * RLS 限制：业务员只能复制自己可见的客户。
+ * 数据库 RPC 会原子校验全部源客户的存在性、所有权和目标账号状态。
  */
 export async function copyCustomer(
   id: string,
@@ -139,33 +127,18 @@ export async function copyCustomer(
   if (!targetUserId) return { ok: false, error: '请选择目标账号' }
 
   const supabase = await createClient()
-
-  const { data: target } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', targetUserId)
-    .single()
-  if (!target) return { ok: false, error: '目标账号不存在' }
-
-  const { data: source, error: srcErr } = await supabase
-    .from('customers')
-    .select('name, company, email, phone, address, country, contact_person, group_id')
-    .eq('id', id)
-    .single()
-  if (srcErr || !source) return { ok: false, error: srcErr?.message ?? '源客户不存在' }
-
-  const { error: insErr } = await supabase.from('customers').insert({
-    ...source,
-    created_by: targetUserId,
+  const { error } = await supabase.rpc('copy_customers', {
+    p_customer_ids: [id],
+    p_target_user_id: targetUserId,
   })
-  if (insErr) return { ok: false, error: insErr.message }
+  if (error) return { ok: false, error: error.message }
 
   revalidatePath('/customers')
   return { ok: true }
 }
 
 /**
- * 批量转移客户到另一账号，并一并转移这些客户名下的 PI。
+ * 批量转移客户的当前负责人；历史 PI 创建人和姓名快照保持不变。
  */
 export async function bulkTransferCustomers(
   ids: string[],
@@ -176,25 +149,14 @@ export async function bulkTransferCustomers(
   if (!targetUserId) return { ok: false, error: '请选择目标账号' }
 
   const supabase = await createClient()
-
-  const { data: target } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', targetUserId)
-    .single()
-  if (!target) return { ok: false, error: '目标账号不存在' }
-
-  const { error: custErr } = await supabase
-    .from('customers')
-    .update({ created_by: targetUserId })
-    .in('id', ids)
-  if (custErr) return { ok: false, error: custErr.message }
-
-  const { error: piErr } = await supabase
-    .from('proforma_invoices')
-    .update({ created_by: targetUserId })
-    .in('customer_id', ids)
-  if (piErr) return { ok: false, error: piErr.message }
+  const { error } = await supabase.rpc('transfer_customers', {
+    p_customer_ids: ids,
+    p_target_user_id: targetUserId,
+    p_country: null,
+    p_company: null,
+    p_contact_person: null,
+  })
+  if (error) return { ok: false, error: error.message }
 
   revalidatePath('/customers')
   revalidatePath('/pi/history')
@@ -213,24 +175,11 @@ export async function bulkCopyCustomers(
   if (!targetUserId) return { ok: false, error: '请选择目标账号' }
 
   const supabase = await createClient()
-
-  const { data: target } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('id', targetUserId)
-    .single()
-  if (!target) return { ok: false, error: '目标账号不存在' }
-
-  const { data: sources, error: srcErr } = await supabase
-    .from('customers')
-    .select('name, company, email, phone, address, country, contact_person, group_id')
-    .in('id', ids)
-  if (srcErr) return { ok: false, error: srcErr.message }
-  if (!sources?.length) return { ok: false, error: '没有可复制的客户' }
-
-  const rows = sources.map((s) => ({ ...s, created_by: targetUserId }))
-  const { error: insErr } = await supabase.from('customers').insert(rows)
-  if (insErr) return { ok: false, error: insErr.message }
+  const { error } = await supabase.rpc('copy_customers', {
+    p_customer_ids: ids,
+    p_target_user_id: targetUserId,
+  })
+  if (error) return { ok: false, error: error.message }
 
   revalidatePath('/customers')
   return { ok: true }
@@ -260,7 +209,7 @@ export interface BulkModifyPatch {
 
 /**
  * 批量修改选中客户的公共字段。仅更新填写了值的字段（留空即跳过）。
- * 归属账号（created_by）在此仅改客户归属，不搬动名下 PI —— 需连 PI 一并搬用 bulkTransferCustomers。
+ * 归属账号（created_by）只表示客户当前负责人，历史 PI 创建人始终保持不变。
  */
 export async function bulkModifyCustomers(
   ids: string[],
@@ -274,27 +223,29 @@ export async function bulkModifyCustomers(
   if (patch.company && patch.company.trim()) update.company = patch.company.trim()
   if (patch.contact_person && patch.contact_person.trim())
     update.contact_person = patch.contact_person.trim()
-  if (patch.created_by) update.created_by = patch.created_by
 
-  if (Object.keys(update).length === 0) {
+  if (Object.keys(update).length === 0 && !patch.created_by) {
     return { ok: false, error: '请至少填写一个要修改的字段' }
   }
 
   const supabase = await createClient()
 
-  if (update.created_by) {
-    const { data: target } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('id', update.created_by)
-      .single()
-    if (!target) return { ok: false, error: '目标账号不存在' }
+  if (patch.created_by) {
+    const { error } = await supabase.rpc('transfer_customers', {
+      p_customer_ids: ids,
+      p_target_user_id: patch.created_by,
+      p_country: update.country ?? null,
+      p_company: update.company ?? null,
+      p_contact_person: update.contact_person ?? null,
+    })
+    if (error) return { ok: false, error: error.message }
+  } else {
+    const { error } = await supabase.from('customers').update(update).in('id', ids)
+    if (error) return { ok: false, error: error.message }
   }
 
-  const { error } = await supabase.from('customers').update(update).in('id', ids)
-  if (error) return { ok: false, error: error.message }
-
   revalidatePath('/customers')
+  if (patch.created_by) revalidatePath('/pi/history')
   return { ok: true }
 }
 

@@ -229,7 +229,7 @@ export function PiHistoryTable({ rows, isAdmin, view, owners }: PiHistoryTablePr
                   </TableCell>
                   {isAdmin && (
                     <TableCell className="text-sm text-muted-foreground">
-                      {ownerLabel(pi.created_by)}
+                      {pi.creator_display_name_snapshot?.trim() || ownerLabel(pi.created_by)}
                     </TableCell>
                   )}
                   <TableCell>

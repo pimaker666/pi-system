@@ -14,7 +14,14 @@ export default async function UsersPage() {
 
   const users = (data ?? []) as Pick<
     Profile,
-    'id' | 'email' | 'full_name' | 'chinese_name' | 'role' | 'status' | 'supervisor_id' | 'created_at'
+    | 'id'
+    | 'email'
+    | 'full_name'
+    | 'chinese_name'
+    | 'role'
+    | 'status'
+    | 'supervisor_id'
+    | 'created_at'
   >[]
 
   return (
@@ -22,7 +29,7 @@ export default async function UsersPage() {
       <div>
         <h1 className="text-2xl font-semibold">用户管理</h1>
         <p className="text-sm text-muted-foreground">
-          财务和管理员可维护用户中文名；用户审核、角色、上级、密码及账号删除仍仅限管理员操作。
+          公司账号继承时直接修改中文名：新记录使用新姓名，历史订单和业绩保持原姓名。员工离职请使用交接并停用；永久删除仅用于无业务数据的待审核误建账号。
         </p>
       </div>
 

@@ -117,7 +117,7 @@ export function WeightCalcHistoryTable({ rows, isAdmin, owners }: Props) {
                 </TableCell>
                 {isAdmin && (
                   <TableCell className="text-muted-foreground">
-                    {ownerLabel(row.created_by)}
+                    {row.creator_display_name_snapshot?.trim() || ownerLabel(row.created_by)}
                   </TableCell>
                 )}
                 <TableCell className="text-muted-foreground">
@@ -176,7 +176,7 @@ export function WeightCalcHistoryTable({ rows, isAdmin, owners }: Props) {
               </div>
               {isAdmin && (
                 <div className="text-xs text-muted-foreground">
-                  创建人：{ownerLabel(row.created_by)}
+                  创建人：{row.creator_display_name_snapshot?.trim() || ownerLabel(row.created_by)}
                 </div>
               )}
               <div className="flex gap-2 pt-1">

@@ -7,6 +7,7 @@ interface DailyOrderCostSourceRow {
   order_date: string
   shop_name_snapshot: string
   salesperson_name_snapshot: string
+  salesperson_display_name_snapshot: string | null
   order_number: string
   shipping_date: string
   shipping_category: DailyOrderShippingCategory
@@ -46,7 +47,8 @@ async function fetchAllDailyOrders(supabase: SupabaseClient) {
     const { data, error } = await supabase
       .from('finance_daily_orders')
       .select(`
-        id, order_date, shop_name_snapshot, salesperson_name_snapshot, order_number,
+        id, order_date, shop_name_snapshot, salesperson_name_snapshot,
+        salesperson_display_name_snapshot, order_number,
         shipping_date, shipping_category, product_id, product_name_snapshot,
         product_sku_snapshot, quantity,
         salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)
@@ -118,7 +120,10 @@ export async function fetchDailyOrderProductCosts(
       order_date: order.order_date,
       order_number: order.order_number,
       shop_name: order.shop_name_snapshot,
-      salesperson_name: displayProfileName(order.salesperson, order.salesperson_name_snapshot),
+      salesperson_name: displayProfileName(
+        order.salesperson,
+        order.salesperson_display_name_snapshot || order.salesperson_name_snapshot,
+      ),
       shipping_category: order.shipping_category,
       sales_product_name: order.product_name_snapshot,
       sales_product_sku: order.product_sku_snapshot,

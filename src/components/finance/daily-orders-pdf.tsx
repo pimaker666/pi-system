@@ -35,7 +35,10 @@ export function DailyOrdersPdf({ orders }: { orders: DailyOrderPdfRow[] }) {
       <View style={[styles.row, styles.header]} fixed>{DAILY_ORDER_COLUMNS.map((label, index) => <Cell key={label} index={index}><Text>{label}</Text></Cell>)}</View>
       {orders.map((order, rowIndex) => {
         const values = [
-          String(rowIndex + 1), order.order_date, order.shop_name_snapshot, displayProfileName(order.salesperson, order.salesperson_name_snapshot),
+          String(rowIndex + 1), order.order_date, order.shop_name_snapshot, displayProfileName(
+            order.salesperson,
+            order.salesperson_display_name_snapshot || order.salesperson_name_snapshot,
+          ),
           order.order_number, order.shipping_date, order.shipping_number || '', SHIPPING_LABELS[order.shipping_category],
           `${order.product_name_snapshot}\n${order.product_sku_snapshot}`, String(Number(order.quantity)),
           formatDailyMoney(order.sales_unit_price_amount, order.sales_unit_price_currency),

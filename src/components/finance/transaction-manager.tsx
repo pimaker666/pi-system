@@ -2,7 +2,7 @@
 
 import { FormEvent, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus, Trash2 } from 'lucide-react'
+import { Ban, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -32,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { createFinanceTransaction, deleteFinanceTransaction } from '@/lib/actions/finance'
+import { createFinanceTransaction, voidFinanceTransaction } from '@/lib/actions/finance'
 import { formatCny, FINANCE_TRANSACTION_LABELS } from '@/lib/finance'
 import { formatCurrency, formatDate, displayProfileName } from '@/lib/utils'
 import { financeCurrencies } from '@/schemas/finance'
@@ -79,13 +79,18 @@ export function TransactionManager({
     })
   }
 
-  function handleDelete(id: string) {
-    if (!window.confirm('确定删除这条收支记录吗？')) return
+  function handleVoid(id: string) {
+    const reason = window.prompt('请输入作废原因（原记录和金额会保留）：')
+    if (reason === null) return
+    if (!reason.trim()) {
+      toast.error('请填写作废原因')
+      return
+    }
     startTransition(async () => {
-      const result = await deleteFinanceTransaction(id)
-      if (!result.ok) toast.error(result.error ?? '删除失败')
+      const result = await voidFinanceTransaction(id, reason)
+      if (!result.ok) toast.error(result.error ?? '作废失败')
       else {
-        toast.success('收支记录已删除')
+        toast.success('收支记录已作废')
         router.refresh()
       }
     })
@@ -221,21 +226,33 @@ export function TransactionManager({
               <TableRow key={row.id}>
                 <TableCell>{formatDate(row.transaction_date)}</TableCell>
                 <TableCell>
-                  <Badge variant={row.transaction_type === 'income' ? 'success' : 'secondary'}>
-                    {FINANCE_TRANSACTION_LABELS[row.transaction_type]}
-                  </Badge>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant={row.transaction_type === 'income' ? 'success' : 'secondary'}>
+                      {FINANCE_TRANSACTION_LABELS[row.transaction_type]}
+                    </Badge>
+                    {row.status === 'void' && <Badge variant="outline">已作废</Badge>}
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="font-medium">{row.category}</div>
-                  <div className="text-xs text-muted-foreground">{row.reference_no || row.description || '—'}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {row.status === 'void' ? row.void_reason || '已作废' : row.reference_no || row.description || '—'}
+                  </div>
                 </TableCell>
-                <TableCell>{displayProfileName(row.salesperson, row.salesperson_name_snapshot)}</TableCell>
+                <TableCell>
+                  {displayProfileName(
+                    row.salesperson,
+                    row.salesperson_display_name_snapshot?.trim() || row.salesperson_name_snapshot,
+                  )}
+                </TableCell>
                 <TableCell className="text-right">{formatCurrency(Number(row.amount_original), row.currency)}</TableCell>
                 <TableCell className="text-right font-medium">{formatCny(Number(row.amount_cny))}</TableCell>
                 <TableCell>
-                  <Button variant="ghost" size="icon" disabled={pending} onClick={() => handleDelete(row.id)} aria-label="删除收支记录">
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  {row.status === 'active' && (
+                    <Button variant="ghost" size="icon" disabled={pending} onClick={() => handleVoid(row.id)} aria-label="作废收支记录">
+                      <Ban className="h-4 w-4 text-destructive" />
+                    </Button>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
