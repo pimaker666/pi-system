@@ -97,8 +97,7 @@ export function DailyOrderWorkflowPanel({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
-  const isWorkflowOwner =
-    (profile.role === 'sales' || profile.role === 'admin') && workflow.salesperson_id === profile.id
+  const isWorkflowOwner = profile.role !== 'finance' && workflow.salesperson_id === profile.id
   const isFinance = profile.role === 'admin' || profile.role === 'finance'
   const { status } = workflow
 

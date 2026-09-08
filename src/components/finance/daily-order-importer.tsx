@@ -19,7 +19,7 @@ interface Props {
 }
 
 const fields = [
-  ['order_date', '下单日期', 'date'], ['shop_id', '店铺', 'shop'], ['salesperson_id', '业务员', 'sales'],
+  ['order_date', '下单日期', 'date'], ['shop_id', '店铺', 'shop'], ['salesperson_id', '订单归属人', 'sales'],
   ['order_number', '订单号', 'text'], ['shipping_date', '发货日期', 'date'], ['shipping_number', '发货单号', 'text'],
   ['shipping_category', '发货分类', 'shipping'], ['product_id', '产品名称', 'product'], ['quantity', '数量', 'number'],
   ['sales_unit_price_amount', '销售单价', 'money'], ['product_received_amount', '产品实收金额', 'money'],

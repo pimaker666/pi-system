@@ -257,8 +257,8 @@ export async function handoverUser(input: {
   if (error) {
     const message = error.message.includes('same order number')
       ? '接手账号已有相同订单号的每日订单，请先处理冲突后重试'
-      : error.message.includes('approved sales or admin')
-        ? '接手账号必须是已通过审核的业务员或管理员'
+      : error.message.includes('approved non-finance')
+        ? '接手账号必须是已通过审核的非财务账号'
         : error.message.includes('own account')
           ? '不能在本次交接中停用自己的账号'
           : error.message.includes('At least one approved administrator')

@@ -58,7 +58,7 @@ export function AccountLifecycleActions({
     (candidate) =>
       candidate.id !== user.id &&
       candidate.status === 'approved' &&
-      ['sales', 'admin'].includes(candidate.role),
+      candidate.role !== 'finance',
   )
 
   function openHandover() {

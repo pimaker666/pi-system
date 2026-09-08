@@ -26,13 +26,17 @@ export default async function DailyOrderWorkflowDetailPage({
   if (!detail) notFound()
 
   const isFinance = profile.role === 'admin' || profile.role === 'finance'
-  const canBind = (profile.role === 'sales' || isFinance)
+  const isWorkflowOwner = profile.role !== 'finance' && detail.workflow.salesperson_id === profile.id
+  const canBind = isWorkflowOwner || isFinance
+  const customersQuery = isFinance
+    ? supabase.from('customers').select('*').order('name')
+    : isWorkflowOwner
+      ? supabase.from('customers').select('*').eq('created_by', profile.id).order('name')
+      : Promise.resolve({ data: [], error: null })
 
   const [customersResult, groupsResult, changesResult] = await Promise.all([
-    // Customers/groups are only needed for the customer binder control.
-    canBind
-      ? supabase.from('customers').select('*').order('name')
-      : Promise.resolve({ data: [], error: null }),
+    // Non-finance owners may only bind their own customers; finance/admin may bind any visible customer.
+    customersQuery,
     canBind
       ? supabase.from('customer_groups').select('*').order('name')
       : Promise.resolve({ data: [], error: null }),

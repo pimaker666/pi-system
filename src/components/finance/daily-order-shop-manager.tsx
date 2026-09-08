@@ -115,7 +115,7 @@ export function DailyOrderShopManager({ shops, groups, salespeople }: Props) {
         </label>
       </div>
       <div className="space-y-2">
-        <Label>分配业务员</Label>
+        <Label>分配业务人员</Label>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {salespeople.map((person) => (
             <label key={person.id} className="flex items-center gap-2 rounded-md border p-2 text-sm">

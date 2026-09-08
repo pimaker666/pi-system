@@ -26,6 +26,7 @@ function firstError(error: { issues: Array<{ message: string }> }) {
 
 function mapError(message: string) {
   const errors: Array<[string, string]> = [
+    ['Only approved non-finance users', '仅已审核的非财务账号可执行此操作'],
     ['Only approved sales or admin users', '仅已审核的业务员或管理员可执行此操作'],
     ['Only approved sales users', '仅已审核的业务员可执行此操作'],
     ['Only approved admin or finance', '仅已审核的管理员或财务可操作'],

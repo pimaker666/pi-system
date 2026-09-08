@@ -164,7 +164,7 @@ function paymentValue(value: unknown): DailyOrderPaymentCategory | '' {
 
 export interface DailyOrderImportReference {
   shops: Array<DailyOrderShop & { salespersonIds?: string[] }>
-  salespeople: Pick<Profile, 'id' | 'full_name' | 'email'>[]
+  salespeople: Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
   products: Pick<Product, 'id' | 'name' | 'sku'>[]
 }
 
@@ -184,9 +184,9 @@ export function validateDailyOrderImportRow(row: DailyOrderImportRow, refs: Dail
   const shop = refs.shops.find((item) => item.id === row.shop_id && item.is_active)
   if (row.shop_id && !shop) errors.push('店铺不存在或已停用')
   if (row.salesperson_id && !refs.salespeople.some((person) => person.id === row.salesperson_id)) {
-    errors.push('业务员不存在或未审核')
+    errors.push('订单归属人不存在或未审核')
   } else if (row.salesperson_id && !shop?.salespersonIds?.includes(String(row.salesperson_id))) {
-    errors.push('所选业务员未分配到该店铺')
+    errors.push('所选订单归属人未分配到该店铺')
   }
   if (row.product_id && !refs.products.some((product) => product.id === row.product_id)) {
     errors.push('产品不存在或已停用')
@@ -220,7 +220,8 @@ export function mapDailyOrderImportRows(matrix: unknown[][], refs: DailyOrderImp
     const shop = refs.shops.find((item) => item.name.trim().toLocaleLowerCase() === shopText)
     const assignedIds = new Set(shop?.salespersonIds ?? refs.salespeople.map((person) => person.id))
     const salespersonMatches = refs.salespeople.filter((item) =>
-      assignedIds.has(item.id) && [item.full_name, item.email].some((name) => name?.trim().toLocaleLowerCase() === salesText))
+      assignedIds.has(item.id) && [item.chinese_name, item.full_name, item.email]
+        .some((name) => name?.trim().toLocaleLowerCase() === salesText))
     const salesperson = salespersonMatches.length === 1 ? salespersonMatches[0] : undefined
     const product = refs.products.find((item) =>
       item.name.trim().toLocaleLowerCase() === productText || item.sku.trim().toLocaleLowerCase() === productText)
@@ -254,7 +255,7 @@ export function mapDailyOrderImportRows(matrix: unknown[][], refs: DailyOrderImp
       errors: [],
     }
     if (!shop) result.errors.push('店铺未精确匹配')
-    if (!salesperson) result.errors.push('业务员未精确匹配或匹配不唯一')
+    if (!salesperson) result.errors.push('订单归属人未精确匹配或匹配不唯一')
     if (!product) result.errors.push('产品未精确匹配')
     const validation = dailyOrderSchema.safeParse(result)
     if (!validation.success) {

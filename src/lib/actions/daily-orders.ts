@@ -30,6 +30,8 @@ function firstError(error: { issues: Array<{ message: string }> }) {
 function mapError(message: string) {
   const errors: Array<[string, string]> = [
     ['Only approved admin or finance', '仅已审核的管理员或财务可操作每日订单'],
+    ['Assigned user does not exist, is not approved, or is a finance user', '订单归属人不存在、未审核或为财务账号'],
+    ['Assigned user is not assigned to shop', '所选订单归属人未分配到该店铺'],
     ['Shop does not exist or is inactive', '店铺不存在或已停用'],
     ['Shop group does not exist', '店铺分组不存在'],
     ['Salesperson does not exist or is not approved', '业务员不存在或未审核'],
