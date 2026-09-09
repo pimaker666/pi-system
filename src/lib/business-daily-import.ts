@@ -5,6 +5,7 @@ import {
   type BusinessOrderInput,
 } from '@/schemas/business-order'
 import { CURRENCIES } from '@/schemas/product'
+import { roundToScale } from '@/lib/utils'
 import type {
   Customer,
   CurrencyCode,
@@ -19,7 +20,7 @@ import type {
  * 每日订单批量导入（恢复版）。
  *
  * 与 0031 之前的旧导入相比有两点必须不同：
- * 1. 写入目标是 business_orders（经 create_business_order_v3），旧 finance_daily_* 保持冻结；
+ * 1. 写入目标是 business_orders（经 create_business_order_v4），旧 finance_daily_* 保持冻结；
  * 2. 因此每行必须能定位客户，且同一订单号的多行会合并为一张订单的多条明细。
  */
 
@@ -38,6 +39,7 @@ export const BUSINESS_DAILY_IMPORT_COLUMNS = [
   '产品实收金额',
   '运费实收金额',
   '销售总金额',
+  '应收实收差额原因',
   '收款分类',
   '备注',
   '币种',
@@ -59,6 +61,7 @@ export type BusinessDailyImportField =
   | 'product_received_amount'
   | 'logistics_fee_amount'
   | 'sales_total_amount'
+  | 'receivable_received_difference_reason'
   | 'daily_payment_category'
   | 'sales_notes'
   | 'currency'
@@ -79,6 +82,12 @@ const HEADER_ALIASES: Record<BusinessDailyImportField, string[]> = {
   product_received_amount: ['产品实收金额', '实收金额', 'product_received_amount'],
   logistics_fee_amount: ['运费实收金额', '物流费用', '运费', 'logistics_fee'],
   sales_total_amount: ['销售总金额', '销售总额', 'sales_total_amount', 'total amount'],
+  receivable_received_difference_reason: [
+    '应收实收差额原因',
+    '差额原因',
+    'receivable_received_difference_reason',
+    'difference reason',
+  ],
   daily_payment_category: ['收款分类', '收款类型', 'payment_category', 'payment category'],
   sales_notes: ['备注', '说明', 'remarks', 'notes'],
   currency: ['币种', '货币', 'currency'],
@@ -112,6 +121,7 @@ export interface BusinessDailyImportRow extends Record<string, unknown> {
   product_received_amount: string
   logistics_fee_amount: string
   sales_total_amount: string
+  receivable_received_difference_reason: string
   daily_payment_category: DailyOrderPaymentCategory | ''
   sales_notes: string
   currency: string
@@ -193,7 +203,7 @@ function currencyValue(value: unknown): CurrencyCode | '' {
 }
 
 function roundMoney(value: number) {
-  return Math.round(value * 100) / 100
+  return roundToScale(value, 2)
 }
 
 function numberOrNull(value: string) {
@@ -243,6 +253,9 @@ export function validateBusinessDailyImportRow(
   const salesTotal = numberOrNull(row.sales_total_amount)
   if (row.sales_total_amount.trim() && (salesTotal === null || salesTotal < 0)) {
     errors.push('销售总金额不能为负')
+  }
+  if (row.receivable_received_difference_reason.trim().length > 1000) {
+    errors.push('应收实收差额原因不能超过 1000 字')
   }
 
   const currency = currencyValue(row.currency)
@@ -333,6 +346,9 @@ export function mapBusinessDailyImportRows(
         product_received_amount: received.amount.trim(),
         logistics_fee_amount: logistics.amount.trim(),
         sales_total_amount: total.amount.trim(),
+        receivable_received_difference_reason: String(
+          raw.receivable_received_difference_reason ?? '',
+        ).trim(),
         daily_payment_category: String(raw.daily_payment_category ?? '').trim()
           ? paymentValue(raw.daily_payment_category)
           : 'full',
@@ -393,6 +409,7 @@ export function groupBusinessDailyImportRows(
         ['daily_shipping_date', '发货日期'],
         ['daily_shipping_number', '发货单号'],
         ['daily_payment_category', '收款分类'],
+        ['receivable_received_difference_reason', '应收实收差额原因'],
         ['sales_notes', '备注'],
         ['currency', '币种'],
         ['exchange_rate_to_cny', '汇率'],
@@ -439,6 +456,18 @@ export function groupBusinessDailyImportRows(
       return
     }
 
+    const receivableTotal = roundMoney(
+      items.reduce((sum, item) => sum + roundMoney(item.quantity * item.unit_price), 0) +
+        shippingTotal,
+    )
+    const hasReceivableReceivedDifference =
+      Math.round(receivableTotal * 100) !== Math.round(salesTotal * 100)
+    const differenceReason = head.receivable_received_difference_reason.trim()
+    if (hasReceivableReceivedDifference && !differenceReason) {
+      errors.push(`${label}的应收与实收存在差额，请填写差额原因`)
+      return
+    }
+
     const candidate = {
       customer_id: head.customer_id,
       shop_id: head.shop_id,
@@ -465,6 +494,9 @@ export function groupBusinessDailyImportRows(
       total_shipping_received_overridden: false,
       total_sales_amount: salesTotal,
       total_sales_overridden: false,
+      receivable_received_difference_reason: hasReceivableReceivedDifference
+        ? differenceReason
+        : '',
       items,
     }
 

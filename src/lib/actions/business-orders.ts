@@ -157,7 +157,9 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Daily order item amounts must be non-negative', '每日订单明细金额不能为负且最多保留两位小数'],
     ['Daily order totals are incomplete', '每日订单汇总字段不完整'],
     ['Daily order totals must be non-negative', '每日订单汇总金额不能为负且最多保留两位小数'],
-    ['Total sales amount must equal', '总销售金额必须等于总产品实收加总运费实收'],
+    ['Total sales amount must equal', '实际实收总额必须等于总产品实收加总运费实收'],
+    ['Receivable and received amount difference reason is required', '应收与实收存在差额时必须填写原因'],
+    ['Receivable and received amount difference reason cannot exceed', '应收实收差额原因不能超过 1000 字'],
     ['Daily order shop does not exist', '所选店铺不存在'],
     ['Daily order shop is inactive', '所选店铺已停用'],
     ['Salesperson is not actively assigned to this shop', '所选业务员未有效分配到该店铺'],
@@ -366,7 +368,7 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
 
   const input = parsed.data
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('create_business_order_v3', {
+  const { data, error } = await supabase.rpc('create_business_order_v4', {
     p_customer_id: input.customer_id,
     p_order_date: input.order_date,
     p_fulfillment_type: input.fulfillment_type,
@@ -389,6 +391,9 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
     p_total_shipping_received_overridden: input.total_shipping_received_overridden,
     p_total_sales_amount: input.total_sales_amount,
     p_total_sales_overridden: input.total_sales_overridden,
+    p_receivable_received_difference_reason: nullableText(
+      input.receivable_received_difference_reason,
+    ),
   })
 
   if (error) return { ok: false, error: businessOrderError(error.message, '创建业务订单失败') }
@@ -423,7 +428,7 @@ export async function updateBusinessOrder(
 
   const input = parsed.data
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('update_business_order_v3', {
+  const { data, error } = await supabase.rpc('update_business_order_v4', {
     p_order_id: id,
     p_expected_version: expectedVersion,
     p_customer_id: input.customer_id,
@@ -436,7 +441,9 @@ export async function updateBusinessOrder(
     p_sales_notes: nullableText(input.sales_notes),
     p_items: orderItemsPayload(input.items),
     p_payment_due_date: nullableText(input.payment_due_date),
-    p_reason: nullableText(parsedReason.data),
+    p_reason: nullableText(
+      parsedReason.data || input.receivable_received_difference_reason,
+    ),
     p_shop_id: input.shop_id,
     p_salesperson_id: input.salesperson_id,
     p_external_order_number: input.external_order_number,
@@ -449,6 +456,9 @@ export async function updateBusinessOrder(
     p_total_shipping_received_overridden: input.total_shipping_received_overridden,
     p_total_sales_amount: input.total_sales_amount,
     p_total_sales_overridden: input.total_sales_overridden,
+    p_receivable_received_difference_reason: nullableText(
+      input.receivable_received_difference_reason,
+    ),
   })
 
   if (error) return { ok: false, error: businessOrderError(error.message, '更新业务订单失败') }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { roundToScale } from '@/lib/utils'
 import { CURRENCIES } from './product'
 
 export const businessOrderStatuses = [
@@ -53,12 +54,6 @@ const dateTimeSchema = z
   .datetime({ offset: true, message: '请选择带时区的有效时间' })
 const optionalText = (max: number, message: string) =>
   z.string().trim().max(max, message).optional().default('')
-
-function roundToScale(value: number, scale: number) {
-  const [coefficient, exponent = '0'] = value.toString().split('e')
-  const shifted = Number(`${coefficient}e${Number(exponent) + scale}`)
-  return Number(`${Math.round(shifted)}e-${scale}`)
-}
 
 function decimalPlaces(value: number) {
   const [coefficient, exponentText = '0'] = value.toString().toLowerCase().split('e')
@@ -160,6 +155,7 @@ export const businessOrderInputSchema = z
     total_shipping_received_overridden: z.boolean(),
     total_sales_amount: nonNegativeAmountSchema,
     total_sales_overridden: z.boolean(),
+    receivable_received_difference_reason: optionalText(1000, '应收实收差额原因不能超过 1000 字'),
     items: z
       .array(businessOrderItemInputSchema)
       .min(1, '请至少添加一条订单明细')
@@ -196,7 +192,7 @@ export const businessOrderInputSchema = z
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ['items', index, 'sales_total_amount'],
-          message: '未手工覆盖时，销售金额必须等于产品实收加物流费',
+          message: '未手工覆盖时，明细实收合计必须等于产品实收加运费实收',
         })
       }
     })
@@ -258,7 +254,7 @@ export const businessOrderInputSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['total_sales_amount'],
-        message: '未手工覆盖时，总销售金额必须等于明细合计',
+        message: '未手工覆盖时，实际实收总额必须等于明细实收合计',
       })
     }
     if (
@@ -269,7 +265,19 @@ export const businessOrderInputSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['total_sales_amount'],
-        message: '总销售金额必须等于总产品实收加总运费实收',
+        message: '实际实收总额必须等于总产品实收加总运费实收',
+      })
+    }
+
+    const receivableTotal = roundToScale(itemsSubtotal + value.shipping_fee, 2)
+    if (
+      Math.round(receivableTotal * 100) !== Math.round(value.total_sales_amount * 100) &&
+      !value.receivable_received_difference_reason.trim()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['receivable_received_difference_reason'],
+        message: '应收与实收存在差额时必须填写原因',
       })
     }
   })

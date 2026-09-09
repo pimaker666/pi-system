@@ -329,6 +329,7 @@ export interface BusinessOrder {
   total_shipping_received_overridden: boolean
   total_sales_amount: number | null
   total_sales_overridden: boolean
+  receivable_received_difference_reason: string | null
   tracking_number: string | null
   sales_notes: string | null
   review_note: string | null

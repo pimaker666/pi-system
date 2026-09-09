@@ -38,7 +38,7 @@ import {
 } from '@/lib/actions/business-orders'
 import { getBusinessDateKey } from '@/lib/business-orders'
 import { createClient } from '@/lib/supabase/client'
-import { cn, displayProfileName, formatCurrency } from '@/lib/utils'
+import { cn, displayProfileName, formatCurrency, roundToScale } from '@/lib/utils'
 import type {
   BusinessCustomProductListItem,
   BusinessFulfillmentType,
@@ -142,7 +142,7 @@ function newLocalId() {
 }
 
 function roundMoney(value: number) {
-  return Math.round(value * 100) / 100
+  return roundToScale(value, 2)
 }
 
 function derivedProductReceived(quantity: number, unitPrice: number) {
@@ -331,6 +331,9 @@ export function BusinessOrderForm({
   const [totalSalesOverride, setTotalSalesOverride] = useState<number | null>(
     initialOrder?.total_sales_overridden ? Number(initialOrder.total_sales_amount ?? 0) : null,
   )
+  const [receivableReceivedDifferenceReason, setReceivableReceivedDifferenceReason] = useState(
+    initialOrder?.receivable_received_difference_reason ?? '',
+  )
   const [files, setFiles] = useState<PendingAttachment[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [attachments, setAttachments] = useState(
@@ -338,7 +341,10 @@ export function BusinessOrderForm({
   )
 
   const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0),
+    () => items.reduce(
+      (sum, item) => sum + roundMoney(item.quantity * item.unit_price),
+      0,
+    ),
     [items],
   )
   const assignedSalespeople = useMemo(() => {
@@ -367,7 +373,10 @@ export function BusinessOrderForm({
     () => normalizeEditConstraints(editConstraints),
     [editConstraints],
   )
-  const total = subtotal + (Number(shippingFee) || 0)
+  const total = roundMoney(subtotal + (Number(shippingFee) || 0))
+  const receivableReceivedDifference = roundMoney(total - effectiveSalesTotal)
+  const hasReceivableReceivedDifference =
+    Math.round(receivableReceivedDifference * 100) !== 0
   const orderWithClosure = initialOrder as
     | (BusinessOrderWithDetails & { closed_at?: string | null })
     | undefined
@@ -681,7 +690,11 @@ export function BusinessOrderForm({
       return
     }
     if (!totalsBalanced) {
-      toast.error('销售总金额必须等于总产品实收加总运费实收')
+      toast.error('实际实收总额必须等于总产品实收加总运费实收')
+      return
+    }
+    if (hasReceivableReceivedDifference && !receivableReceivedDifferenceReason.trim()) {
+      toast.error('应收与实收存在差额时必须填写原因')
       return
     }
     const hasInvalidItem = items.some((item) =>
@@ -716,6 +729,9 @@ export function BusinessOrderForm({
       total_shipping_received_overridden: totalShippingOverride !== null,
       total_sales_amount: effectiveSalesTotal,
       total_sales_overridden: totalSalesOverride !== null,
+      receivable_received_difference_reason: hasReceivableReceivedDifference
+        ? receivableReceivedDifferenceReason
+        : '',
       items: items.map((item) => {
         const dailyFields = {
           daily_shipping_category: item.daily_shipping_category,
@@ -1210,7 +1226,7 @@ export function BusinessOrderForm({
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center justify-between gap-2">
-                        <Label>销售总金额（{currency}）</Label>
+                        <Label>明细实收合计（{currency}）</Label>
                         {item.sales_total_overridden && (
                           <Button
                             type="button"
@@ -1269,7 +1285,7 @@ export function BusinessOrderForm({
             <div className="ml-auto max-w-sm space-y-2 border-t pt-4 text-sm">
               <div className="flex justify-between"><span>产品小计</span><span>{formatCurrency(subtotal, currency)}</span></div>
               <div className="flex justify-between"><span>运费</span><span>{formatCurrency(Number(shippingFee) || 0, currency)}</span></div>
-              <div className="flex justify-between text-base font-semibold"><span>订单总额</span><span>{formatCurrency(total, currency)}</span></div>
+              <div className="flex justify-between text-base font-semibold"><span>订单应收</span><span>{formatCurrency(total, currency)}</span></div>
             </div>
           </CardContent>
         </Card>
@@ -1335,7 +1351,7 @@ export function BusinessOrderForm({
             </div>
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-2">
-                <Label>销售总金额（{currency}）</Label>
+                <Label>实际实收总额（{currency}）</Label>
                 {totalSalesOverride !== null && (
                   <Button
                     type="button"
@@ -1360,11 +1376,38 @@ export function BusinessOrderForm({
               </p>
             </div>
           </div>
+          <div className="rounded-md border p-3 text-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-muted-foreground">应收 − 实收</span>
+              <span className={cn('font-semibold tabular-nums', hasReceivableReceivedDifference && 'text-amber-700')}>
+                {formatCurrency(receivableReceivedDifference, currency)}
+              </span>
+            </div>
+            {hasReceivableReceivedDifference && (
+              <div className="mt-3 space-y-2">
+                <Label htmlFor="receivable_received_difference_reason">
+                  差额原因（必填）
+                </Label>
+                <Textarea
+                  id="receivable_received_difference_reason"
+                  value={receivableReceivedDifferenceReason}
+                  onChange={(event) => setReceivableReceivedDifferenceReason(event.target.value)}
+                  maxLength={1000}
+                  placeholder={receivableReceivedDifference > 0 ? '请说明少收原因' : '请说明多收原因'}
+                  disabled={pending || lifecycleLocked}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  正数表示少收，负数表示多收；原因会保存在订单中并写入审计记录。
+                </p>
+              </div>
+            )}
+          </div>
           {!totalsBalanced && (
             <div className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
-                销售总金额需等于总产品实收加总运费实收，当前差额
+                实际实收总额需等于总产品实收加总运费实收，当前差额
                 {formatCurrency(
                   roundMoney(effectiveSalesTotal - effectiveProductTotal - effectiveShippingTotal),
                   currency,

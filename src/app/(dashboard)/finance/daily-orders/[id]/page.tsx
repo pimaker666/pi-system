@@ -131,6 +131,11 @@ export default async function BusinessOrderDetailPage({
 
   // 0034 之后录入的每日订单会带齐三组总额；历史订单为 null，只展示原有金额区。
   const hasDailyFields = order.total_sales_amount !== null
+  const actualReceived = hasDailyFields
+    ? Number(order.total_sales_amount)
+    : Number(order.total_amount)
+  const receivableReceivedDifference =
+    Math.round((Number(order.total_amount) - actualReceived) * 100) / 100
   const attachments = (order.business_order_attachments ?? []).filter(
     (attachment) => attachment.status === 'active',
   )
@@ -316,7 +321,7 @@ export default async function BusinessOrderDetailPage({
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">产品小计</span><span>{formatCurrency(Number(order.items_subtotal), order.currency)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">运费</span><span>{formatCurrency(Number(order.shipping_fee), order.currency)}</span></div>
-              <div className="flex justify-between border-t pt-2 text-base font-semibold"><span>订单总额</span><span>{formatCurrency(Number(order.total_amount), order.currency)}</span></div>
+              <div className="flex justify-between border-t pt-2 text-base font-semibold"><span>订单应收</span><span>{formatCurrency(Number(order.total_amount), order.currency)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">兑人民币汇率</span><span>{Number(order.exchange_rate_to_cny).toLocaleString('zh-CN', { maximumFractionDigits: 8 })}</span></div>
               <div className="flex justify-between font-medium"><span>折合人民币</span><span>{formatCny(Number(order.total_cny))}</span></div>
               {hasDailyFields && (
@@ -335,10 +340,22 @@ export default async function BusinessOrderDetailPage({
                   </div>
                   <div className="flex justify-between font-medium">
                     <span>
-                      总销售金额{order.total_sales_overridden ? '（已手工覆盖）' : ''}
+                      实际实收总额{order.total_sales_overridden ? '（已手工覆盖）' : ''}
                     </span>
-                    <span>{formatCurrency(Number(order.total_sales_amount), order.currency)}</span>
+                    <span>{formatCurrency(actualReceived, order.currency)}</span>
                   </div>
+                  <div className="flex justify-between border-t pt-2 font-semibold">
+                    <span>应收 − 实收差额</span>
+                    <span className={receivableReceivedDifference === 0 ? undefined : 'text-amber-700'}>
+                      {formatCurrency(receivableReceivedDifference, order.currency)}
+                    </span>
+                  </div>
+                  {receivableReceivedDifference !== 0 && (
+                    <div className="rounded-md bg-muted p-2 text-xs">
+                      <span className="font-medium">差额原因：</span>
+                      {order.receivable_received_difference_reason || '未填写'}
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -369,7 +386,7 @@ export default async function BusinessOrderDetailPage({
                         <TableHead>发货分类</TableHead>
                         <TableHead className="text-right">产品实收</TableHead>
                         <TableHead className="text-right">运费实收</TableHead>
-                        <TableHead className="text-right">销售金额</TableHead>
+                        <TableHead className="text-right">明细实收合计</TableHead>
                       </>
                     )}
                   </TableRow>

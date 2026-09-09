@@ -23,6 +23,7 @@ import {
 import {
   activeBusinessOrderAttachments,
   businessDailyItemAmounts,
+  businessDailyOrderTotals,
   canEditBusinessDailyOrder,
   sortedBusinessDailyItems,
   type BusinessDailyLedgerOrder,
@@ -78,7 +79,11 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
             const rows = items.length > 0 ? items : [null]
             const rowSpan = rows.length
             const canEdit = canEditBusinessDailyOrder(order, actor)
-            const salesperson = displayProfileName(order.salesperson, order.salesperson_name_snapshot)
+            const salesperson = displayProfileName(
+              order.salesperson,
+              order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
+            )
+            const totals = businessDailyOrderTotals(order)
 
             return rows.map((item, rowIndex) => {
               const isFirstRow = rowIndex === 0
@@ -147,6 +152,18 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
                         )}
                         <div className="text-xs font-normal text-muted-foreground">
                           {getBusinessOrderCustomerName(order.customer_snapshot)}
+                        </div>
+                        <div className="mt-1 space-y-0.5 text-xs font-normal tabular-nums">
+                          <div>应收 {formatDailyMoney(totals.receivable, order.currency)}</div>
+                          <div>实收 {formatDailyMoney(totals.salesTotal, order.currency)}</div>
+                          <div className={totals.difference === 0 ? 'text-muted-foreground' : 'text-amber-700'}>
+                            差额 {formatDailyMoney(totals.difference, order.currency)}
+                          </div>
+                          {totals.difference !== 0 && order.receivable_received_difference_reason && (
+                            <div className="max-w-48 whitespace-normal text-muted-foreground">
+                              原因：{order.receivable_received_difference_reason}
+                            </div>
+                          )}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-1">
                           {order.closed_at ? (

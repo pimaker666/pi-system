@@ -5,6 +5,13 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/** Decimal-safe rounding that also handles values represented with scientific notation. */
+export function roundToScale(value: number, scale: number) {
+  const [coefficient, exponent = '0'] = value.toString().split('e')
+  const shifted = Number(`${coefficient}e${Number(exponent) + scale}`)
+  return Number(`${Math.round(shifted)}e-${scale}`)
+}
+
 /**
  * Resolve a user's current display name for selectors and account-management UI.
  * Historical records pass their stored name snapshot as the second argument; the

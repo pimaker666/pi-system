@@ -16,7 +16,12 @@ export interface BusinessDailyLedgerOrder extends BusinessOrder {
   business_order_attachments?: BusinessOrderAttachment[]
 }
 
-export type BusinessDailyTotalField = 'productReceived' | 'shippingReceived' | 'salesTotal'
+export type BusinessDailyTotalField =
+  | 'receivable'
+  | 'productReceived'
+  | 'shippingReceived'
+  | 'salesTotal'
+  | 'difference'
 
 /** 台账使用的币种（其余币种只在出现时额外展示，不并入 CNY/USD）。 */
 export const BUSINESS_DAILY_PRIMARY_CURRENCIES: CurrencyCode[] = ['CNY', 'USD']
@@ -42,7 +47,11 @@ export function businessDailyItemAmounts(item: BusinessOrderItem) {
  * 历史业务订单回落到 items_subtotal / shipping_fee / total_amount，保证台账汇总不丢金额。
  */
 export function businessDailyOrderTotals(order: BusinessOrder) {
+  const receivable = Number(order.total_amount)
+  const salesTotal =
+    order.total_sales_amount === null ? receivable : Number(order.total_sales_amount)
   return {
+    receivable,
     productReceived:
       order.total_product_received_amount === null
         ? Number(order.items_subtotal)
@@ -51,8 +60,8 @@ export function businessDailyOrderTotals(order: BusinessOrder) {
       order.total_shipping_received_amount === null
         ? Number(order.shipping_fee)
         : Number(order.total_shipping_received_amount),
-    salesTotal:
-      order.total_sales_amount === null ? Number(order.total_amount) : Number(order.total_sales_amount),
+    salesTotal,
+    difference: Math.round((receivable - salesTotal) * 100) / 100,
   }
 }
 
