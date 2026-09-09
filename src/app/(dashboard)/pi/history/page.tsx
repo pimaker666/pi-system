@@ -44,7 +44,7 @@ export default async function PiHistoryPage({
   if (view === 'weight') {
     let wcQuery = supabase
       .from('weight_calculations')
-      .select('id, calc_number, title, total_quantity, total_weight_g, created_by, created_at')
+      .select('id, calc_number, title, total_quantity, total_weight_g, created_by, creator_display_name_snapshot, created_at')
       .order('created_at', { ascending: false })
       .limit(200)
     if (q?.trim()) wcQuery = wcQuery.ilike('calc_number', `%${q.trim()}%`)
@@ -89,7 +89,7 @@ export default async function PiHistoryPage({
 
   let query = supabase
     .from('proforma_invoices')
-    .select('id, pi_number, customer_snapshot, currency, total, status, deleted_at, created_at, created_by')
+    .select('id, pi_number, customer_snapshot, currency, total, status, deleted_at, created_at, created_by, creator_display_name_snapshot')
     .order('created_at', { ascending: false })
     .limit(200)
 

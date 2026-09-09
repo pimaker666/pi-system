@@ -57,7 +57,8 @@ export function PiHistoryTable({ rows, isAdmin, view, owners }: PiHistoryTablePr
   const isFav = (row: PiHistoryRow) => favOverride[row.id] ?? row.is_favorite
 
   const ownerName = useMemo(() => new Map(owners.map((o) => [o.id, o.label])), [owners])
-  const ownerLabel = (id: string | null) => (id ? ownerName.get(id) ?? '未知账号' : '—')
+  const ownerLabel = (id: string | null, snapshot: string | null) =>
+    snapshot?.trim() || (id ? ownerName.get(id) ?? '未知账号' : '—')
 
   const allChecked = rows.length > 0 && selected.size === rows.length
   const someChecked = selected.size > 0 && !allChecked
@@ -229,7 +230,7 @@ export function PiHistoryTable({ rows, isAdmin, view, owners }: PiHistoryTablePr
                   </TableCell>
                   {isAdmin && (
                     <TableCell className="text-sm text-muted-foreground">
-                      {ownerLabel(pi.created_by)}
+                      {ownerLabel(pi.created_by, pi.creator_display_name_snapshot)}
                     </TableCell>
                   )}
                   <TableCell>

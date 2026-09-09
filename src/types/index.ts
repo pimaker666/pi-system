@@ -1,5 +1,5 @@
 export type UserRole = 'admin' | 'finance' | 'sales' | 'supervisor'
-export type UserStatus = 'pending' | 'approved'
+export type UserStatus = 'pending' | 'approved' | 'disabled'
 export type CurrencyCode = 'USD' | 'EUR' | 'CNY' | 'GBP' | 'JPY'
 export type PiStatus = 'active' | 'void'
 export type FinanceRecordStatus = 'active' | 'void'
@@ -47,6 +47,7 @@ export interface FinanceOrder {
   customer_name_snapshot: string | null
   salesperson_id: string | null
   salesperson_name_snapshot: string | null
+  salesperson_display_name_snapshot: string | null
   order_date: string
   amount_original: number
   currency: CurrencyCode
@@ -74,6 +75,7 @@ export interface FinanceTransaction {
   finance_order_id: string | null
   salesperson_id: string | null
   salesperson_name_snapshot: string | null
+  salesperson_display_name_snapshot: string | null
   reference_no: string | null
   description: string | null
   status: FinanceRecordStatus
@@ -303,6 +305,7 @@ export interface BusinessOrder {
   customer_snapshot: CustomerSnapshot
   salesperson_id: string | null
   salesperson_name_snapshot: string | null
+  salesperson_display_name_snapshot: string | null
   order_date: string
   payment_due_date: string | null
   fulfillment_type: BusinessFulfillmentType
@@ -631,6 +634,7 @@ export interface BusinessLifecycleAuditLog {
     full_name: string | null
     role: UserRole
   }
+  actor_display_name_snapshot: string | null
   created_at: string
   actor?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
@@ -653,9 +657,9 @@ export interface BusinessOrderAuditLog {
     full_name: string | null
     role: UserRole
   }
+  actor_display_name_snapshot: string | null
   created_at: string
-  /** Live-joined actor profile (PostgREST embed on actor_id) used to render the
-   *  current chinese_name; null when the user was deleted. */
+  /** Current actor profile is only a fallback for legacy rows without a snapshot. */
   actor?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
 
@@ -676,6 +680,8 @@ export interface Profile {
   role: UserRole
   status: UserStatus
   supervisor_id: string | null
+  disabled_at: string | null
+  disabled_by: string | null
   created_at: string
   updated_at: string
 }
@@ -858,6 +864,7 @@ export interface ProformaInvoice {
   /** Soft-delete marker. null = active, non-null = in recycle bin. */
   deleted_at: string | null
   created_by: string | null
+  creator_display_name_snapshot: string | null
   created_at: string
   updated_at: string
 }
@@ -876,6 +883,7 @@ export interface PiHistoryRow {
   status: PiStatus
   deleted_at: string | null
   created_by: string | null
+  creator_display_name_snapshot: string | null
   created_at: string
   is_favorite: boolean
 }
@@ -925,6 +933,7 @@ export interface WeightCalculation {
   total_quantity: number
   total_weight_g: number
   created_by: string | null
+  creator_display_name_snapshot: string | null
   created_at: string
 }
 
@@ -954,6 +963,7 @@ export interface WeightCalcHistoryRow {
   total_quantity: number
   total_weight_g: number
   created_by: string | null
+  creator_display_name_snapshot: string | null
   created_at: string
 }
 

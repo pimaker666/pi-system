@@ -53,8 +53,8 @@ export function WeightCalcHistoryTable({ rows, isAdmin, owners }: Props) {
   const [target, setTarget] = useState<WeightCalcHistoryRow | null>(null)
 
   const ownerName = new Map(owners.map((o) => [o.id, o.label]))
-  const ownerLabel = (id: string | null) =>
-    id ? ownerName.get(id) ?? '未知账号' : '—'
+  const ownerLabel = (id: string | null, snapshot: string | null) =>
+    snapshot?.trim() || (id ? ownerName.get(id) ?? '未知账号' : '—')
 
   function confirmDelete() {
     if (!target) return
@@ -117,7 +117,7 @@ export function WeightCalcHistoryTable({ rows, isAdmin, owners }: Props) {
                 </TableCell>
                 {isAdmin && (
                   <TableCell className="text-muted-foreground">
-                    {ownerLabel(row.created_by)}
+                    {ownerLabel(row.created_by, row.creator_display_name_snapshot)}
                   </TableCell>
                 )}
                 <TableCell className="text-muted-foreground">
@@ -176,7 +176,7 @@ export function WeightCalcHistoryTable({ rows, isAdmin, owners }: Props) {
               </div>
               {isAdmin && (
                 <div className="text-xs text-muted-foreground">
-                  创建人：{ownerLabel(row.created_by)}
+                  创建人：{ownerLabel(row.created_by, row.creator_display_name_snapshot)}
                 </div>
               )}
               <div className="flex gap-2 pt-1">

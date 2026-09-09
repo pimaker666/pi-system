@@ -63,7 +63,7 @@ export async function fetchDailyOrderOptions(supabase: SupabaseClient) {
     supabase.from('finance_daily_order_shops').select('*').order('name'),
     supabase.from('finance_daily_order_shop_groups').select('*').order('name'),
     supabase.from('finance_daily_order_shop_salespeople').select('*').eq('is_active', true),
-    supabase.from('profiles').select('id, full_name, email, chinese_name').in('role', ['sales', 'admin']).eq('status', 'approved').order('full_name'),
+    supabase.from('profiles').select('id, full_name, email, chinese_name').neq('role', 'finance').eq('status', 'approved').order('full_name'),
     supabase.from('products').select('id, name, sku, image_url, unit_price, currency, unit').eq('is_active', true).order('name'),
   ])
   const error = shopsResult.error || groupsResult.error || assignmentsResult.error || salesResult.error || productsResult.error

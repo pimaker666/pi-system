@@ -253,7 +253,10 @@ export default async function BusinessOrderDetailPage({
               {customer.address && <div className="text-muted-foreground">{customer.address}</div>}
               <div className="border-t pt-2">
                 <span className="text-muted-foreground">业务员：</span>
-                {displayProfileName(order.salesperson, order.salesperson_name_snapshot)}
+                {displayProfileName(
+                  order.salesperson,
+                  order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
+                )}
               </div>
               <div>
                 <span className="text-muted-foreground">货运单号：</span>
@@ -387,7 +390,13 @@ export default async function BusinessOrderDetailPage({
                         : `${lifecycleEntityLabels[log.entity_type] ?? log.entity_type} · ${lifecycleActionLabels[log.action] ?? log.action}`}
                     </div>
                     <div className="text-muted-foreground">
-                      {displayProfileName(log.actor, log.actor_snapshot.full_name || log.actor_snapshot.email)} · {formatDate(log.created_at, true)}
+                      {displayProfileName(
+                        log.actor,
+                        log.actor_display_name_snapshot ||
+                          log.actor_snapshot.full_name ||
+                          log.actor_snapshot.email,
+                      )}{' '}
+                      · {formatDate(log.created_at, true)}
                     </div>
                     {log.reason && <div className="mt-1">说明：{log.reason}</div>}
                   </div>

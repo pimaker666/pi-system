@@ -6,10 +6,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Resolve a user's display name for the UI: prefer the live `chinese_name`,
- * then `full_name`, then `email`. When the joined profile is absent (e.g. the
- * user was deleted and only the historical `*_name_snapshot` survives), fall
- * back to the provided snapshot string. Returns '—' when nothing is available.
+ * Resolve a user's current display name for selectors and account-management UI.
+ * Historical records pass their stored name snapshot as the second argument; the
+ * snapshot must win so later account-name changes never rewrite history.
  */
 export function displayProfileName(
   profile?: {
@@ -17,14 +16,17 @@ export function displayProfileName(
     full_name?: string | null
     email?: string | null
   } | null,
-  fallbackSnapshot?: string | null,
+  historicalSnapshot?: string | null,
 ): string {
+  const snapshot = historicalSnapshot?.trim()
+  if (snapshot) return snapshot
+
   if (profile) {
     const live =
       profile.chinese_name?.trim() || profile.full_name?.trim() || profile.email?.trim()
     if (live) return live
   }
-  return fallbackSnapshot?.trim() || '—'
+  return '—'
 }
 
 const CURRENCY_LOCALE: Record<string, string> = {

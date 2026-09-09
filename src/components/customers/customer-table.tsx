@@ -63,11 +63,13 @@ export function CustomerTable({
   customers,
   groups,
   owners = [],
+  transferOwners = [],
   isAdmin = false,
 }: {
   customers: CustomerRow[]
   groups: CustomerGroup[]
   owners?: OwnerOption[]
+  transferOwners?: OwnerOption[]
   isAdmin?: boolean
 }) {
   const router = useRouter()
@@ -129,7 +131,7 @@ export function CustomerTable({
       if (result.ok) {
         toast.success(
           moveMode === 'transfer'
-            ? `已转移 ${ids.length} 个客户（含其 PI）`
+            ? `已转移 ${ids.length} 个客户，历史 PI 保持不变`
             : `已复制 ${ids.length} 个客户`,
         )
         setMoveOpen(false)
@@ -225,7 +227,7 @@ export function CustomerTable({
               <Tags className="h-3.5 w-3.5" />
               调整分组
             </Button>
-            {owners.length > 0 && (
+            {transferOwners.length > 0 && (
               <>
                 <Button size="sm" variant="outline" onClick={() => openMove('transfer')}>
                   <ArrowRightLeft className="h-3.5 w-3.5" />
@@ -314,7 +316,7 @@ export function CustomerTable({
                       customer={c}
                       groups={groups}
                       isAdmin={isAdmin}
-                      owners={owners}
+                      owners={transferOwners}
                     />
                   </TableCell>
                 </TableRow>
@@ -362,7 +364,7 @@ export function CustomerTable({
                 placeholder="留空则不修改"
               />
             </div>
-            {owners.length > 0 && (
+            {transferOwners.length > 0 && (
               <div className="space-y-1.5">
                 <Label>归属账号</Label>
                 <Select value={mOwner} onValueChange={setMOwner}>
@@ -371,7 +373,7 @@ export function CustomerTable({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value={KEEP}>不修改</SelectItem>
-                    {owners.map((o) => (
+                    {transferOwners.map((o) => (
                       <SelectItem key={o.id} value={o.id}>
                         {o.label}
                       </SelectItem>
@@ -379,7 +381,7 @@ export function CustomerTable({
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  仅改客户归属，不搬动名下已开的 PI；需连 PI 一起搬请用「转移」。
+                  仅改变客户当前负责人；历史 PI 的归属与创建人保持不变。
                 </p>
               </div>
             )}
@@ -449,7 +451,7 @@ export function CustomerTable({
                 <SelectValue placeholder="选择账号" />
               </SelectTrigger>
               <SelectContent>
-                {owners.map((o) => (
+                {transferOwners.map((o) => (
                   <SelectItem key={o.id} value={o.id}>
                     {o.label}
                   </SelectItem>
@@ -458,7 +460,7 @@ export function CustomerTable({
             </Select>
             <p className="text-xs text-muted-foreground">
               {moveMode === 'transfer'
-                ? '转移后这些客户及其名下已开的 PI 将归属所选账号。'
+                ? '转移只改变这些客户的当前负责人；历史 PI 的归属与创建人保持不变。'
                 : '复制会为所选账号新建相同客户信息，不复制 PI。'}
             </p>
           </div>

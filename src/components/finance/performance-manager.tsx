@@ -76,7 +76,10 @@ export function PerformanceManager({ orders }: PerformanceManagerProps) {
       return [
         order.order_number,
         customer,
-        displayProfileName(order.salesperson, order.salesperson_name_snapshot),
+        displayProfileName(
+          order.salesperson,
+          order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
+        ),
       ]
         .join(' ')
         .toLocaleLowerCase('zh-CN')
@@ -198,7 +201,12 @@ export function PerformanceManager({ orders }: PerformanceManagerProps) {
                     {daysOverdue > 0 && <Badge variant="destructive" className="mt-1">逾期 {daysOverdue} 天</Badge>}
                   </TableCell>
                   <TableCell>{BUSINESS_FULFILLMENT_LABELS[order.fulfillment_type]}</TableCell>
-                  <TableCell>{displayProfileName(order.salesperson, order.salesperson_name_snapshot)}</TableCell>
+                  <TableCell>
+                    {displayProfileName(
+                      order.salesperson,
+                      order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
+                    )}
+                  </TableCell>
                   <TableCell className="whitespace-nowrap text-right font-medium">
                     <div>{formatCurrency(Number(order.total_amount), order.currency)}</div>
                     <div className="text-xs font-normal text-muted-foreground">
