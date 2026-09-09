@@ -61,31 +61,23 @@ export async function setUserRole(
   }
 
   const supabase = await createClient()
+  const { error } = await supabase.rpc('admin_set_user_role', {
+    p_user_id: userId,
+    p_role: role,
+  })
 
-  // When changing an admin to any non-admin role, ensure at least one admin remains.
-  if (role !== 'admin') {
-    const { data: target } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', userId)
-      .single()
-
-    if (target?.role === 'admin') {
-      const { count } = await supabase
-        .from('profiles')
-        .select('id', { count: 'exact', head: true })
-        .eq('role', 'admin')
-      if ((count ?? 0) <= 1) {
-        return { ok: false, error: '至少需保留一名管理员，无法取消' }
-      }
-    }
+  if (error) {
+    const message = error.message.includes('Disabled accounts')
+      ? '停用账号需先恢复后才能修改角色'
+      : error.message.includes('At least one approved administrator')
+        ? '至少需保留一名已通过审核的管理员'
+        : error.message.includes('Only approved administrators')
+          ? '只有已通过审核的管理员可以修改角色'
+          : error.message.includes('own role')
+            ? '不能修改自己的角色'
+            : error.message
+    return { ok: false, error: message }
   }
-
-  const { error } = await supabase
-    .from('profiles')
-    .update({ role })
-    .eq('id', userId)
-  if (error) return { ok: false, error: error.message }
 
   revalidatePath('/users')
   return { ok: true }
