@@ -11,18 +11,40 @@ export const businessOrderStatuses = [
 export const businessFulfillmentTypes = ['custom', 'stock'] as const
 export const businessPaymentTypes = ['full', 'deposit', 'balance'] as const
 export const businessOrderItemSourceTypes = ['catalog', 'custom', 'legacy'] as const
+export const businessOrderDailyShippingCategories = [
+  'stock',
+  'sample',
+  'custom',
+  'purchase',
+] as const
 
 const MAX_AMOUNT = 999999999999
 const MAX_SAFE_QUANTITY = Math.floor(Number.MAX_SAFE_INTEGER / 10_000) / 10_000
 const MAX_EXCHANGE_RATE = 1000000
 const MAX_BATCH_SIZE = 500
+const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024
 const UUID_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
 const CUSTOMER_TRANSFER_PROOF_PATTERN = new RegExp(
   `^${UUID_PATTERN}/customer/${UUID_PATTERN}/${UUID_PATTERN}\\.(?:jpe?g|png|webp)$`,
   'i',
 )
+const BUSINESS_ORDER_ATTACHMENT_PATTERN = new RegExp(
+  `^${UUID_PATTERN}/${UUID_PATTERN}/${UUID_PATTERN}\\.(?:jpe?g|png)$`,
+  'i',
+)
 
-const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, '请选择有效日期')
+const dateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, '请选择有效日期')
+  .refine((value) => {
+    const [year, month, day] = value.split('-').map(Number)
+    const parsed = new Date(Date.UTC(year, month - 1, day))
+    return (
+      parsed.getUTCFullYear() === year &&
+      parsed.getUTCMonth() === month - 1 &&
+      parsed.getUTCDate() === day
+    )
+  }, '请选择有效日期')
 const optionalDateSchema = z.union([dateSchema, z.literal('')]).optional().default('')
 const dateTimeSchema = z
   .string()
@@ -38,28 +60,47 @@ function roundToScale(value: number, scale: number) {
   return Number(`${Math.round(shifted)}e-${scale}`)
 }
 
-function roundedNumber(scale: number) {
-  return z.coerce
-    .number()
-    .finite('请输入有效数字')
-    .transform((value) => roundToScale(value, scale))
+function decimalPlaces(value: number) {
+  const [coefficient, exponentText = '0'] = value.toString().toLowerCase().split('e')
+  const fractionLength = coefficient.split('.')[1]?.length ?? 0
+  return Math.max(0, fractionLength - Number(exponentText))
 }
 
-const nonNegativeAmountSchema = z.coerce
-  .number()
-  .finite('请输入有效数字')
-  .min(0, '金额不能为负')
-  .max(MAX_AMOUNT, '金额不能超过上限')
-  .transform((value) => roundToScale(value, 2))
-const positiveAmountSchema = roundedNumber(2).pipe(
+function decimalNumber(scale: number, label: string, emptyAsZero = false) {
+  const pattern = new RegExp(`^\\d+(?:\\.\\d{1,${scale}})?$`)
+  return z
+    .preprocess(
+      (value) => (emptyAsZero && typeof value === 'string' && value.trim() === '' ? '0' : value),
+      z.union([
+        z.number().finite(`请输入有效${label}`),
+        z.string().trim().min(1, `请输入${label}`).regex(pattern, `${label}最多保留 ${scale} 位小数`),
+      ]),
+    )
+    .transform(Number)
+    .refine((value) => decimalPlaces(value) <= scale, `${label}最多保留 ${scale} 位小数`)
+}
+
+const nonNegativeAmountSchema = decimalNumber(2, '金额', true).pipe(
+  z.number().min(0, '金额不能为负').max(MAX_AMOUNT, '金额不能超过上限'),
+)
+const positiveAmountSchema = decimalNumber(2, '金额').pipe(
   z.number().positive('金额必须大于 0').max(MAX_AMOUNT, '金额不能超过上限'),
 )
-const positiveQuantitySchema = roundedNumber(4).pipe(
+const positiveQuantitySchema = decimalNumber(4, '数量').pipe(
   z.number().positive('数量必须大于 0').max(MAX_SAFE_QUANTITY, '数量超过前端安全精度上限'),
 )
-const exchangeRateSchema = roundedNumber(8).pipe(
+const exchangeRateSchema = decimalNumber(8, '汇率').pipe(
   z.number().positive('汇率必须大于 0').max(MAX_EXCHANGE_RATE, '汇率不能超过 1000000'),
 )
+
+const dailyOrderItemFields = {
+  daily_shipping_category: z.enum(businessOrderDailyShippingCategories),
+  product_received_amount: nonNegativeAmountSchema,
+  product_received_overridden: z.boolean(),
+  logistics_fee_amount: nonNegativeAmountSchema,
+  sales_total_amount: nonNegativeAmountSchema,
+  sales_total_overridden: z.boolean(),
+}
 
 const catalogOrderItemSchema = z
   .object({
@@ -68,6 +109,7 @@ const catalogOrderItemSchema = z
     product_id: z.string().uuid('请选择有效产品'),
     quantity: positiveQuantitySchema,
     unit_price: nonNegativeAmountSchema,
+    ...dailyOrderItemFields,
   })
   .strict()
 
@@ -79,6 +121,7 @@ const customOrderItemSchema = z
     custom_product_version_id: z.string().uuid('请选择有效定制产品版本'),
     quantity: positiveQuantitySchema,
     unit_price: nonNegativeAmountSchema,
+    ...dailyOrderItemFields,
   })
   .strict()
 
@@ -97,6 +140,9 @@ export const businessOrderItemInputSchema = z.preprocess((value) => {
 export const businessOrderInputSchema = z
   .object({
     customer_id: z.string().uuid('请选择客户'),
+    shop_id: z.string().uuid('请选择店铺'),
+    salesperson_id: z.string().uuid('请选择业务员'),
+    external_order_number: z.string().trim().min(1, '请输入订单号').max(200, '订单号不能超过 200 字'),
     order_date: dateSchema,
     payment_due_date: optionalDateSchema,
     fulfillment_type: z.enum(businessFulfillmentTypes),
@@ -105,24 +151,56 @@ export const businessOrderInputSchema = z
     shipping_fee: nonNegativeAmountSchema,
     tracking_number: optionalText(200, '物流单号不能超过 200 字'),
     sales_notes: optionalText(2000, '业务备注不能超过 2000 字'),
+    daily_shipping_date: dateSchema,
+    daily_shipping_number: optionalText(200, '每日订单发货单号不能超过 200 字'),
+    daily_payment_category: z.enum(businessPaymentTypes),
+    total_product_received_amount: nonNegativeAmountSchema,
+    total_product_received_overridden: z.boolean(),
+    total_shipping_received_amount: nonNegativeAmountSchema,
+    total_shipping_received_overridden: z.boolean(),
+    total_sales_amount: nonNegativeAmountSchema,
+    total_sales_overridden: z.boolean(),
     items: z
       .array(businessOrderItemInputSchema)
       .min(1, '请至少添加一条订单明细')
       .max(MAX_BATCH_SIZE, '订单明细不能超过 500 条'),
   })
+  .strict()
   .superRefine((value, ctx) => {
     const seenItemIds = new Set<string>()
     value.items.forEach((item, index) => {
-      if (!item.order_item_id) return
-      if (seenItemIds.has(item.order_item_id)) {
+      if (item.order_item_id) {
+        if (seenItemIds.has(item.order_item_id)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['items', index, 'order_item_id'],
+            message: '同一订单明细 ID 不能重复',
+          })
+        }
+        seenItemIds.add(item.order_item_id)
+      }
+
+      const automaticProductReceived = roundToScale(item.quantity * item.unit_price, 2)
+      if (!item.product_received_overridden && item.product_received_amount !== automaticProductReceived) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['items', index, 'order_item_id'],
-          message: '同一订单明细 ID 不能重复',
+          path: ['items', index, 'product_received_amount'],
+          message: '未手工覆盖时，产品实收金额必须等于单价乘数量',
         })
       }
-      seenItemIds.add(item.order_item_id)
+      const automaticSalesTotal = roundToScale(
+        item.product_received_amount + item.logistics_fee_amount,
+        2,
+      )
+      if (!item.sales_total_overridden && item.sales_total_amount !== automaticSalesTotal) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['items', index, 'sales_total_amount'],
+          message: '未手工覆盖时，销售金额必须等于产品实收加物流费',
+        })
+      }
     })
+
     if (value.currency === 'CNY' && value.exchange_rate_to_cny !== 1) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -137,6 +215,7 @@ export const businessOrderInputSchema = z
         message: '尾款到期日不能早于订单日期',
       })
     }
+
     const itemsSubtotal = value.items.reduce(
       (sum, item) => sum + roundToScale(item.quantity * item.unit_price, 2),
       0,
@@ -148,7 +227,66 @@ export const businessOrderInputSchema = z
         message: '订单汇总金额不能超过上限',
       })
     }
+
+    const productTotal = roundToScale(
+      value.items.reduce((sum, item) => sum + item.product_received_amount, 0),
+      2,
+    )
+    const shippingTotal = roundToScale(
+      value.items.reduce((sum, item) => sum + item.logistics_fee_amount, 0),
+      2,
+    )
+    const salesTotal = roundToScale(
+      value.items.reduce((sum, item) => sum + item.sales_total_amount, 0),
+      2,
+    )
+    if (!value.total_product_received_overridden && value.total_product_received_amount !== productTotal) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['total_product_received_amount'],
+        message: '未手工覆盖时，总产品实收必须等于明细合计',
+      })
+    }
+    if (!value.total_shipping_received_overridden && value.total_shipping_received_amount !== shippingTotal) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['total_shipping_received_amount'],
+        message: '未手工覆盖时，总运费实收必须等于明细合计',
+      })
+    }
+    if (!value.total_sales_overridden && value.total_sales_amount !== salesTotal) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['total_sales_amount'],
+        message: '未手工覆盖时，总销售金额必须等于明细合计',
+      })
+    }
+    if (
+      Math.round(value.total_sales_amount * 100) !==
+      Math.round(value.total_product_received_amount * 100) +
+        Math.round(value.total_shipping_received_amount * 100)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['total_sales_amount'],
+        message: '总销售金额必须等于总产品实收加总运费实收',
+      })
+    }
   })
+
+export const businessOrderAttachmentInputSchema = z
+  .object({
+    order_id: z.string().uuid('请选择有效订单'),
+    object_path: z
+      .string()
+      .trim()
+      .max(500, '附件路径不能超过 500 字')
+      .regex(BUSINESS_ORDER_ATTACHMENT_PATTERN, '附件路径格式不正确'),
+    original_name: z.string().trim().max(255, '附件名称不能超过 255 字'),
+    mime_type: z.enum(['image/jpeg', 'image/png']),
+    size_bytes: z.number().int('附件大小无效').positive('附件不能为空').max(MAX_ATTACHMENT_SIZE, '附件不能超过 5MB'),
+  })
+  .strict()
 
 export const businessCustomProductVersionInputSchema = z
   .object({
@@ -392,6 +530,7 @@ export const businessOrderFinanceSchema = z.object({
 
 export type BusinessOrderInput = z.infer<typeof businessOrderInputSchema>
 export type BusinessOrderItemInput = z.infer<typeof businessOrderItemInputSchema>
+export type BusinessOrderAttachmentInput = z.infer<typeof businessOrderAttachmentInputSchema>
 export type BusinessCustomProductVersionInput = z.infer<
   typeof businessCustomProductVersionInputSchema
 >

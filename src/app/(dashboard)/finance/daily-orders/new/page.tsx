@@ -4,6 +4,7 @@ import { ArrowLeft } from 'lucide-react'
 import { BusinessOrderForm } from '@/components/finance/business-order-form'
 import { Button } from '@/components/ui/button'
 import { requireApproved } from '@/lib/auth'
+import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
 import type { Customer, CustomerGroup, Product } from '@/types'
 
@@ -15,12 +16,13 @@ export default async function NewBusinessOrderPage() {
 
   const supabase = await createClient()
   const customersQuery = supabase.from('customers').select('*')
-  const [customersResult, groupsResult, productsResult] = await Promise.all([
+  const [customersResult, groupsResult, productsResult, dailyOptions] = await Promise.all([
     profile.role === 'admin'
       ? customersQuery.order('name')
       : customersQuery.eq('created_by', profile.id).order('name'),
     supabase.from('customer_groups').select('*').order('name'),
     supabase.from('products').select('*').eq('is_active', true).order('name'),
+    fetchDailyOrderOptions(supabase),
   ])
 
   const error = customersResult.error || groupsResult.error || productsResult.error
@@ -44,6 +46,8 @@ export default async function NewBusinessOrderPage() {
         customers={(customersResult.data ?? []) as Customer[]}
         customerGroups={(groupsResult.data ?? []) as CustomerGroup[]}
         products={(productsResult.data ?? []) as Product[]}
+        shops={dailyOptions.shops}
+        salespeople={dailyOptions.salespeople}
       />
     </div>
   )

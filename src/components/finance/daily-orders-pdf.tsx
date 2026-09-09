@@ -1,13 +1,16 @@
 /* eslint-disable jsx-a11y/alt-text -- react-pdf Image does not expose the DOM alt prop */
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer'
+import type { BusinessDailyExportRow } from '@/lib/business-daily-orders'
+import { DAILY_ORDER_COLUMNS } from '@/lib/daily-orders'
 import { registerPdfFonts } from '@/lib/pdf-fonts'
-import { DAILY_ORDER_COLUMNS, formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
-import { displayProfileName } from '@/lib/utils'
-import type { DailyOrder } from '@/types'
 
 registerPdfFonts()
 
-export interface DailyOrderPdfRow extends DailyOrder {
+/**
+ * PDF 台账行：与 XLSX 共用 buildBusinessDailyExportRows 的输出，
+ * 只把截图替换成已下载的 data URL（下载失败时为 null）。
+ */
+export interface DailyOrderPdfRow extends BusinessDailyExportRow {
   imageSources: Array<string | null>
 }
 
@@ -33,19 +36,17 @@ export function DailyOrdersPdf({ orders }: { orders: DailyOrderPdfRow[] }) {
     <Text style={styles.title}>财务每日订单台账</Text>
     <View style={styles.table}>
       <View style={[styles.row, styles.header]} fixed>{DAILY_ORDER_COLUMNS.map((label, index) => <Cell key={label} index={index}><Text>{label}</Text></Cell>)}</View>
-      {orders.map((order, rowIndex) => {
+      {orders.map((row, rowIndex) => {
         const values = [
-          String(rowIndex + 1), order.order_date, order.shop_name_snapshot, displayProfileName(order.salesperson, order.salesperson_name_snapshot),
-          order.order_number, order.shipping_date, order.shipping_number || '', SHIPPING_LABELS[order.shipping_category],
-          `${order.product_name_snapshot}\n${order.product_sku_snapshot}`, String(Number(order.quantity)),
-          formatDailyMoney(order.sales_unit_price_amount, order.sales_unit_price_currency),
-          formatDailyMoney(order.product_received_amount, order.product_received_currency),
-          formatDailyMoney(order.logistics_fee_amount, order.logistics_fee_currency),
-          formatDailyMoney(order.sales_total_amount, order.sales_total_currency), PAYMENT_LABELS[order.payment_category], order.remarks || '',
+          row.sequence, row.orderDate, row.shop, row.salesperson,
+          row.orderNumber, row.shippingDate, row.shippingNumber, row.shippingCategory,
+          row.productSku ? `${row.productName}\n${row.productSku}` : row.productName, row.quantity,
+          row.unitPrice, row.productReceived, row.logisticsFee, row.salesTotal,
+          row.paymentCategory, row.remarks,
         ]
-        return <View key={order.id} style={styles.row} wrap={false}>
+        return <View key={`${row.orderId}-${rowIndex}`} style={styles.row} wrap={false}>
           {values.map((value, index) => <Cell key={index} index={index}><Text>{value}</Text></Cell>)}
-          <Cell index={16}><View style={styles.images}>{order.imageSources.map((source, index) => source ? <Image key={index} src={source} style={styles.image} /> : <Text key={index} style={styles.unavailable}>图片不可用</Text>)}</View></Cell>
+          <Cell index={16}><View style={styles.images}>{row.imageSources.map((source, index) => source ? <Image key={index} src={source} style={styles.image} /> : <Text key={index} style={styles.unavailable}>图片不可用</Text>)}</View></Cell>
         </View>
       })}
     </View>

@@ -1,12 +1,20 @@
 'use client'
 
-import { FormEvent, useMemo, useState, useTransition } from 'react'
+import {
+  ClipboardEvent,
+  DragEvent,
+  FormEvent,
+  useMemo,
+  useState,
+  useTransition,
+} from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, LockKeyhole, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Eye, LockKeyhole, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CustomerCombobox } from '@/components/customers/customer-combobox'
 import { BusinessCustomProductPicker } from '@/components/finance/business-custom-product-picker'
+import type { DailyOrderShopOption } from '@/lib/daily-orders'
 import { ProductCombobox } from '@/components/products/product-combobox'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -21,9 +29,16 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { createBusinessOrder, updateBusinessOrder } from '@/lib/actions/business-orders'
+import {
+  bindBusinessOrderAttachment,
+  createBusinessOrder,
+  getBusinessOrderAttachmentUrl,
+  removeBusinessOrderAttachment,
+  updateBusinessOrder,
+} from '@/lib/actions/business-orders'
 import { getBusinessDateKey } from '@/lib/business-orders'
-import { formatCurrency } from '@/lib/utils'
+import { createClient } from '@/lib/supabase/client'
+import { cn, displayProfileName, formatCurrency } from '@/lib/utils'
 import type {
   BusinessCustomProductListItem,
   BusinessFulfillmentType,
@@ -33,6 +48,8 @@ import type {
   CurrencyCode,
   Customer,
   CustomerGroup,
+  DailyOrderPaymentCategory,
+  DailyOrderShippingCategory,
   Product,
   Profile,
 } from '@/types'
@@ -51,15 +68,28 @@ interface EditableItem {
   unit: string
   quantity: number
   unit_price: number
+  daily_shipping_category: DailyOrderShippingCategory
+  product_received_amount: number
+  product_received_overridden: boolean
+  logistics_fee_amount: number
+  sales_total_amount: number
+  sales_total_overridden: boolean
   default_currency: CurrencyCode | null
   custom_scope: 'exclusive' | 'shared' | null
 }
 
+interface PendingAttachment {
+  id: string
+  file: File
+}
+
 interface BusinessOrderFormProps {
-  profile: Pick<Profile, 'role'>
+  profile: Pick<Profile, 'id' | 'role'>
   customers: Customer[]
   customerGroups: CustomerGroup[]
   products: Product[]
+  shops: DailyOrderShopOption[]
+  salespeople: Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
   initialOrder?: BusinessOrderWithDetails
   editConstraints?: BusinessOrderEditConstraints
 }
@@ -78,12 +108,49 @@ interface NormalizedItemConstraint {
 }
 
 const currencies: CurrencyCode[] = ['USD', 'EUR', 'CNY', 'GBP', 'JPY']
+const SHIPPING_OPTIONS: Array<{ value: DailyOrderShippingCategory; label: string }> = [
+  { value: 'stock', label: '现货' },
+  { value: 'sample', label: '样品' },
+  { value: 'custom', label: '定制' },
+  { value: 'purchase', label: '外采' },
+]
 
+function randomHexNibble() {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const buffer = new Uint8Array(1)
+    crypto.getRandomValues(buffer)
+    return buffer[0] % 16
+  }
+  return Math.floor(Math.random() * 16)
+}
+
+/**
+ * 始终返回合法的 v4 UUID。
+ * 生产通过 http 访问时属于非安全上下文，crypto.randomUUID 不可用，
+ * 而该 id 会拼进截图对象路径并被 Storage RLS 的 UUID 正则校验，
+ * 因此回退实现必须仍然产出 UUID 而非任意字符串。
+ */
 function newLocalId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
   }
-  return `business-order-item-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
+    const random = randomHexNibble()
+    const value = token === 'x' ? random : (random & 0x3) | 0x8
+    return value.toString(16)
+  })
+}
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100
+}
+
+function derivedProductReceived(quantity: number, unitPrice: number) {
+  return roundMoney(quantity * unitPrice)
+}
+
+function derivedSalesTotal(productReceived: number, logisticsFee: number) {
+  return roundMoney(productReceived + logisticsFee)
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -180,6 +247,8 @@ export function BusinessOrderForm({
   customers,
   customerGroups,
   products,
+  shops,
+  salespeople,
   initialOrder,
   editConstraints,
 }: BusinessOrderFormProps) {
@@ -190,6 +259,22 @@ export function BusinessOrderForm({
   )
   const [orderDate, setOrderDate] = useState(
     initialOrder?.order_date ?? getBusinessDateKey(),
+  )
+  const [shopId, setShopId] = useState(initialOrder?.shop_id ?? '')
+  const [salespersonId, setSalespersonId] = useState(
+    initialOrder?.salesperson_id ?? (profile.role === 'admin' ? '' : profile.id),
+  )
+  const [externalOrderNumber, setExternalOrderNumber] = useState(
+    initialOrder?.external_order_number ?? '',
+  )
+  const [dailyShippingDate, setDailyShippingDate] = useState(
+    initialOrder?.daily_shipping_date ?? initialOrder?.order_date ?? getBusinessDateKey(),
+  )
+  const [dailyShippingNumber, setDailyShippingNumber] = useState(
+    initialOrder?.daily_shipping_number ?? '',
+  )
+  const [dailyPaymentCategory, setDailyPaymentCategory] = useState<DailyOrderPaymentCategory>(
+    initialOrder?.daily_payment_category ?? 'full',
   )
   const [paymentDueDate, setPaymentDueDate] = useState(initialOrder?.payment_due_date ?? '')
   const [fulfillmentType, setFulfillmentType] = useState<BusinessFulfillmentType>(
@@ -223,15 +308,61 @@ export function BusinessOrderForm({
         unit: item.unit_snapshot,
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price),
+        daily_shipping_category: item.daily_shipping_category ?? 'stock',
+        product_received_amount: Number(item.product_received_amount ?? item.line_amount),
+        product_received_overridden: item.product_received_overridden,
+        logistics_fee_amount: Number(item.logistics_fee_amount ?? 0),
+        sales_total_amount: Number(item.sales_total_amount ?? item.line_amount),
+        sales_total_overridden: item.sales_total_overridden,
         default_currency: null,
         custom_scope: null,
       })) ?? [],
+  )
+  const [totalProductOverride, setTotalProductOverride] = useState<number | null>(
+    initialOrder?.total_product_received_overridden
+      ? Number(initialOrder.total_product_received_amount ?? 0)
+      : null,
+  )
+  const [totalShippingOverride, setTotalShippingOverride] = useState<number | null>(
+    initialOrder?.total_shipping_received_overridden
+      ? Number(initialOrder.total_shipping_received_amount ?? 0)
+      : null,
+  )
+  const [totalSalesOverride, setTotalSalesOverride] = useState<number | null>(
+    initialOrder?.total_sales_overridden ? Number(initialOrder.total_sales_amount ?? 0) : null,
+  )
+  const [files, setFiles] = useState<PendingAttachment[]>([])
+  const [isDragging, setIsDragging] = useState(false)
+  const [attachments, setAttachments] = useState(
+    initialOrder?.business_order_attachments?.filter((item) => item.status === 'active') ?? [],
   )
 
   const subtotal = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity * item.unit_price, 0),
     [items],
   )
+  const assignedSalespeople = useMemo(() => {
+    const ids = new Set(shops.find((shop) => shop.id === shopId)?.salespersonIds ?? [])
+    return salespeople.filter((person) => ids.has(person.id))
+  }, [shopId, shops, salespeople])
+  const automaticProductTotal = useMemo(
+    () => roundMoney(items.reduce((sum, item) => sum + item.product_received_amount, 0)),
+    [items],
+  )
+  const automaticShippingTotal = useMemo(
+    () => roundMoney(items.reduce((sum, item) => sum + item.logistics_fee_amount, 0)),
+    [items],
+  )
+  const automaticSalesTotal = useMemo(
+    () => roundMoney(items.reduce((sum, item) => sum + item.sales_total_amount, 0)),
+    [items],
+  )
+  const effectiveProductTotal = totalProductOverride ?? automaticProductTotal
+  const effectiveShippingTotal = totalShippingOverride ?? automaticShippingTotal
+  const effectiveSalesTotal = totalSalesOverride ?? automaticSalesTotal
+  const totalsBalanced =
+    Math.round(effectiveSalesTotal * 100) ===
+    Math.round(effectiveProductTotal * 100) + Math.round(effectiveShippingTotal * 100)
   const normalizedConstraints = useMemo(
     () => normalizeEditConstraints(editConstraints),
     [editConstraints],
@@ -285,6 +416,12 @@ export function BusinessOrderForm({
         unit: product.unit,
         quantity: 1,
         unit_price: currencyMatches ? Number(product.unit_price) : 0,
+        daily_shipping_category: 'stock',
+        product_received_amount: currencyMatches ? Number(product.unit_price) : 0,
+        product_received_overridden: false,
+        logistics_fee_amount: 0,
+        sales_total_amount: currencyMatches ? Number(product.unit_price) : 0,
+        sales_total_overridden: false,
         default_currency: product.currency,
         custom_scope: null,
       },
@@ -315,6 +452,12 @@ export function BusinessOrderForm({
         unit: product.unit,
         quantity: 1,
         unit_price: currencyMatches ? Number(product.default_unit_price) : 0,
+        daily_shipping_category: 'custom',
+        product_received_amount: currencyMatches ? Number(product.default_unit_price) : 0,
+        product_received_overridden: false,
+        logistics_fee_amount: 0,
+        sales_total_amount: currencyMatches ? Number(product.default_unit_price) : 0,
+        sales_total_overridden: false,
         default_currency: product.default_currency,
         custom_scope: product.is_shared ? 'shared' : 'exclusive',
       },
@@ -323,10 +466,62 @@ export function BusinessOrderForm({
     if (!keepSelected) setSelectedCustomProduct(null)
   }
 
+  function changeShop(value: string) {
+    setShopId(value)
+    const shop = shops.find((item) => item.id === value)
+    const assignedIds = shop?.salespersonIds ?? []
+    if (!assignedIds.includes(salespersonId)) {
+      setSalespersonId(profile.role === 'admin' ? '' : assignedIds.includes(profile.id) ? profile.id : '')
+    }
+    if (!initialOrder && shop) handleCurrencyChange(shop.default_currency)
+  }
+
   function updateItem(key: string, field: 'quantity' | 'unit_price', value: string) {
     const number = Number(value)
     setItems((current) =>
-      current.map((item) => (item.key === key ? { ...item, [field]: number } : item)),
+      current.map((item) => {
+        if (item.key !== key) return item
+        const next = { ...item, [field]: number }
+        if (!next.product_received_overridden) {
+          next.product_received_amount = derivedProductReceived(next.quantity, next.unit_price)
+        }
+        if (!next.sales_total_overridden) {
+          next.sales_total_amount = derivedSalesTotal(
+            next.product_received_amount,
+            next.logistics_fee_amount,
+          )
+        }
+        return next
+      }),
+    )
+  }
+
+  function updateDailyItem(
+    key: string,
+    patch: Partial<
+      Pick<
+        EditableItem,
+        | 'daily_shipping_category'
+        | 'product_received_amount'
+        | 'product_received_overridden'
+        | 'logistics_fee_amount'
+        | 'sales_total_amount'
+        | 'sales_total_overridden'
+      >
+    >,
+  ) {
+    setItems((current) =>
+      current.map((item) => {
+        if (item.key !== key) return item
+        const next = { ...item, ...patch }
+        if (!next.sales_total_overridden) {
+          next.sales_total_amount = derivedSalesTotal(
+            next.product_received_amount,
+            next.logistics_fee_amount,
+          )
+        }
+        return next
+      }),
     )
   }
 
@@ -340,14 +535,109 @@ export function BusinessOrderForm({
     )
     if (mismatchedItems.length > 0) {
       setItems((current) =>
-        current.map((item) =>
-          item.default_currency && item.default_currency !== value
-            ? { ...item, unit_price: 0 }
-            : item,
-        ),
+        current.map((item) => {
+          if (!item.default_currency || item.default_currency === value) return item
+          const productReceived = item.product_received_overridden ? item.product_received_amount : 0
+          return {
+            ...item,
+            unit_price: 0,
+            product_received_amount: productReceived,
+            sales_total_amount: item.sales_total_overridden
+              ? item.sales_total_amount
+              : derivedSalesTotal(productReceived, item.logistics_fee_amount),
+          }
+        }),
       )
       toast.info('币种已变更，来源币种不同的新增产品单价已清零，请重新填写')
     }
+  }
+
+  function addFiles(next: FileList | File[] | null) {
+    const selected = Array.from(next ?? [])
+    if (selected.length === 0) return
+    if (attachments.length + files.length + selected.length > 10) {
+      toast.error('每条订单最多 10 张截图')
+      return
+    }
+    const invalid = selected.find(
+      (file) => !['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024,
+    )
+    if (invalid) {
+      toast.error(`${invalid.name} 不是 JPEG/PNG 或超过 5MB`)
+      return
+    }
+    setFiles((current) => [
+      ...current,
+      ...selected.map((file) => ({ id: newLocalId(), file })),
+    ])
+  }
+
+  function handleDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setIsDragging(false)
+    if (attachments.length < 10) addFiles(event.dataTransfer.files)
+  }
+
+  function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
+    const images = Array.from(event.clipboardData?.items ?? [])
+      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => file !== null)
+    if (images.length === 0) return
+    event.preventDefault()
+    addFiles(images)
+  }
+
+  async function uploadAttachments(orderId: string) {
+    const supabase = createClient()
+    const failures: string[] = []
+    for (const pendingFile of files) {
+      const { file } = pendingFile
+      const extension = file.type === 'image/png' ? 'png' : file.name.toLowerCase().endsWith('.jpeg') ? 'jpeg' : 'jpg'
+      const objectPath = `${profile.id}/${orderId}/${pendingFile.id}.${extension}`
+      const { error: uploadError } = await supabase.storage
+        .from('finance-daily-order-screenshots')
+        .upload(objectPath, file, { contentType: file.type, upsert: false })
+      if (uploadError) {
+        failures.push(`${file.name}：${uploadError.message}`)
+        continue
+      }
+      const result = await bindBusinessOrderAttachment({
+        order_id: orderId,
+        object_path: objectPath,
+        original_name: file.name,
+        mime_type: file.type,
+        size_bytes: file.size,
+      })
+      if (!result.ok) {
+        await supabase.storage.from('finance-daily-order-screenshots').remove([objectPath])
+        failures.push(`${file.name}：${result.error ?? '绑定失败'}`)
+        continue
+      }
+      setFiles((current) => current.filter((item) => item.id !== pendingFile.id))
+    }
+    return failures
+  }
+
+  function viewAttachment(id: string) {
+    startTransition(async () => {
+      const result = await getBusinessOrderAttachmentUrl(id)
+      if (result.url) window.open(result.url, '_blank', 'noopener,noreferrer')
+      else toast.error(result.error ?? '无法查看截图')
+    })
+  }
+
+  function removeAttachment(id: string) {
+    if (!initialOrder || !window.confirm('确定移除这张截图吗？原文件将保留用于审计。')) return
+    startTransition(async () => {
+      const result = await removeBusinessOrderAttachment(id)
+      if (!result.ok) {
+        toast.error(result.error ?? '移除截图失败')
+        return
+      }
+      setAttachments((current) => current.filter((item) => item.id !== id))
+      toast.success('截图已移除')
+    })
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -378,6 +668,22 @@ export function BusinessOrderForm({
       toast.error('请选择客户')
       return
     }
+    if (!shopId) {
+      toast.error('请选择店铺')
+      return
+    }
+    if (!salespersonId) {
+      toast.error('请选择业务员')
+      return
+    }
+    if (!externalOrderNumber.trim()) {
+      toast.error('请输入订单号')
+      return
+    }
+    if (!totalsBalanced) {
+      toast.error('销售总金额必须等于总产品实收加总运费实收')
+      return
+    }
     const hasInvalidItem = items.some((item) =>
       item.source_type === 'catalog'
         ? !item.product_id
@@ -390,6 +696,9 @@ export function BusinessOrderForm({
 
     const input = {
       customer_id: customer.id,
+      shop_id: shopId,
+      salesperson_id: salespersonId,
+      external_order_number: externalOrderNumber,
       order_date: orderDate,
       payment_due_date: paymentDueDate,
       fulfillment_type: fulfillmentType,
@@ -398,7 +707,24 @@ export function BusinessOrderForm({
       shipping_fee: shippingFee,
       tracking_number: trackingNumber,
       sales_notes: salesNotes,
+      daily_shipping_date: dailyShippingDate,
+      daily_shipping_number: dailyShippingNumber,
+      daily_payment_category: dailyPaymentCategory,
+      total_product_received_amount: effectiveProductTotal,
+      total_product_received_overridden: totalProductOverride !== null,
+      total_shipping_received_amount: effectiveShippingTotal,
+      total_shipping_received_overridden: totalShippingOverride !== null,
+      total_sales_amount: effectiveSalesTotal,
+      total_sales_overridden: totalSalesOverride !== null,
       items: items.map((item) => {
+        const dailyFields = {
+          daily_shipping_category: item.daily_shipping_category,
+          product_received_amount: item.product_received_amount,
+          product_received_overridden: item.product_received_overridden,
+          logistics_fee_amount: item.logistics_fee_amount,
+          sales_total_amount: item.sales_total_amount,
+          sales_total_overridden: item.sales_total_overridden,
+        }
         if (item.source_type === 'catalog' && item.product_id) {
           return {
             ...(item.order_item_id ? { order_item_id: item.order_item_id } : {}),
@@ -406,6 +732,7 @@ export function BusinessOrderForm({
             product_id: item.product_id,
             quantity: item.quantity,
             unit_price: item.unit_price,
+            ...dailyFields,
           }
         }
         if (
@@ -420,6 +747,7 @@ export function BusinessOrderForm({
             custom_product_version_id: item.custom_product_version_id,
             quantity: item.quantity,
             unit_price: item.unit_price,
+            ...dailyFields,
           }
         }
         throw new Error('订单中存在无法写入的历史明细')
@@ -436,8 +764,20 @@ export function BusinessOrderForm({
         return
       }
 
+      const orderId = result.id ?? initialOrder?.id
+      if (!orderId) {
+        toast.error('数据库未返回订单 ID')
+        return
+      }
+      const uploadFailures = files.length > 0 ? await uploadAttachments(orderId) : []
+      if (uploadFailures.length > 0) {
+        window.alert(`订单已保存，但以下截图上传失败，请在编辑页重新选择：\n${uploadFailures.join('\n')}`)
+        window.location.assign(`/finance/daily-orders/${orderId}/edit`)
+        return
+      }
+
       toast.success(initialOrder ? '业务订单已更新' : '业务订单草稿已创建')
-      router.push(`/finance/daily-orders/${result.id ?? initialOrder?.id}`)
+      router.push(`/finance/daily-orders/${orderId}`)
       router.refresh()
     })
   }
@@ -471,8 +811,8 @@ export function BusinessOrderForm({
           <CardHeader>
             <CardTitle className="text-base">订单信息</CardTitle>
           </CardHeader>
-          <CardContent className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2 sm:col-span-2">
+          <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="space-y-2 xl:col-span-3">
               <Label>客户</Label>
               <CustomerCombobox
                 customers={customers}
@@ -489,14 +829,87 @@ export function BusinessOrderForm({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="order_date">订单日期</Label>
+              <Label htmlFor="order_date">下单日期</Label>
               <Input
                 id="order_date"
                 type="date"
                 value={orderDate}
-                onChange={(event) => setOrderDate(event.target.value)}
+                onChange={(event) => {
+                  const value = event.target.value
+                  if (dailyShippingDate === orderDate) setDailyShippingDate(value)
+                  setOrderDate(value)
+                }}
                 required
               />
+            </div>
+            <div className="space-y-2">
+              <Label>店铺</Label>
+              <Select value={shopId} onValueChange={changeShop}>
+                <SelectTrigger><SelectValue placeholder="选择店铺" /></SelectTrigger>
+                <SelectContent>
+                  {shops
+                    .filter((shop) => shop.is_active || shop.id === initialOrder?.shop_id)
+                    .map((shop) => (
+                      <SelectItem key={shop.id} value={shop.id}>
+                        {shop.name}{shop.is_active ? '' : '（停用）'}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>业务员</Label>
+              <Select value={salespersonId} onValueChange={setSalespersonId}>
+                <SelectTrigger><SelectValue placeholder="选择业务员" /></SelectTrigger>
+                <SelectContent>
+                  {assignedSalespeople.map((person) => (
+                    <SelectItem key={person.id} value={person.id}>{displayProfileName(person)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="external_order_number">订单号</Label>
+              <Input
+                id="external_order_number"
+                value={externalOrderNumber}
+                onChange={(event) => setExternalOrderNumber(event.target.value)}
+                maxLength={200}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="daily_shipping_date">发货日期</Label>
+              <Input
+                id="daily_shipping_date"
+                type="date"
+                value={dailyShippingDate}
+                onChange={(event) => setDailyShippingDate(event.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="daily_shipping_number">发货单号</Label>
+              <Input
+                id="daily_shipping_number"
+                value={dailyShippingNumber}
+                onChange={(event) => setDailyShippingNumber(event.target.value)}
+                maxLength={200}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>收款分类</Label>
+              <Select
+                value={dailyPaymentCategory}
+                onValueChange={(value) => setDailyPaymentCategory(value as DailyOrderPaymentCategory)}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full">全款</SelectItem>
+                  <SelectItem value="deposit">定金</SelectItem>
+                  <SelectItem value="balance">尾款</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="payment_due_date">尾款到期日</Label>
@@ -544,7 +957,7 @@ export function BusinessOrderForm({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="shipping_fee">运费</Label>
+              <Label htmlFor="shipping_fee">生命周期订单运费</Label>
               <Input
                 id="shipping_fee"
                 type="number"
@@ -555,8 +968,8 @@ export function BusinessOrderForm({
                 required
               />
             </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="tracking_number">货运单号</Label>
+            <div className="space-y-2">
+              <Label htmlFor="tracking_number">生命周期货运单号</Label>
               <Input
                 id="tracking_number"
                 value={trackingNumber}
@@ -564,8 +977,8 @@ export function BusinessOrderForm({
                 maxLength={200}
               />
             </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="sales_notes">业务备注</Label>
+            <div className="space-y-2 md:col-span-2 xl:col-span-3">
+              <Label htmlFor="sales_notes">备注</Label>
               <Textarea
                 id="sales_notes"
                 value={salesNotes}
@@ -718,7 +1131,7 @@ export function BusinessOrderForm({
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label>成交单价（{currency}）</Label>
+                      <Label>销售单价（{currency}）</Label>
                       <Input
                         type="number"
                         min="0"
@@ -726,6 +1139,107 @@ export function BusinessOrderForm({
                         value={item.unit_price}
                         onChange={(event) => updateItem(item.key, 'unit_price', event.target.value)}
                         disabled={unitPriceLocked}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>发货分类</Label>
+                      <Select
+                        value={item.daily_shipping_category}
+                        onValueChange={(value) =>
+                          updateDailyItem(item.key, {
+                            daily_shipping_category: value as DailyOrderShippingCategory,
+                          })
+                        }
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {SHIPPING_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label>产品实收（{currency}）</Label>
+                        {item.product_received_overridden && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-auto px-1 py-0 text-xs"
+                            onClick={() => {
+                              const value = derivedProductReceived(item.quantity, item.unit_price)
+                              updateDailyItem(item.key, {
+                                product_received_amount: value,
+                                product_received_overridden: false,
+                              })
+                            }}
+                          >恢复自动</Button>
+                        )}
+                      </div>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.product_received_amount}
+                        onChange={(event) =>
+                          updateDailyItem(item.key, {
+                            product_received_amount: Number(event.target.value),
+                            product_received_overridden: true,
+                          })
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>运费实收（{currency}）</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.logistics_fee_amount}
+                        onChange={(event) =>
+                          updateDailyItem(item.key, {
+                            logistics_fee_amount: Number(event.target.value),
+                          })
+                        }
+                        required
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <Label>销售总金额（{currency}）</Label>
+                        {item.sales_total_overridden && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-auto px-1 py-0 text-xs"
+                            onClick={() =>
+                              updateDailyItem(item.key, {
+                                sales_total_amount: derivedSalesTotal(
+                                  item.product_received_amount,
+                                  item.logistics_fee_amount,
+                                ),
+                                sales_total_overridden: false,
+                              })
+                            }
+                          >恢复自动</Button>
+                        )}
+                      </div>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.sales_total_amount}
+                        onChange={(event) =>
+                          updateDailyItem(item.key, {
+                            sales_total_amount: Number(event.target.value),
+                            sales_total_overridden: true,
+                          })
+                        }
                         required
                       />
                     </div>
@@ -760,6 +1274,210 @@ export function BusinessOrderForm({
           </CardContent>
         </Card>
       </fieldset>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">订单金额汇总</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label>总产品实收（{currency}）</Label>
+                {totalProductOverride !== null && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-auto px-1 py-0 text-xs"
+                    onClick={() => setTotalProductOverride(null)}
+                  >恢复自动计算</Button>
+                )}
+              </div>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={effectiveProductTotal}
+                onChange={(event) => setTotalProductOverride(Number(event.target.value))}
+                disabled={pending || lifecycleLocked}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                自动汇总：{formatCurrency(automaticProductTotal, currency)}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label>总运费实收（{currency}）</Label>
+                {totalShippingOverride !== null && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-auto px-1 py-0 text-xs"
+                    onClick={() => setTotalShippingOverride(null)}
+                  >恢复自动计算</Button>
+                )}
+              </div>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={effectiveShippingTotal}
+                onChange={(event) => setTotalShippingOverride(Number(event.target.value))}
+                disabled={pending || lifecycleLocked}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                自动汇总：{formatCurrency(automaticShippingTotal, currency)}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label>销售总金额（{currency}）</Label>
+                {totalSalesOverride !== null && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-auto px-1 py-0 text-xs"
+                    onClick={() => setTotalSalesOverride(null)}
+                  >恢复自动计算</Button>
+                )}
+              </div>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={effectiveSalesTotal}
+                onChange={(event) => setTotalSalesOverride(Number(event.target.value))}
+                disabled={pending || lifecycleLocked}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                自动汇总：{formatCurrency(automaticSalesTotal, currency)}
+              </p>
+            </div>
+          </div>
+          {!totalsBalanced && (
+            <div className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                销售总金额需等于总产品实收加总运费实收，当前差额
+                {formatCurrency(
+                  roundMoney(effectiveSalesTotal - effectiveProductTotal - effectiveShippingTotal),
+                  currency,
+                )}
+                ，请修正后再保存。
+              </span>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">订单截图</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div
+            className={cn(
+              'rounded-md border border-dashed p-4 text-sm text-muted-foreground',
+              isDragging && 'border-primary bg-primary/5',
+            )}
+            onDragOver={(event) => {
+              event.preventDefault()
+              setIsDragging(true)
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            onPaste={handlePaste}
+          >
+            <div>拖拽、粘贴或选择 JPEG/PNG 截图，单张不超过 5MB，每单最多 10 张。</div>
+            <Input
+              type="file"
+              accept="image/jpeg,image/png"
+              multiple
+              className="mt-2"
+              onChange={(event) => {
+                addFiles(event.target.files)
+                event.target.value = ''
+              }}
+              disabled={pending || lifecycleLocked}
+            />
+            {!initialOrder && (
+              <div className="mt-2 text-xs">截图将在订单创建成功后自动上传并绑定。</div>
+            )}
+          </div>
+
+          {files.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">待上传（{files.length}）</div>
+              {files.map((pendingFile) => (
+                <div
+                  key={pendingFile.id}
+                  className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                >
+                  <span className="truncate">{pendingFile.file.name}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="移除待上传截图"
+                    onClick={() =>
+                      setFiles((current) => current.filter((item) => item.id !== pendingFile.id))
+                    }
+                    disabled={pending}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {attachments.length > 0 && (
+            <div className="space-y-2">
+              <div className="text-sm font-medium">已绑定截图（{attachments.length}）</div>
+              {attachments.map((attachment) => (
+                <div
+                  key={attachment.id}
+                  className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                >
+                  <span className="truncate">{attachment.original_name ?? attachment.object_path}</span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="查看截图"
+                      onClick={() => viewAttachment(attachment.id)}
+                      disabled={pending}
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label="移除截图"
+                      onClick={() => removeAttachment(attachment.id)}
+                      disabled={pending || lifecycleLocked}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {files.length === 0 && attachments.length === 0 && (
+            <div className="text-sm text-muted-foreground">暂无截图</div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="flex justify-end gap-2">
         <Button asChild type="button" variant="outline">

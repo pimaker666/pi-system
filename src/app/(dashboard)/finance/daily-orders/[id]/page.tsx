@@ -24,7 +24,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { getBusinessOrderSettlementSummary } from '@/lib/actions/business-orders'
+import {
+  getBusinessOrderAttachmentUrl,
+  getBusinessOrderSettlementSummary,
+} from '@/lib/actions/business-orders'
 import { requireApproved } from '@/lib/auth'
 import {
   BUSINESS_FULFILLMENT_LABELS,
@@ -32,6 +35,7 @@ import {
   BUSINESS_ORDER_STATUS_VARIANTS,
   getBusinessOrderCustomerName,
 } from '@/lib/business-orders'
+import { PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { formatCny } from '@/lib/finance'
 import { toImageSrc } from '@/lib/supabase/image'
 import { createClient } from '@/lib/supabase/server'
@@ -90,9 +94,11 @@ export default async function BusinessOrderDetailPage({
   const { data, error } = await supabase
     .from('business_orders')
     .select(
-      '*, business_order_items(*), business_order_payments(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)',
+      '*, business_order_items(*), business_order_attachments(*), business_order_payments(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)',
     )
     .eq('id', id)
+    // 只取有效截图；内嵌过滤只筛子行，不会影响订单本身是否返回。
+    .eq('business_order_attachments.status', 'active')
     .single()
 
   if (error || !data) notFound()
@@ -122,6 +128,18 @@ export default async function BusinessOrderDetailPage({
     throw new Error(settlementResult.error ?? '订单结算汇总读取失败')
   }
   const settlement = settlementResult.data
+
+  // 0034 之后录入的每日订单会带齐三组总额；历史订单为 null，只展示原有金额区。
+  const hasDailyFields = order.total_sales_amount !== null
+  const attachments = (order.business_order_attachments ?? []).filter(
+    (attachment) => attachment.status === 'active',
+  )
+  const attachmentLinks = await Promise.all(
+    attachments.map(async (attachment) => ({
+      attachment,
+      url: (await getBusinessOrderAttachmentUrl(attachment.id)).url ?? null,
+    })),
+  )
 
   let auditLogs: BusinessOrderAuditLog[] = []
   let lifecycleAuditLogs: BusinessLifecycleAuditLog[] = []
@@ -259,6 +277,30 @@ export default async function BusinessOrderDetailPage({
                 )}
               </div>
               <div>
+                <span className="text-muted-foreground">店铺：</span>
+                {order.shop_name_snapshot || '—'}
+              </div>
+              <div>
+                <span className="text-muted-foreground">店铺分组：</span>
+                {order.shop_group_name_snapshot || '—'}
+              </div>
+              <div>
+                <span className="text-muted-foreground">平台订单号：</span>
+                {order.external_order_number || '—'}
+              </div>
+              <div>
+                <span className="text-muted-foreground">发货日期：</span>
+                {order.daily_shipping_date ? formatDate(order.daily_shipping_date) : '—'}
+              </div>
+              <div>
+                <span className="text-muted-foreground">发货单号：</span>
+                {order.daily_shipping_number || '—'}
+              </div>
+              <div>
+                <span className="text-muted-foreground">收款分类：</span>
+                {order.daily_payment_category ? PAYMENT_LABELS[order.daily_payment_category] : '—'}
+              </div>
+              <div>
                 <span className="text-muted-foreground">货运单号：</span>
                 {order.tracking_number || '—'}
               </div>
@@ -277,6 +319,28 @@ export default async function BusinessOrderDetailPage({
               <div className="flex justify-between border-t pt-2 text-base font-semibold"><span>订单总额</span><span>{formatCurrency(Number(order.total_amount), order.currency)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">兑人民币汇率</span><span>{Number(order.exchange_rate_to_cny).toLocaleString('zh-CN', { maximumFractionDigits: 8 })}</span></div>
               <div className="flex justify-between font-medium"><span>折合人民币</span><span>{formatCny(Number(order.total_cny))}</span></div>
+              {hasDailyFields && (
+                <div className="space-y-2 border-t pt-2">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      总产品实收{order.total_product_received_overridden ? '（已手工覆盖）' : ''}
+                    </span>
+                    <span>{formatCurrency(Number(order.total_product_received_amount), order.currency)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      总运费实收{order.total_shipping_received_overridden ? '（已手工覆盖）' : ''}
+                    </span>
+                    <span>{formatCurrency(Number(order.total_shipping_received_amount), order.currency)}</span>
+                  </div>
+                  <div className="flex justify-between font-medium">
+                    <span>
+                      总销售金额{order.total_sales_overridden ? '（已手工覆盖）' : ''}
+                    </span>
+                    <span>{formatCurrency(Number(order.total_sales_amount), order.currency)}</span>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -300,6 +364,14 @@ export default async function BusinessOrderDetailPage({
                     <TableHead className="text-right">数量</TableHead>
                     <TableHead className="text-right">成交单价</TableHead>
                     <TableHead className="text-right">金额</TableHead>
+                    {hasDailyFields && (
+                      <>
+                        <TableHead>发货分类</TableHead>
+                        <TableHead className="text-right">产品实收</TableHead>
+                        <TableHead className="text-right">运费实收</TableHead>
+                        <TableHead className="text-right">销售金额</TableHead>
+                      </>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -333,10 +405,65 @@ export default async function BusinessOrderDetailPage({
                       <TableCell className="text-right tabular-nums">{Number(item.quantity).toLocaleString('zh-CN')}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatCurrency(Number(item.unit_price), order.currency)}</TableCell>
                       <TableCell className="text-right font-medium tabular-nums">{formatCurrency(Number(item.line_amount), order.currency)}</TableCell>
+                      {hasDailyFields && (
+                        <>
+                          <TableCell>
+                            {item.daily_shipping_category ? SHIPPING_LABELS[item.daily_shipping_category] : '—'}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {item.product_received_amount === null
+                              ? '—'
+                              : formatCurrency(Number(item.product_received_amount), order.currency)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {item.logistics_fee_amount === null
+                              ? '—'
+                              : formatCurrency(Number(item.logistics_fee_amount), order.currency)}
+                          </TableCell>
+                          <TableCell className="text-right tabular-nums">
+                            {item.sales_total_amount === null
+                              ? '—'
+                              : formatCurrency(Number(item.sales_total_amount), order.currency)}
+                          </TableCell>
+                        </>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-base">订单截图</CardTitle></CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              {attachmentLinks.length === 0 && (
+                <div className="text-muted-foreground">暂无截图，可在订单编辑页补传。</div>
+              )}
+              {attachmentLinks.map(({ attachment, url }, index) =>
+                url ? (
+                  <div key={attachment.id}>
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary underline underline-offset-4"
+                    >
+                      查看截图 {index + 1}
+                    </a>
+                    <span className="ml-2 text-muted-foreground">
+                      {attachment.original_name || attachment.mime_type}
+                    </span>
+                  </div>
+                ) : (
+                  <div key={attachment.id} className="text-destructive">
+                    截图 {index + 1} 链接生成失败，请稍后重试
+                  </div>
+                ),
+              )}
+              {attachmentLinks.length > 0 && (
+                <p className="text-muted-foreground">链接 10 分钟内有效，过期后刷新页面重新获取。</p>
+              )}
             </CardContent>
           </Card>
 

@@ -5,6 +5,7 @@ import { BusinessOrderForm } from '@/components/finance/business-order-form'
 import { Button } from '@/components/ui/button'
 import { getBusinessOrderEditConstraints } from '@/lib/actions/business-orders'
 import { requireApproved } from '@/lib/auth'
+import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
 import type { BusinessOrderWithDetails, Customer, CustomerGroup, Product } from '@/types'
 
@@ -19,8 +20,11 @@ export default async function EditBusinessOrderPage({
 
   const { data, error } = await supabase
     .from('business_orders')
-    .select('*, business_order_items(*), business_order_payments(*)')
+    .select(
+      '*, business_order_items(*), business_order_payments(*), business_order_attachments(*)',
+    )
     .eq('id', id)
+    .eq('business_order_attachments.status', 'active')
     .single()
 
   if (error || !data) notFound()
@@ -36,18 +40,20 @@ export default async function EditBusinessOrderPage({
     (order.status === 'completed' || Boolean(order.closed_at))
   if (!canEdit && !canInspectLocked) redirect(`/finance/daily-orders/${id}`)
 
-  const [customersResult, groupsResult, productsResult, constraintsResult] = await Promise.all([
-    profile.role === 'finance'
-      ? Promise.resolve({ data: [] as Customer[], error: null })
-      : profile.role === 'admin'
-        ? supabase.from('customers').select('*').order('name')
-        : supabase.from('customers').select('*').eq('created_by', profile.id).order('name'),
-    profile.role === 'finance'
-      ? Promise.resolve({ data: [] as CustomerGroup[], error: null })
-      : supabase.from('customer_groups').select('*').order('name'),
-    supabase.from('products').select('*').eq('is_active', true).order('name'),
-    getBusinessOrderEditConstraints(id),
-  ])
+  const [customersResult, groupsResult, productsResult, constraintsResult, dailyOptions] =
+    await Promise.all([
+      profile.role === 'finance'
+        ? Promise.resolve({ data: [] as Customer[], error: null })
+        : profile.role === 'admin'
+          ? supabase.from('customers').select('*').order('name')
+          : supabase.from('customers').select('*').eq('created_by', profile.id).order('name'),
+      profile.role === 'finance'
+        ? Promise.resolve({ data: [] as CustomerGroup[], error: null })
+        : supabase.from('customer_groups').select('*').order('name'),
+      supabase.from('products').select('*').eq('is_active', true).order('name'),
+      getBusinessOrderEditConstraints(id),
+      fetchDailyOrderOptions(supabase),
+    ])
 
   const loadError = customersResult.error || groupsResult.error || productsResult.error
   if (loadError) throw new Error(`订单基础数据读取失败：${loadError.message}`)
@@ -64,6 +70,38 @@ export default async function EditBusinessOrderPage({
       created_by: order.salesperson_id,
       created_at: order.created_at,
       updated_at: order.updated_at,
+    })
+  }
+
+  // 历史订单的店铺可能已停用、归属人可能已被取消分配；用订单快照补齐候选，
+  // 避免下拉缺少当前值导致无法保存。
+  const shops = [...dailyOptions.shops]
+  if (order.shop_id && !shops.some((shop) => shop.id === order.shop_id)) {
+    shops.push({
+      id: order.shop_id,
+      name: order.shop_name_snapshot ?? '已停用店铺',
+      group_id: order.shop_group_id,
+      is_active: false,
+      default_currency: order.currency,
+      created_by: null,
+      created_at: order.created_at,
+      updated_at: order.updated_at,
+      salespersonIds: order.salesperson_id ? [order.salesperson_id] : [],
+    })
+  } else if (order.shop_id && order.salesperson_id) {
+    const currentShop = shops.find((shop) => shop.id === order.shop_id)
+    if (currentShop && !currentShop.salespersonIds.includes(order.salesperson_id)) {
+      currentShop.salespersonIds = [...currentShop.salespersonIds, order.salesperson_id]
+    }
+  }
+
+  const salespeople = [...dailyOptions.salespeople]
+  if (order.salesperson_id && !salespeople.some((person) => person.id === order.salesperson_id)) {
+    salespeople.push({
+      id: order.salesperson_id,
+      full_name: order.salesperson_name_snapshot,
+      email: '',
+      chinese_name: order.salesperson_name_snapshot,
     })
   }
 
@@ -87,6 +125,8 @@ export default async function EditBusinessOrderPage({
         customers={customers}
         customerGroups={(groupsResult.data ?? []) as CustomerGroup[]}
         products={(productsResult.data ?? []) as Product[]}
+        shops={shops}
+        salespeople={salespeople}
         initialOrder={order}
         editConstraints={constraintsResult.data}
       />
