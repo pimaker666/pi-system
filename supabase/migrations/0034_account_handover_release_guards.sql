@@ -96,6 +96,25 @@ grant execute on function public.create_pi_with_items(
   numeric, text, text, jsonb, text, boolean, boolean
 ) to authenticated;
 
+-- 生产 ACL 曾漂移为仅函数 owner 可执行，恢复当前应用实际使用的 V2 建单入口，
+-- 同时保留旧 catalog 兼容入口；两者均在函数内部执行已审核角色和客户归属校验。
+revoke all on function public.create_business_order(
+  uuid, date, public.business_fulfillment_type, public.currency_code,
+  numeric, numeric, text, text, jsonb
+) from public, anon, authenticated, service_role;
+grant execute on function public.create_business_order(
+  uuid, date, public.business_fulfillment_type, public.currency_code,
+  numeric, numeric, text, text, jsonb
+) to authenticated;
+revoke all on function public.create_business_order_v2(
+  uuid, date, public.business_fulfillment_type, public.currency_code,
+  numeric, numeric, text, text, jsonb, date
+) from public, anon, authenticated, service_role;
+grant execute on function public.create_business_order_v2(
+  uuid, date, public.business_fulfillment_type, public.currency_code,
+  numeric, numeric, text, text, jsonb, date
+) to authenticated;
+
 -- 生产基线曾出现旧每日订单对象已存在但拒写触发器不完整的状态。
 -- 每次账号交接发布都重新声明七张旧事实/流程表只读，business_orders 继续是唯一可写事实源。
 create or replace function public.reject_legacy_daily_order_write()
