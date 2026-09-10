@@ -414,8 +414,6 @@ export interface BusinessOrderPayment {
 
 export interface BusinessCustomProduct {
   id: string
-  customer_id: string
-  is_shared: boolean
   is_archived: boolean
   created_by: string | null
   updated_by: string | null
@@ -427,40 +425,50 @@ export interface BusinessCustomProductVersion {
   id: string
   custom_product_id: string
   version_no: number
+  product_group_id: string | null
   code: string
   name: string
   description: string | null
   specification: string | null
   unit: string
   image_url: string | null
+  quantity: number | null
   default_unit_price: number
   default_currency: CurrencyCode
+  order_amount: number | null
+  received_amount: number | null
+  outstanding_amount: number | null
   created_by: string | null
   created_at: string
 }
 
 export interface BusinessCustomProductListItem {
   custom_product_id: string
-  owner_customer_id: string
-  is_shared: boolean
   is_archived: boolean
+  created_by: string | null
+  created_at: string
+  updated_by: string | null
+  updated_at: string
   version_id: string
   version_no: number
+  product_group_id: string | null
+  product_group_name: string | null
   code: string
   name: string
   description: string | null
   specification: string | null
   unit: string
   image_url: string | null
+  quantity: number | null
   default_unit_price: number
   default_currency: CurrencyCode
+  order_amount: number | null
+  received_amount: number | null
+  outstanding_amount: number | null
 }
 
 export interface BusinessCustomProductLibraryItem {
   custom_product_id: string
-  customer_id: string
-  customer_name: string
-  is_shared: boolean
   is_archived: boolean
   created_by: string | null
   created_at: string
@@ -469,14 +477,20 @@ export interface BusinessCustomProductLibraryItem {
   latest_version_id: string | null
   latest_version_no: number | null
   version_count: number
+  product_group_id: string | null
+  product_group_name: string | null
   code: string | null
   name: string | null
   description: string | null
   specification: string | null
   unit: string | null
   image_url: string | null
+  quantity: number | null
   default_unit_price: number | null
   default_currency: CurrencyCode | null
+  order_amount: number | null
+  received_amount: number | null
+  outstanding_amount: number | null
 }
 
 export interface BusinessCustomerTransfer {

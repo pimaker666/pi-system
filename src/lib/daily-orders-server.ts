@@ -69,13 +69,24 @@ export async function fetchDailyOrderOptions(supabase: SupabaseClient) {
   const error = shopsResult.error || groupsResult.error || assignmentsResult.error || salesResult.error || productsResult.error
   if (error) throw new Error(`每日订单基础数据读取失败：${error.message}`)
   const assignments = (assignmentsResult.data ?? []) as Array<{ shop_id: string; salesperson_id: string }>
-  const shops = ((shopsResult.data ?? []) as DailyOrderShop[]).map((shop): DailyOrderShopOption => ({
-    ...shop,
-    salespersonIds: assignments.filter((row) => row.shop_id === shop.id).map((row) => row.salesperson_id),
-  }))
+  const groups = (groupsResult.data ?? []) as DailyOrderShopGroup[]
+  const groupsById = new Map(groups.map((group) => [group.id, group]))
+  const shops = ((shopsResult.data ?? []) as DailyOrderShop[]).map((shop): DailyOrderShopOption => {
+    const groupName = groupsById.get(shop.group_id ?? '')?.name.trim()
+    const defaultCurrency = groupName?.includes('1688')
+      ? 'CNY'
+      : groupName?.includes('国际站')
+        ? 'USD'
+        : shop.default_currency
+    return {
+      ...shop,
+      default_currency: defaultCurrency,
+      salespersonIds: assignments.filter((row) => row.shop_id === shop.id).map((row) => row.salesperson_id),
+    }
+  })
   return {
     shops,
-    groups: (groupsResult.data ?? []) as DailyOrderShopGroup[],
+    groups,
     salespeople: (salesResult.data ?? []) as Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[],
     products: (productsResult.data ?? []) as Pick<Product, 'id' | 'name' | 'sku' | 'image_url' | 'unit_price' | 'currency' | 'unit'>[],
   }

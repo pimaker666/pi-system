@@ -6,26 +6,32 @@ import { Button } from '@/components/ui/button'
 import { requireApproved } from '@/lib/auth'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
-import type { Customer, CustomerGroup, Product } from '@/types'
+import type { Customer, CustomerGroup, Product, ProductGroup } from '@/types'
 
 export default async function NewBusinessOrderPage() {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
     redirect('/finance/daily-orders')
   }
 
   const supabase = await createClient()
   const customersQuery = supabase.from('customers').select('*')
-  const [customersResult, groupsResult, productsResult, dailyOptions] = await Promise.all([
-    profile.role === 'admin'
-      ? customersQuery.order('name')
-      : customersQuery.eq('created_by', profile.id).order('name'),
-    supabase.from('customer_groups').select('*').order('name'),
-    supabase.from('products').select('*').eq('is_active', true).order('name'),
-    fetchDailyOrderOptions(supabase),
-  ])
+  const [customersResult, customerGroupsResult, productsResult, productGroupsResult, dailyOptions] =
+    await Promise.all([
+      ['admin', 'finance'].includes(profile.role)
+        ? customersQuery.order('name')
+        : customersQuery.eq('created_by', profile.id).order('name'),
+      supabase.from('customer_groups').select('*').order('name'),
+      supabase.from('products').select('*').eq('is_active', true).order('name'),
+      supabase.from('product_groups').select('*').order('sort_order'),
+      fetchDailyOrderOptions(supabase),
+    ])
 
-  const error = customersResult.error || groupsResult.error || productsResult.error
+  const error =
+    customersResult.error ||
+    customerGroupsResult.error ||
+    productsResult.error ||
+    productGroupsResult.error
   if (error) throw new Error(`订单基础数据读取失败：${error.message}`)
 
   return (
@@ -44,7 +50,8 @@ export default async function NewBusinessOrderPage() {
       <BusinessOrderForm
         profile={profile}
         customers={(customersResult.data ?? []) as Customer[]}
-        customerGroups={(groupsResult.data ?? []) as CustomerGroup[]}
+        customerGroups={(customerGroupsResult.data ?? []) as CustomerGroup[]}
+        productGroups={(productGroupsResult.data ?? []) as ProductGroup[]}
         products={(productsResult.data ?? []) as Product[]}
         shops={dailyOptions.shops}
         salespeople={dailyOptions.salespeople}

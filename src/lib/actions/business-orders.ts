@@ -180,7 +180,7 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Business order attachment does not exist', '业务订单附件不存在'],
     ['Business order attachment is already removed', '业务订单附件已移除'],
     ['Business order cannot have more than 10 attachments', '每条订单最多 10 张附件'],
-    ['Invalid attachment type or size', '附件必须为 JPEG/PNG，且单张不能超过 5MB'],
+    ['Invalid attachment type or size', '附件必须为 JPEG/PNG，且单张不能超过 20MB'],
     ['Invalid attachment path', '附件路径不合法'],
     ['Attachment object does not exist', '附件尚未成功上传，请重新上传'],
     ['Attachment object metadata does not match', '附件类型或大小与已上传文件不一致'],
@@ -325,14 +325,17 @@ function customVersionPayload(
   input: ReturnType<typeof businessCustomProductVersionInputSchema.parse>,
 ) {
   return {
+    product_group_id: input.product_group_id,
     code: input.code,
     name: input.name,
     description: nullableText(input.description),
     specification: nullableText(input.specification),
     unit: input.unit,
     image_url: nullableText(input.image_url),
+    quantity: input.quantity,
     default_unit_price: input.default_unit_price,
     default_currency: input.default_currency,
+    received_amount: input.received_amount ?? null,
   }
 }
 
@@ -356,17 +359,18 @@ function orderItemsPayload(
 
 export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOrderActionResult> {
   const profile = await requireApproved()
-  if (profile.role === 'finance') {
-    return { ok: false, error: '财务不能创建业务订单' }
-  }
-  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
-    return { ok: false, error: '仅业务员、业务主管或管理员可以创建业务订单' }
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管、管理员或财务可以创建业务订单' }
   }
 
   const parsed = businessOrderInputSchema.safeParse(rawInput)
   if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
 
   const input = parsed.data
+  if (!input.customer_id && !['admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '业务员和业务主管建单时必须选择客户' }
+  }
+
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('create_business_order_v4', {
     p_customer_id: input.customer_id,
@@ -473,8 +477,8 @@ export async function bindBusinessOrderAttachment(
   rawInput: unknown,
 ): Promise<BusinessOrderAttachmentActionResult> {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
-    return { ok: false, error: '仅业务员、业务主管或管理员可以绑定订单附件' }
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管、管理员或财务可以绑定订单附件' }
   }
 
   const parsed = businessOrderAttachmentInputSchema.safeParse(rawInput)
@@ -525,8 +529,8 @@ export async function removeBusinessOrderAttachment(
   attachmentId: string,
 ): Promise<BusinessOrderAttachmentActionResult> {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
-    return { ok: false, error: '仅业务员、业务主管或管理员可以移除订单附件' }
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管、管理员或财务可以移除订单附件' }
   }
   const parsedId = z.string().uuid('附件 ID 不合法').safeParse(attachmentId)
   if (!parsedId.success) return { ok: false, error: firstValidationError(parsedId.error) }
@@ -556,11 +560,9 @@ export async function createBusinessCustomProduct(
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('create_business_custom_product', {
-    p_customer_id: parsed.data.customer_id,
     p_initial_version: parsed.data.initial_version
       ? customVersionPayload(parsed.data.initial_version)
       : null,
-    p_is_shared: parsed.data.is_shared,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '创建定制产品失败') }
 
@@ -590,6 +592,7 @@ export async function addBusinessCustomProductVersion(
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('add_business_custom_product_version', {
     p_custom_product_id: customProductId,
+    p_product_group_id: input.product_group_id,
     p_code: input.code,
     p_name: input.name,
     p_description: nullableText(input.description),
@@ -598,6 +601,8 @@ export async function addBusinessCustomProductVersion(
     p_image_url: nullableText(input.image_url),
     p_default_unit_price: input.default_unit_price,
     p_default_currency: input.default_currency,
+    p_quantity: input.quantity,
+    p_received_amount: input.received_amount ?? null,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '新增定制产品版本失败') }
 
@@ -619,7 +624,6 @@ export async function setBusinessCustomProductState(
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('set_business_custom_product_state', {
     p_custom_product_id: customProductId,
-    p_is_shared: parsed.data.is_shared,
     p_is_archived: parsed.data.is_archived,
     p_reason: nullableText(parsed.data.reason),
   })
@@ -632,14 +636,10 @@ export async function setBusinessCustomProductState(
   return { ok: true, product }
 }
 
-export async function listBusinessCustomProductsForCustomer(
-  customerId: string,
-): Promise<BusinessCustomProductListResult> {
+export async function listBusinessCustomProducts(): Promise<BusinessCustomProductListResult> {
   await requireApproved()
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('list_business_custom_products_for_customer', {
-    p_customer_id: customerId,
-  })
+  const { data, error } = await supabase.rpc('list_business_custom_products')
   if (error) return { ok: false, error: businessOrderError(error.message, '读取定制产品失败') }
 
   return { ok: true, data: (data ?? []) as BusinessCustomProductListItem[] }
@@ -655,8 +655,7 @@ export async function listBusinessCustomProductsLibrary(
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('list_business_custom_products_library', {
     p_search: nullableText(parsed.data.search),
-    p_customer_id: parsed.data.customer_id ?? null,
-    p_scope: parsed.data.scope,
+    p_product_group_id: parsed.data.product_group_id ?? null,
     p_status: parsed.data.status,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '读取定制产品库失败') }

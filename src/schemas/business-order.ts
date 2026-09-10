@@ -23,7 +23,7 @@ const MAX_AMOUNT = 999999999999
 const MAX_SAFE_QUANTITY = Math.floor(Number.MAX_SAFE_INTEGER / 10_000) / 10_000
 const MAX_EXCHANGE_RATE = 1000000
 const MAX_BATCH_SIZE = 500
-const MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024
+const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024
 const UUID_PATTERN = '[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
 const CUSTOMER_TRANSFER_PROOF_PATTERN = new RegExp(
   `^${UUID_PATTERN}/customer/${UUID_PATTERN}/${UUID_PATTERN}\\.(?:jpe?g|png|webp)$`,
@@ -134,7 +134,7 @@ export const businessOrderItemInputSchema = z.preprocess((value) => {
 
 export const businessOrderInputSchema = z
   .object({
-    customer_id: z.string().uuid('请选择客户'),
+    customer_id: z.string().uuid('请选择有效客户').nullable(),
     shop_id: z.string().uuid('请选择店铺'),
     salesperson_id: z.string().uuid('请选择业务员'),
     external_order_number: z.string().trim().min(1, '请输入订单号').max(200, '订单号不能超过 200 字'),
@@ -292,34 +292,37 @@ export const businessOrderAttachmentInputSchema = z
       .regex(BUSINESS_ORDER_ATTACHMENT_PATTERN, '附件路径格式不正确'),
     original_name: z.string().trim().max(255, '附件名称不能超过 255 字'),
     mime_type: z.enum(['image/jpeg', 'image/png']),
-    size_bytes: z.number().int('附件大小无效').positive('附件不能为空').max(MAX_ATTACHMENT_SIZE, '附件不能超过 5MB'),
+    size_bytes: z.number().int('附件大小无效').positive('附件不能为空').max(MAX_ATTACHMENT_SIZE, '附件不能超过 20MB'),
   })
   .strict()
 
 export const businessCustomProductVersionInputSchema = z
   .object({
+    product_group_id: z.string().uuid('请选择产品分组'),
     code: z.string().trim().min(1, '请填写定制产品编码').max(100, '定制产品编码不能超过 100 字'),
     name: z.string().trim().min(1, '请填写定制产品名称').max(300, '定制产品名称不能超过 300 字'),
     description: optionalText(4000, '定制产品描述不能超过 4000 字'),
     specification: optionalText(2000, '定制产品规格不能超过 2000 字'),
     unit: z.string().trim().min(1, '请填写单位').max(100, '单位不能超过 100 字'),
     image_url: optionalText(2000, '图片地址不能超过 2000 字'),
+    quantity: positiveQuantitySchema,
     default_unit_price: nonNegativeAmountSchema,
     default_currency: z.enum(CURRENCIES),
+    received_amount: z.preprocess(
+      (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+      nonNegativeAmountSchema.optional(),
+    ),
   })
   .strict()
 
 export const businessCustomProductInputSchema = z
   .object({
-    customer_id: z.string().uuid('请选择客户'),
-    is_shared: z.boolean().optional().default(false),
     initial_version: businessCustomProductVersionInputSchema.nullable().optional().default(null),
   })
   .strict()
 
 export const businessCustomProductStateInputSchema = z
   .object({
-    is_shared: z.boolean(),
     is_archived: z.boolean(),
     reason: optionalText(1000, '原因不能超过 1000 字'),
   })
@@ -496,23 +499,10 @@ export const businessOrderSpecialCloseInputSchema = z
 export const businessCustomProductLibraryFilterSchema = z
   .object({
     search: z.string().trim().max(200, '搜索内容不能超过 200 字').optional().default(''),
-    customer_id: z.string().uuid('请选择有效客户').optional(),
-    scope: z
-      .enum(['accessible', 'owned', 'shared', 'customer', 'all'])
-      .optional()
-      .default('accessible'),
+    product_group_id: z.string().uuid('请选择有效产品分组').optional(),
     status: z.enum(['active', 'archived', 'all']).optional().default('active'),
   })
   .strict()
-  .superRefine((value, ctx) => {
-    if (value.scope === 'customer' && !value.customer_id) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['customer_id'],
-        message: '按客户筛选时请选择客户',
-      })
-    }
-  })
 
 export const businessOrderVoidReasonSchema = z
   .string()

@@ -7,7 +7,13 @@ import { getBusinessOrderEditConstraints } from '@/lib/actions/business-orders'
 import { requireApproved } from '@/lib/auth'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
-import type { BusinessOrderWithDetails, Customer, CustomerGroup, Product } from '@/types'
+import type {
+  BusinessOrderWithDetails,
+  Customer,
+  CustomerGroup,
+  Product,
+  ProductGroup,
+} from '@/types'
 
 export default async function EditBusinessOrderPage({
   params,
@@ -40,22 +46,33 @@ export default async function EditBusinessOrderPage({
     (order.status === 'completed' || Boolean(order.closed_at))
   if (!canEdit && !canInspectLocked) redirect(`/finance/daily-orders/${id}`)
 
-  const [customersResult, groupsResult, productsResult, constraintsResult, dailyOptions] =
-    await Promise.all([
-      profile.role === 'finance'
-        ? Promise.resolve({ data: [] as Customer[], error: null })
-        : profile.role === 'admin'
-          ? supabase.from('customers').select('*').order('name')
-          : supabase.from('customers').select('*').eq('created_by', profile.id).order('name'),
-      profile.role === 'finance'
-        ? Promise.resolve({ data: [] as CustomerGroup[], error: null })
-        : supabase.from('customer_groups').select('*').order('name'),
-      supabase.from('products').select('*').eq('is_active', true).order('name'),
-      getBusinessOrderEditConstraints(id),
-      fetchDailyOrderOptions(supabase),
-    ])
+  const [
+    customersResult,
+    customerGroupsResult,
+    productsResult,
+    productGroupsResult,
+    constraintsResult,
+    dailyOptions,
+  ] = await Promise.all([
+    profile.role === 'finance'
+      ? Promise.resolve({ data: [] as Customer[], error: null })
+      : profile.role === 'admin'
+        ? supabase.from('customers').select('*').order('name')
+        : supabase.from('customers').select('*').eq('created_by', profile.id).order('name'),
+    profile.role === 'finance'
+      ? Promise.resolve({ data: [] as CustomerGroup[], error: null })
+      : supabase.from('customer_groups').select('*').order('name'),
+    supabase.from('products').select('*').eq('is_active', true).order('name'),
+    supabase.from('product_groups').select('*').order('sort_order'),
+    getBusinessOrderEditConstraints(id),
+    fetchDailyOrderOptions(supabase),
+  ])
 
-  const loadError = customersResult.error || groupsResult.error || productsResult.error
+  const loadError =
+    customersResult.error ||
+    customerGroupsResult.error ||
+    productsResult.error ||
+    productGroupsResult.error
   if (loadError) throw new Error(`订单基础数据读取失败：${loadError.message}`)
   if (!constraintsResult.ok) {
     throw new Error(constraintsResult.error ?? '订单编辑约束读取失败')
@@ -73,8 +90,6 @@ export default async function EditBusinessOrderPage({
     })
   }
 
-  // 历史订单的店铺可能已停用、归属人可能已被取消分配；用订单快照补齐候选，
-  // 避免下拉缺少当前值导致无法保存。
   const shops = [...dailyOptions.shops]
   if (order.shop_id && !shops.some((shop) => shop.id === order.shop_id)) {
     shops.push({
@@ -123,7 +138,8 @@ export default async function EditBusinessOrderPage({
       <BusinessOrderForm
         profile={profile}
         customers={customers}
-        customerGroups={(groupsResult.data ?? []) as CustomerGroup[]}
+        customerGroups={(customerGroupsResult.data ?? []) as CustomerGroup[]}
+        productGroups={(productGroupsResult.data ?? []) as ProductGroup[]}
         products={(productsResult.data ?? []) as Product[]}
         shops={shops}
         salespeople={salespeople}

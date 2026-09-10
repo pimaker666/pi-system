@@ -51,6 +51,7 @@ import type {
   DailyOrderPaymentCategory,
   DailyOrderShippingCategory,
   Product,
+  ProductGroup,
   Profile,
 } from '@/types'
 
@@ -66,8 +67,8 @@ interface EditableItem {
   description: string | null
   specification: string | null
   unit: string
-  quantity: number
-  unit_price: number
+  quantity: number | ''
+  unit_price: number | ''
   daily_shipping_category: DailyOrderShippingCategory
   product_received_amount: number
   product_received_overridden: boolean
@@ -75,7 +76,6 @@ interface EditableItem {
   sales_total_amount: number
   sales_total_overridden: boolean
   default_currency: CurrencyCode | null
-  custom_scope: 'exclusive' | 'shared' | null
 }
 
 interface PendingAttachment {
@@ -87,6 +87,7 @@ interface BusinessOrderFormProps {
   profile: Pick<Profile, 'id' | 'role'>
   customers: Customer[]
   customerGroups: CustomerGroup[]
+  productGroups: ProductGroup[]
   products: Product[]
   shops: DailyOrderShopOption[]
   salespeople: Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
@@ -246,6 +247,7 @@ export function BusinessOrderForm({
   profile,
   customers,
   customerGroups,
+  productGroups,
   products,
   shops,
   salespeople,
@@ -262,7 +264,7 @@ export function BusinessOrderForm({
   )
   const [shopId, setShopId] = useState(initialOrder?.shop_id ?? '')
   const [salespersonId, setSalespersonId] = useState(
-    initialOrder?.salesperson_id ?? (profile.role === 'admin' ? '' : profile.id),
+    initialOrder?.salesperson_id ?? (['admin', 'finance'].includes(profile.role) ? '' : profile.id),
   )
   const [externalOrderNumber, setExternalOrderNumber] = useState(
     initialOrder?.external_order_number ?? '',
@@ -315,7 +317,6 @@ export function BusinessOrderForm({
         sales_total_amount: Number(item.sales_total_amount ?? item.line_amount),
         sales_total_overridden: item.sales_total_overridden,
         default_currency: null,
-        custom_scope: null,
       })) ?? [],
   )
   const [totalProductOverride, setTotalProductOverride] = useState<number | null>(
@@ -328,9 +329,6 @@ export function BusinessOrderForm({
       ? Number(initialOrder.total_shipping_received_amount ?? 0)
       : null,
   )
-  const [totalSalesOverride, setTotalSalesOverride] = useState<number | null>(
-    initialOrder?.total_sales_overridden ? Number(initialOrder.total_sales_amount ?? 0) : null,
-  )
   const [receivableReceivedDifferenceReason, setReceivableReceivedDifferenceReason] = useState(
     initialOrder?.receivable_received_difference_reason ?? '',
   )
@@ -342,7 +340,8 @@ export function BusinessOrderForm({
 
   const subtotal = useMemo(
     () => items.reduce(
-      (sum, item) => sum + roundMoney(item.quantity * item.unit_price),
+      (sum, item) =>
+        sum + roundMoney(numericValue(item.quantity) * numericValue(item.unit_price)),
       0,
     ),
     [items],
@@ -365,10 +364,9 @@ export function BusinessOrderForm({
   )
   const effectiveProductTotal = totalProductOverride ?? automaticProductTotal
   const effectiveShippingTotal = totalShippingOverride ?? automaticShippingTotal
-  const effectiveSalesTotal = totalSalesOverride ?? automaticSalesTotal
-  const totalsBalanced =
-    Math.round(effectiveSalesTotal * 100) ===
-    Math.round(effectiveProductTotal * 100) + Math.round(effectiveShippingTotal * 100)
+  const effectiveSalesTotal = roundMoney(effectiveProductTotal + effectiveShippingTotal)
+  const totalSalesOverridden =
+    Math.round(effectiveSalesTotal * 100) !== Math.round(automaticSalesTotal * 100)
   const normalizedConstraints = useMemo(
     () => normalizeEditConstraints(editConstraints),
     [editConstraints],
@@ -387,17 +385,7 @@ export function BusinessOrderForm({
   const productRowsLocked = lifecycleLocked
   const productControlsDisabled = pending || productRowsLocked || hasLegacyItems
 
-  function handleCustomerChange(nextCustomer: Customer) {
-    if (nextCustomer.id !== customer?.id) {
-      setSelectedCustomProduct(null)
-      if (!productRowsLocked) {
-        const customItemCount = items.filter((item) => item.source_type === 'custom').length
-        if (customItemCount > 0) {
-          setItems((current) => current.filter((item) => item.source_type !== 'custom'))
-          toast.info('客户已变更，原客户的定制产品明细已移除')
-        }
-      }
-    }
+  function handleCustomerChange(nextCustomer: Customer | null) {
     setCustomer(nextCustomer)
   }
 
@@ -408,7 +396,6 @@ export function BusinessOrderForm({
       toast.error('该产品已在订单中')
       return
     }
-    const currencyMatches = product.currency === currency
     setItems((current) => [
       ...current,
       {
@@ -423,19 +410,17 @@ export function BusinessOrderForm({
         description: product.description,
         specification: product.specification,
         unit: product.unit,
-        quantity: 1,
-        unit_price: currencyMatches ? Number(product.unit_price) : 0,
+        quantity: '',
+        unit_price: '',
         daily_shipping_category: 'stock',
-        product_received_amount: currencyMatches ? Number(product.unit_price) : 0,
+        product_received_amount: 0,
         product_received_overridden: false,
         logistics_fee_amount: 0,
-        sales_total_amount: currencyMatches ? Number(product.unit_price) : 0,
+        sales_total_amount: 0,
         sales_total_overridden: false,
         default_currency: product.currency,
-        custom_scope: null,
       },
     ])
-    if (!currencyMatches) toast.info('产品默认价币种与订单不同，成交单价已清零，请手工填写')
     setSelectedProductId('')
   }
 
@@ -444,7 +429,6 @@ export function BusinessOrderForm({
       toast.error('该定制产品版本已在订单中')
       return
     }
-    const currencyMatches = product.default_currency === currency
     setItems((current) => [
       ...current,
       {
@@ -459,19 +443,17 @@ export function BusinessOrderForm({
         description: product.description,
         specification: product.specification,
         unit: product.unit,
-        quantity: 1,
-        unit_price: currencyMatches ? Number(product.default_unit_price) : 0,
+        quantity: '',
+        unit_price: '',
         daily_shipping_category: 'custom',
-        product_received_amount: currencyMatches ? Number(product.default_unit_price) : 0,
+        product_received_amount: 0,
         product_received_overridden: false,
         logistics_fee_amount: 0,
-        sales_total_amount: currencyMatches ? Number(product.default_unit_price) : 0,
+        sales_total_amount: 0,
         sales_total_overridden: false,
         default_currency: product.default_currency,
-        custom_scope: product.is_shared ? 'shared' : 'exclusive',
       },
     ])
-    if (!currencyMatches) toast.info('定制产品默认价币种与订单不同，成交单价已清零，请手工填写')
     if (!keepSelected) setSelectedCustomProduct(null)
   }
 
@@ -480,19 +462,28 @@ export function BusinessOrderForm({
     const shop = shops.find((item) => item.id === value)
     const assignedIds = shop?.salespersonIds ?? []
     if (!assignedIds.includes(salespersonId)) {
-      setSalespersonId(profile.role === 'admin' ? '' : assignedIds.includes(profile.id) ? profile.id : '')
+      setSalespersonId(
+        ['admin', 'finance'].includes(profile.role)
+          ? ''
+          : assignedIds.includes(profile.id)
+            ? profile.id
+            : '',
+      )
     }
     if (!initialOrder && shop) handleCurrencyChange(shop.default_currency)
   }
 
   function updateItem(key: string, field: 'quantity' | 'unit_price', value: string) {
-    const number = Number(value)
+    const number = value === '' ? '' : numericValue(value)
     setItems((current) =>
       current.map((item) => {
         if (item.key !== key) return item
         const next = { ...item, [field]: number }
         if (!next.product_received_overridden) {
-          next.product_received_amount = derivedProductReceived(next.quantity, next.unit_price)
+          next.product_received_amount = derivedProductReceived(
+            numericValue(next.quantity),
+            numericValue(next.unit_price),
+          )
         }
         if (!next.sales_total_overridden) {
           next.sales_total_amount = derivedSalesTotal(
@@ -540,7 +531,10 @@ export function BusinessOrderForm({
     else if (currency === 'CNY') setExchangeRate('')
 
     const mismatchedItems = items.filter(
-      (item) => item.default_currency && item.default_currency !== value && item.unit_price !== 0,
+      (item) =>
+        item.default_currency &&
+        item.default_currency !== value &&
+        numericValue(item.unit_price) !== 0,
     )
     if (mismatchedItems.length > 0) {
       setItems((current) =>
@@ -549,7 +543,7 @@ export function BusinessOrderForm({
           const productReceived = item.product_received_overridden ? item.product_received_amount : 0
           return {
             ...item,
-            unit_price: 0,
+            unit_price: '',
             product_received_amount: productReceived,
             sales_total_amount: item.sales_total_overridden
               ? item.sales_total_amount
@@ -569,10 +563,10 @@ export function BusinessOrderForm({
       return
     }
     const invalid = selected.find(
-      (file) => !['image/jpeg', 'image/png'].includes(file.type) || file.size > 5 * 1024 * 1024,
+      (file) => !['image/jpeg', 'image/png'].includes(file.type) || file.size > 20 * 1024 * 1024,
     )
     if (invalid) {
-      toast.error(`${invalid.name} 不是 JPEG/PNG 或超过 5MB`)
+      toast.error(`${invalid.name} 不是 JPEG/PNG 或超过 20MB`)
       return
     }
     setFiles((current) => [
@@ -664,7 +658,7 @@ export function BusinessOrderForm({
       const constraint = item.order_item_id
         ? normalizedConstraints.constraints.get(item.order_item_id)
         : undefined
-      return constraint && item.quantity < constraint.minimumQuantity
+      return constraint && numericValue(item.quantity) < constraint.minimumQuantity
     })
     if (belowMinimum) {
       const minimum = normalizedConstraints.constraints.get(
@@ -673,7 +667,7 @@ export function BusinessOrderForm({
       toast.error(`“${belowMinimum.product_name}”数量不能低于净已发数量 ${minimum}`)
       return
     }
-    if (!customer) {
+    if (!customer && !['admin', 'finance'].includes(profile.role)) {
       toast.error('请选择客户')
       return
     }
@@ -689,14 +683,6 @@ export function BusinessOrderForm({
       toast.error('请输入订单号')
       return
     }
-    if (!totalsBalanced) {
-      toast.error('实际实收总额必须等于总产品实收加总运费实收')
-      return
-    }
-    if (hasReceivableReceivedDifference && !receivableReceivedDifferenceReason.trim()) {
-      toast.error('应收与实收存在差额时必须填写原因')
-      return
-    }
     const hasInvalidItem = items.some((item) =>
       item.source_type === 'catalog'
         ? !item.product_id
@@ -706,9 +692,16 @@ export function BusinessOrderForm({
       toast.error('请至少添加一个有效产品')
       return
     }
+    const incompleteItem = items.find(
+      (item) => item.quantity === '' || item.unit_price === '' || numericValue(item.quantity) <= 0,
+    )
+    if (incompleteItem) {
+      toast.error(`请填写“${incompleteItem.product_name}”的有效数量和销售单价`)
+      return
+    }
 
     const input = {
-      customer_id: customer.id,
+      customer_id: customer?.id ?? null,
       shop_id: shopId,
       salesperson_id: salespersonId,
       external_order_number: externalOrderNumber,
@@ -728,7 +721,7 @@ export function BusinessOrderForm({
       total_shipping_received_amount: effectiveShippingTotal,
       total_shipping_received_overridden: totalShippingOverride !== null,
       total_sales_amount: effectiveSalesTotal,
-      total_sales_overridden: totalSalesOverride !== null,
+      total_sales_overridden: totalSalesOverridden,
       receivable_received_difference_reason: hasReceivableReceivedDifference
         ? receivableReceivedDifferenceReason
         : '',
@@ -746,8 +739,8 @@ export function BusinessOrderForm({
             ...(item.order_item_id ? { order_item_id: item.order_item_id } : {}),
             source_type: 'catalog' as const,
             product_id: item.product_id,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
+            quantity: numericValue(item.quantity),
+            unit_price: numericValue(item.unit_price),
             ...dailyFields,
           }
         }
@@ -761,8 +754,8 @@ export function BusinessOrderForm({
             source_type: 'custom' as const,
             custom_product_id: item.custom_product_id,
             custom_product_version_id: item.custom_product_version_id,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
+            quantity: numericValue(item.quantity),
+            unit_price: numericValue(item.unit_price),
             ...dailyFields,
           }
         }
@@ -829,12 +822,15 @@ export function BusinessOrderForm({
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <div className="space-y-2 xl:col-span-3">
-              <Label>客户</Label>
+              <Label>
+                客户{!initialOrder && ['admin', 'finance'].includes(profile.role) ? '（可选）' : ''}
+              </Label>
               <CustomerCombobox
                 customers={customers}
                 groups={customerGroups}
                 value={customer}
                 onChange={handleCustomerChange}
+                allowClear={!initialOrder && ['admin', 'finance'].includes(profile.role)}
                 allowCreate={
                   !hasLegacyItems &&
                   !lifecycleLocked &&
@@ -1027,6 +1023,7 @@ export function BusinessOrderForm({
               <div className="flex flex-col gap-2 sm:flex-row">
                 <ProductCombobox
                   products={products}
+                  productGroups={productGroups}
                   value={selectedProductId}
                   onChange={setSelectedProductId}
                   placeholder="从产品库选择产品"
@@ -1045,12 +1042,11 @@ export function BusinessOrderForm({
             </div>
 
             <div className="space-y-2">
-              <Label>客户定制产品</Label>
+              <Label>定制产品库</Label>
               <div className="flex flex-col gap-2 lg:flex-row">
                 <BusinessCustomProductPicker
-                  customerId={customer?.id ?? null}
                   orderCurrency={currency}
-                  profileRole={profile.role}
+                  productGroups={productGroups}
                   value={selectedCustomProduct}
                   onChange={setSelectedCustomProduct}
                   onCreated={(product) => addCustomProduct(product, true)}
@@ -1067,7 +1063,7 @@ export function BusinessOrderForm({
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                选择客户后加载该客户专属及共享的未归档版本；新建产品会立即加入当前订单。
+                可按产品分组筛选全局未归档版本；新建产品会立即加入当前订单。
               </p>
             </div>
 
@@ -1099,11 +1095,7 @@ export function BusinessOrderForm({
                           {item.source_type === 'legacy'
                             ? '历史明细'
                             : item.source_type === 'custom'
-                              ? item.custom_scope === 'shared'
-                                ? '定制 · 共享'
-                                : item.custom_scope === 'exclusive'
-                                  ? '定制 · 客户专属'
-                                  : '定制产品'
+                              ? '定制产品'
                               : '普通产品'}
                         </Badge>
                       </div>
@@ -1186,7 +1178,10 @@ export function BusinessOrderForm({
                             variant="ghost"
                             className="h-auto px-1 py-0 text-xs"
                             onClick={() => {
-                              const value = derivedProductReceived(item.quantity, item.unit_price)
+                              const value = derivedProductReceived(
+                                numericValue(item.quantity),
+                                numericValue(item.unit_price),
+                              )
                               updateDailyItem(item.key, {
                                 product_received_amount: value,
                                 product_received_overridden: false,
@@ -1260,7 +1255,10 @@ export function BusinessOrderForm({
                       />
                     </div>
                     <div className="text-right font-medium tabular-nums">
-                      {formatCurrency(item.quantity * item.unit_price, currency)}
+                      {formatCurrency(
+                        numericValue(item.quantity) * numericValue(item.unit_price),
+                        currency,
+                      )}
                     </div>
                     <Button
                       type="button"
@@ -1350,29 +1348,13 @@ export function BusinessOrderForm({
               </p>
             </div>
             <div className="space-y-1">
-              <div className="flex items-center justify-between gap-2">
-                <Label>实际实收总额（{currency}）</Label>
-                {totalSalesOverride !== null && (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-auto px-1 py-0 text-xs"
-                    onClick={() => setTotalSalesOverride(null)}
-                  >恢复自动计算</Button>
-                )}
-              </div>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={effectiveSalesTotal}
-                onChange={(event) => setTotalSalesOverride(Number(event.target.value))}
-                disabled={pending || lifecycleLocked}
-                required
-              />
+              <Label>实际实收总额（{currency}）</Label>
+              <Input type="number" value={effectiveSalesTotal} readOnly />
               <p className="text-xs text-muted-foreground">
-                自动汇总：{formatCurrency(automaticSalesTotal, currency)}
+                总产品实收 + 总运费实收；明细实收合计：{formatCurrency(
+                  automaticSalesTotal,
+                  currency,
+                )}
               </p>
             </div>
           </div>
@@ -1386,7 +1368,7 @@ export function BusinessOrderForm({
             {hasReceivableReceivedDifference && (
               <div className="mt-3 space-y-2">
                 <Label htmlFor="receivable_received_difference_reason">
-                  差额原因（必填）
+                  差额原因（可选）
                 </Label>
                 <Textarea
                   id="receivable_received_difference_reason"
@@ -1395,7 +1377,6 @@ export function BusinessOrderForm({
                   maxLength={1000}
                   placeholder={receivableReceivedDifference > 0 ? '请说明少收原因' : '请说明多收原因'}
                   disabled={pending || lifecycleLocked}
-                  required
                 />
                 <p className="text-xs text-muted-foreground">
                   正数表示少收，负数表示多收；原因会保存在订单中并写入审计记录。
@@ -1403,19 +1384,6 @@ export function BusinessOrderForm({
               </div>
             )}
           </div>
-          {!totalsBalanced && (
-            <div className="flex gap-2 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
-              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>
-                实际实收总额需等于总产品实收加总运费实收，当前差额
-                {formatCurrency(
-                  roundMoney(effectiveSalesTotal - effectiveProductTotal - effectiveShippingTotal),
-                  currency,
-                )}
-                ，请修正后再保存。
-              </span>
-            </div>
-          )}
         </CardContent>
       </Card>
 
@@ -1437,7 +1405,7 @@ export function BusinessOrderForm({
             onDrop={handleDrop}
             onPaste={handlePaste}
           >
-            <div>拖拽、粘贴或选择 JPEG/PNG 截图，单张不超过 5MB，每单最多 10 张。</div>
+            <div>拖拽、粘贴或选择 JPEG/PNG 截图，单张不超过 20MB，每单最多 10 张。</div>
             <Input
               type="file"
               accept="image/jpeg,image/png"
