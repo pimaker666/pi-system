@@ -676,10 +676,6 @@ export function BusinessOrderForm({
       toast.error('请选择业务员')
       return
     }
-    if (!externalOrderNumber.trim()) {
-      toast.error('请输入订单号')
-      return
-    }
     const hasInvalidItem = items.some((item) =>
       item.source_type === 'catalog'
         ? !item.product_id
@@ -882,13 +878,12 @@ export function BusinessOrderForm({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="external_order_number">订单号</Label>
+              <Label htmlFor="external_order_number">订单号（可选）</Label>
               <Input
                 id="external_order_number"
                 value={externalOrderNumber}
                 onChange={(event) => setExternalOrderNumber(event.target.value)}
                 maxLength={200}
-                required
               />
             </div>
             <div className="space-y-2">
@@ -956,7 +951,7 @@ export function BusinessOrderForm({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="exchange_rate">兑人民币汇率</Label>
+              <Label htmlFor="exchange_rate">兑人民币汇率（可选）</Label>
               <Input
                 id="exchange_rate"
                 type="number"
@@ -966,19 +961,6 @@ export function BusinessOrderForm({
                 value={currency === 'CNY' ? '1' : exchangeRate}
                 onChange={(event) => setExchangeRate(event.target.value)}
                 readOnly={currency === 'CNY'}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="shipping_fee">生命周期订单运费</Label>
-              <Input
-                id="shipping_fee"
-                type="number"
-                min="0"
-                step="0.01"
-                value={shippingFee}
-                onChange={(event) => setShippingFee(event.target.value)}
-                required
               />
             </div>
             <div className="space-y-2">
@@ -1223,10 +1205,24 @@ export function BusinessOrderForm({
               )}
             </div>
 
-            <div className="ml-auto max-w-sm space-y-2 border-t pt-4 text-sm">
-              <div className="flex justify-between"><span>产品小计</span><span>{formatCurrency(subtotal, currency)}</span></div>
-              <div className="flex justify-between"><span>运费</span><span>{formatCurrency(Number(shippingFee) || 0, currency)}</span></div>
-              <div className="flex justify-between text-base font-semibold"><span>订单应收</span><span>{formatCurrency(total, currency)}</span></div>
+            <div className="flex flex-col gap-4 border-t pt-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="w-full space-y-2 sm:max-w-xs">
+                <Label htmlFor="shipping_fee">总运费应收（{currency}）</Label>
+                <Input
+                  id="shipping_fee"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={shippingFee}
+                  onChange={(event) => setShippingFee(event.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">计入右侧运费与订单应收</p>
+              </div>
+              <div className="w-full max-w-sm space-y-2 text-sm sm:ml-auto">
+                <div className="flex justify-between"><span>产品小计</span><span>{formatCurrency(subtotal, currency)}</span></div>
+                <div className="flex justify-between"><span>运费</span><span>{formatCurrency(Number(shippingFee) || 0, currency)}</span></div>
+                <div className="flex justify-between text-base font-semibold"><span>订单应收</span><span>{formatCurrency(total, currency)}</span></div>
+              </div>
             </div>
           </CardContent>
         </Card>

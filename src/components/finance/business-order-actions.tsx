@@ -41,12 +41,14 @@ interface BusinessOrderActionsProps {
   > & { closed_at?: string | null }
   profile: Pick<Profile, 'id' | 'role'>
   financeReady: boolean
+  canEditOrder?: boolean
 }
 
 export function BusinessOrderActions({
   order,
   profile,
   financeReady,
+  canEditOrder,
 }: BusinessOrderActionsProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -75,6 +77,7 @@ export function BusinessOrderActions({
     completionMissing.length === 0
   const canSpecialClose =
     !isClosed && profile.role === 'admin' && order.status !== 'completed'
+  const showEditOrder = canEditOrder ?? canOwnerEdit
 
   function runAction(
     action: () => Promise<{ ok: boolean; error?: string }>,
@@ -99,7 +102,7 @@ export function BusinessOrderActions({
     <div className="flex flex-wrap justify-end gap-2">
       {!isClosed && (
         <>
-          {canOwnerEdit && (
+          {showEditOrder && (
             <Button asChild variant="outline">
               <Link href={`/finance/daily-orders/${order.id}/edit`}>
                 <Pencil className="h-4 w-4" />编辑订单

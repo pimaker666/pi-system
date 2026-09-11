@@ -385,7 +385,7 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
     p_payment_due_date: nullableText(input.payment_due_date),
     p_shop_id: input.shop_id,
     p_salesperson_id: input.salesperson_id,
-    p_external_order_number: input.external_order_number,
+    p_external_order_number: nullableText(input.external_order_number),
     p_daily_shipping_date: input.daily_shipping_date,
     p_daily_shipping_number: nullableText(input.daily_shipping_number),
     p_daily_payment_category: input.daily_payment_category,
@@ -415,10 +415,7 @@ export async function updateBusinessOrder(
   reason = '',
 ): Promise<BusinessOrderActionResult> {
   const profile = await requireApproved()
-  if (profile.role === 'finance') {
-    return { ok: false, error: '财务不能编辑业务订单' }
-  }
-  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
     return { ok: false, error: '当前角色不能编辑业务订单' }
   }
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
@@ -450,7 +447,7 @@ export async function updateBusinessOrder(
     ),
     p_shop_id: input.shop_id,
     p_salesperson_id: input.salesperson_id,
-    p_external_order_number: input.external_order_number,
+    p_external_order_number: nullableText(input.external_order_number),
     p_daily_shipping_date: input.daily_shipping_date,
     p_daily_shipping_number: nullableText(input.daily_shipping_number),
     p_daily_payment_category: input.daily_payment_category,

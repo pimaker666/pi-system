@@ -106,8 +106,10 @@ export function canEditBusinessDailyOrder(
   actor: Pick<Profile, 'id' | 'role'>,
 ) {
   if (order.closed_at) return false
+  if (actor.role === 'admin' || actor.role === 'finance') {
+    return ['draft', 'rejected', 'approved'].includes(order.status)
+  }
   if (!['draft', 'rejected'].includes(order.status)) return false
-  if (actor.role === 'admin') return true
   if (actor.role !== 'sales' && actor.role !== 'supervisor') return false
   return order.salesperson_id === actor.id
 }

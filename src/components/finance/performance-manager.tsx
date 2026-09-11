@@ -101,10 +101,11 @@ export function PerformanceManager({ orders }: PerformanceManagerProps) {
               sum + Number(allocation.amount) * Number(allocation.transfer?.exchange_rate_to_cny ?? 0),
             0,
           )
-          result.orderTotalCny += Number(order.total_cny)
+          result.orderTotalCny += Number(order.total_cny ?? 0)
           result.receivedCny += receivedCny
           result.outstandingCny +=
-            Math.max(Number(order.total_amount) - received, 0) * Number(order.exchange_rate_to_cny)
+            Math.max(Number(order.total_amount) - received, 0) *
+            Number(order.exchange_rate_to_cny ?? 0)
           if (getBusinessOverdueDays(order.payment_due_date, order.payment_status === 'fully_paid') > 0) {
             result.overdueCount += 1
           }
@@ -210,7 +211,7 @@ export function PerformanceManager({ orders }: PerformanceManagerProps) {
                   <TableCell className="whitespace-nowrap text-right font-medium">
                     <div>{formatCurrency(Number(order.total_amount), order.currency)}</div>
                     <div className="text-xs font-normal text-muted-foreground">
-                      {formatCny(Number(order.total_cny))}
+                      {order.total_cny === null ? '—' : formatCny(Number(order.total_cny))}
                     </div>
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-right tabular-nums">

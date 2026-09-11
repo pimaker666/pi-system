@@ -32,7 +32,7 @@ interface RecentOrder {
   reference: string
   customer: string
   salesperson: string
-  amountCny: number
+  amountCny: number | null
   href?: string
   status?: BusinessOrderStatus
 }
@@ -116,7 +116,7 @@ export default async function FinanceOverviewPage() {
         order.salesperson,
         order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
       ),
-      amountCny: Number(order.total_cny),
+      amountCny: order.total_cny === null ? null : Number(order.total_cny),
       href: `/finance/performance/${order.id}`,
       status: order.status as BusinessOrderStatus,
     }
@@ -195,7 +195,7 @@ export default async function FinanceOverviewPage() {
                       <Badge variant="secondary">历史记录</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">{formatCny(order.amountCny)}</TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">{order.amountCny === null ? '—' : formatCny(order.amountCny)}</TableCell>
                 </TableRow>
               ))}
               {orders.length === 0 && (

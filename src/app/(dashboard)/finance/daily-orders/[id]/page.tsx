@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/table'
 import {
   getBusinessOrderAttachmentUrl,
+  getBusinessOrderEditConstraints,
   getBusinessOrderSettlementSummary,
 } from '@/lib/actions/business-orders'
 import { requireApproved } from '@/lib/auth'
@@ -128,6 +129,10 @@ export default async function BusinessOrderDetailPage({
     throw new Error(settlementResult.error ?? '订单结算汇总读取失败')
   }
   const settlement = settlementResult.data
+  const editConstraintsResult = await getBusinessOrderEditConstraints(order.id)
+  const canEditOrder = editConstraintsResult.ok
+    ? editConstraintsResult.data?.can_edit_order
+    : undefined
 
   // 0034 之后录入的每日订单会带齐三组总额；历史订单为 null，只展示原有金额区。
   const hasDailyFields = order.total_sales_amount !== null
@@ -240,7 +245,12 @@ export default async function BusinessOrderDetailPage({
             </p>
           </div>
         </div>
-        <BusinessOrderActions order={order} profile={profile} financeReady={financeReady} />
+        <BusinessOrderActions
+          order={order}
+          profile={profile}
+          financeReady={financeReady}
+          canEditOrder={canEditOrder}
+        />
       </div>
 
       {order.review_note && (
@@ -322,8 +332,8 @@ export default async function BusinessOrderDetailPage({
               <div className="flex justify-between"><span className="text-muted-foreground">产品小计</span><span>{formatCurrency(Number(order.items_subtotal), order.currency)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">运费</span><span>{formatCurrency(Number(order.shipping_fee), order.currency)}</span></div>
               <div className="flex justify-between border-t pt-2 text-base font-semibold"><span>订单应收</span><span>{formatCurrency(Number(order.total_amount), order.currency)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">兑人民币汇率</span><span>{Number(order.exchange_rate_to_cny).toLocaleString('zh-CN', { maximumFractionDigits: 8 })}</span></div>
-              <div className="flex justify-between font-medium"><span>折合人民币</span><span>{formatCny(Number(order.total_cny))}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">兑人民币汇率</span><span>{order.exchange_rate_to_cny === null ? '—' : Number(order.exchange_rate_to_cny).toLocaleString('zh-CN', { maximumFractionDigits: 8 })}</span></div>
+              <div className="flex justify-between font-medium"><span>折合人民币</span><span>{order.total_cny === null ? '—' : formatCny(Number(order.total_cny))}</span></div>
               {hasDailyFields && (
                 <div className="space-y-2 border-t pt-2">
                   <div className="flex justify-between">

@@ -87,6 +87,10 @@ const positiveQuantitySchema = decimalNumber(4, '数量').pipe(
 const exchangeRateSchema = decimalNumber(8, '汇率').pipe(
   z.number().positive('汇率必须大于 0').max(MAX_EXCHANGE_RATE, '汇率不能超过 1000000'),
 )
+const optionalExchangeRateSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+  z.union([exchangeRateSchema, z.null()]).default(null),
+)
 
 const dailyOrderItemFields = {
   daily_shipping_category: z.enum(businessOrderDailyShippingCategories),
@@ -137,12 +141,12 @@ export const businessOrderInputSchema = z
     customer_id: z.string().uuid('请选择有效客户').nullable(),
     shop_id: z.string().uuid('请选择店铺'),
     salesperson_id: z.string().uuid('请选择业务员'),
-    external_order_number: z.string().trim().min(1, '请输入订单号').max(200, '订单号不能超过 200 字'),
+    external_order_number: optionalText(200, '订单号不能超过 200 字'),
     order_date: dateSchema,
     payment_due_date: optionalDateSchema,
     fulfillment_type: z.enum(businessFulfillmentTypes),
     currency: z.enum(CURRENCIES),
-    exchange_rate_to_cny: exchangeRateSchema,
+    exchange_rate_to_cny: optionalExchangeRateSchema,
     shipping_fee: nonNegativeAmountSchema,
     tracking_number: optionalText(200, '物流单号不能超过 200 字'),
     sales_notes: optionalText(2000, '业务备注不能超过 2000 字'),
@@ -197,7 +201,11 @@ export const businessOrderInputSchema = z
       }
     })
 
-    if (value.currency === 'CNY' && value.exchange_rate_to_cny !== 1) {
+    if (
+      value.currency === 'CNY' &&
+      value.exchange_rate_to_cny !== null &&
+      value.exchange_rate_to_cny !== 1
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['exchange_rate_to_cny'],
@@ -266,18 +274,6 @@ export const businessOrderInputSchema = z
         code: z.ZodIssueCode.custom,
         path: ['total_sales_amount'],
         message: '实际实收总额必须等于总产品实收加总运费实收',
-      })
-    }
-
-    const receivableTotal = roundToScale(itemsSubtotal + value.shipping_fee, 2)
-    if (
-      Math.round(receivableTotal * 100) !== Math.round(value.total_sales_amount * 100) &&
-      !value.receivable_received_difference_reason.trim()
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['receivable_received_difference_reason'],
-        message: '应收与实收存在差额时必须填写原因',
       })
     }
   })

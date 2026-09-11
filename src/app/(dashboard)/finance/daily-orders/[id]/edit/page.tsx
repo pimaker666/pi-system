@@ -35,10 +35,14 @@ export default async function EditBusinessOrderPage({
 
   if (error || !data) notFound()
   const order = data as BusinessOrderWithDetails & { closed_at?: string | null }
-  const isEditableStatus = ['draft', 'rejected'].includes(order.status) && !order.closed_at
+  const constraintsResult = await getBusinessOrderEditConstraints(id)
+  if (!constraintsResult.ok || !constraintsResult.data) {
+    throw new Error(constraintsResult.error ?? '订单编辑约束读取失败')
+  }
   const canEdit =
-    isEditableStatus &&
+    constraintsResult.data.can_edit_order &&
     (profile.role === 'admin' ||
+      profile.role === 'finance' ||
       ((profile.role === 'sales' || profile.role === 'supervisor') &&
         order.salesperson_id === profile.id))
   const canInspectLocked =
@@ -51,7 +55,6 @@ export default async function EditBusinessOrderPage({
     customerGroupsResult,
     productsResult,
     productGroupsResult,
-    constraintsResult,
     dailyOptions,
   ] = await Promise.all([
     profile.role === 'finance'
@@ -64,7 +67,6 @@ export default async function EditBusinessOrderPage({
       : supabase.from('customer_groups').select('*').order('name'),
     supabase.from('products').select('*').eq('is_active', true).order('name'),
     supabase.from('product_groups').select('*').order('sort_order'),
-    getBusinessOrderEditConstraints(id),
     fetchDailyOrderOptions(supabase),
   ])
 
@@ -74,9 +76,6 @@ export default async function EditBusinessOrderPage({
     productsResult.error ||
     productGroupsResult.error
   if (loadError) throw new Error(`订单基础数据读取失败：${loadError.message}`)
-  if (!constraintsResult.ok) {
-    throw new Error(constraintsResult.error ?? '订单编辑约束读取失败')
-  }
 
   const customers = [...((customersResult.data ?? []) as Customer[])]
   if (order.customer_id && !customers.some((customer) => customer.id === order.customer_id)) {

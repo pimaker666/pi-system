@@ -318,11 +318,11 @@ export interface BusinessOrder {
   daily_payment_category: DailyOrderPaymentCategory | null
   fulfillment_type: BusinessFulfillmentType
   currency: CurrencyCode
-  exchange_rate_to_cny: number
+  exchange_rate_to_cny: number | null
   items_subtotal: number
   shipping_fee: number
   total_amount: number
-  total_cny: number
+  total_cny: number | null
   total_product_received_amount: number | null
   total_product_received_overridden: boolean
   total_shipping_received_amount: number | null
