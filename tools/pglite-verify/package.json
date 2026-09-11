@@ -1,0 +1,13 @@
+{
+  "name": "pi-pglite-verify",
+  "private": true,
+  "type": "module",
+  "description": "在内存 PGlite 中重放 supabase/migrations 并做功能演练，用于迁移上生产前的本地校验",
+  "scripts": {
+    "replay": "node replay-migrations.mjs",
+    "verify:0040": "node verify-0040.mjs"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}
