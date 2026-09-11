@@ -110,7 +110,11 @@ export function BusinessCustomProductPicker({
         <PopoverTrigger asChild>
           <Button type="button" variant="outline" role="combobox" aria-expanded={open} disabled={disabled || loading} className="min-w-0 flex-1 justify-between font-normal">
             <span className={cn('truncate', !value && 'text-muted-foreground')}>
-              {loading ? '正在加载定制产品…' : value ? `${value.code} · ${value.name}（v${value.version_no}）` : '选择定制产品…'}
+              {loading
+                ? '正在加载定制产品…'
+                : value
+                  ? `${[value.code, value.name].filter(Boolean).join(' · ')}（v${value.version_no}）`
+                  : '选择定制产品…'}
             </span>
             {loading ? <Loader2 className="ml-2 h-4 w-4 shrink-0 animate-spin" /> : <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />}
           </Button>
@@ -139,7 +143,12 @@ export function BusinessCustomProductPicker({
                         {product.product_group_name && <Badge variant="outline">{product.product_group_name}</Badge>}
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
-                        {product.code} · v{product.version_no} · {product.unit} · {formatCurrency(Number(product.default_unit_price), product.default_currency)}
+                        {[
+                          product.code,
+                          `v${product.version_no}`,
+                          product.unit,
+                          formatCurrency(Number(product.default_unit_price), product.default_currency),
+                        ].filter(Boolean).join(' · ')}
                         {product.default_currency !== orderCurrency ? `（订单币种 ${orderCurrency}，不自动换算）` : ''}
                       </div>
                     </div>

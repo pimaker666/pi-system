@@ -221,7 +221,9 @@ export function BusinessCustomProductLibrary({
                         {product.product_group_name && <Badge variant="outline">{product.product_group_name}</Badge>}
                         <Badge variant={product.is_archived ? 'destructive' : 'default'}>{product.is_archived ? '已归档' : '启用中'}</Badge>
                       </div>
-                      <p className="mt-1 break-all text-sm text-muted-foreground">{product.code} · 最新 v{product.version_no || '—'}</p>
+                      <p className="mt-1 break-all text-sm text-muted-foreground">
+                        {[product.code, `最新 v${product.version_no || '—'}`].filter(Boolean).join(' · ')}
+                      </p>
                     </div>
                   </div>
                 </CardHeader>

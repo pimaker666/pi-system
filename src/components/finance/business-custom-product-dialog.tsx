@@ -38,6 +38,7 @@ import {
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
 import { createClient } from '@/lib/supabase/client'
 import { toImageSrc } from '@/lib/supabase/image'
+import { roundToScale } from '@/lib/utils'
 import type {
   BusinessCustomProductListItem,
   CurrencyCode,
@@ -74,6 +75,23 @@ function productImageObjectPath(url: string) {
   }
 }
 
+function numericValue(value: string) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function roundMoney(value: number) {
+  return roundToScale(value, 2)
+}
+
+function derivedOrderAmount(quantity: string, unitPrice: string) {
+  return roundMoney(numericValue(quantity) * numericValue(unitPrice))
+}
+
+function derivedOutstanding(quantity: string, unitPrice: string, received: string) {
+  return String(roundMoney(derivedOrderAmount(quantity, unitPrice) - numericValue(received)))
+}
+
 export function BusinessCustomProductDialog({
   defaultCurrency,
   productGroups,
@@ -95,6 +113,7 @@ export function BusinessCustomProductDialog({
   const [quantity, setQuantity] = useState('')
   const [defaultUnitPrice, setDefaultUnitPrice] = useState('')
   const [receivedAmount, setReceivedAmount] = useState('')
+  const [outstandingAmount, setOutstandingAmount] = useState('')
   const [currency, setCurrency] = useState<CurrencyCode>(defaultCurrency)
   const [draggingImage, setDraggingImage] = useState(false)
   const uploadedPathsRef = useRef(new Set<string>())
@@ -112,19 +131,41 @@ export function BusinessCustomProductDialog({
     setSpecification(isVersionMode ? (product?.specification ?? '') : '')
     setUnit(isVersionMode ? (product?.unit ?? '') : '')
     setImageUrl(isVersionMode ? (product?.image_url ?? '') : '')
-    setQuantity(isVersionMode && product?.quantity != null ? String(product.quantity) : '')
-    setDefaultUnitPrice(
-      isVersionMode && product ? String(product.default_unit_price) : '',
-    )
-    setReceivedAmount(
-      isVersionMode && product?.received_amount != null
-        ? String(product.received_amount)
-        : '',
-    )
+    const nextQuantity =
+      isVersionMode && product?.quantity != null ? String(product.quantity) : ''
+    const nextUnitPrice = isVersionMode && product ? String(product.default_unit_price) : ''
+    const nextReceived =
+      isVersionMode && product?.received_amount != null ? String(product.received_amount) : ''
+    setQuantity(nextQuantity)
+    setDefaultUnitPrice(nextUnitPrice)
+    setReceivedAmount(nextReceived)
+    setOutstandingAmount(derivedOutstanding(nextQuantity, nextUnitPrice, nextReceived))
     setCurrency(
       isVersionMode ? (product?.default_currency ?? defaultCurrency) : defaultCurrency,
     )
     setDraggingImage(false)
+  }
+
+  const orderAmount = derivedOrderAmount(quantity, defaultUnitPrice)
+
+  function changeQuantity(value: string) {
+    setQuantity(value)
+    setOutstandingAmount(derivedOutstanding(value, defaultUnitPrice, receivedAmount))
+  }
+
+  function changeUnitPrice(value: string) {
+    setDefaultUnitPrice(value)
+    setOutstandingAmount(derivedOutstanding(quantity, value, receivedAmount))
+  }
+
+  function changeReceivedAmount(value: string) {
+    setReceivedAmount(value)
+    setOutstandingAmount(derivedOutstanding(quantity, defaultUnitPrice, value))
+  }
+
+  function changeOutstandingAmount(value: string) {
+    setOutstandingAmount(value)
+    setReceivedAmount(String(Math.max(0, roundMoney(orderAmount - numericValue(value)))))
   }
 
   async function cleanupUploadedImages(keepUrl?: string) {
@@ -329,7 +370,7 @@ export function BusinessCustomProductDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${mode}_custom_product_code`}>编码</Label>
-              <Input id={`${mode}_custom_product_code`} value={code} onChange={(event) => setCode(event.target.value)} maxLength={100} required />
+              <Input id={`${mode}_custom_product_code`} value={code} onChange={(event) => setCode(event.target.value)} maxLength={100} placeholder="可留空" />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${mode}_custom_product_name`}>名称</Label>
@@ -345,19 +386,29 @@ export function BusinessCustomProductDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${mode}_custom_product_unit`}>单位</Label>
-              <Input id={`${mode}_custom_product_unit`} value={unit} onChange={(event) => setUnit(event.target.value)} maxLength={100} required />
+              <Input id={`${mode}_custom_product_unit`} value={unit} onChange={(event) => setUnit(event.target.value)} maxLength={100} placeholder="可留空" />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${mode}_custom_product_quantity`}>数量</Label>
-              <Input id={`${mode}_custom_product_quantity`} type="number" min="0.0001" step="0.0001" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />
+              <Input id={`${mode}_custom_product_quantity`} type="number" min="0.0001" step="0.0001" value={quantity} onChange={(event) => changeQuantity(event.target.value)} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`${mode}_custom_product_price`}>销售单价</Label>
-              <Input id={`${mode}_custom_product_price`} type="number" min="0" step="0.01" value={defaultUnitPrice} onChange={(event) => setDefaultUnitPrice(event.target.value)} required />
+              <Label htmlFor={`${mode}_custom_product_price`}>销售单价（{currency}）</Label>
+              <Input id={`${mode}_custom_product_price`} type="number" min="0" step="0.01" value={defaultUnitPrice} onChange={(event) => changeUnitPrice(event.target.value)} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor={`${mode}_custom_product_received`}>实收金额</Label>
-              <Input id={`${mode}_custom_product_received`} type="number" min="0" step="0.01" value={receivedAmount} onChange={(event) => setReceivedAmount(event.target.value)} placeholder="可留空" />
+              <Label htmlFor={`${mode}_custom_product_order_amount`}>订单金额（{currency}）</Label>
+              <Input id={`${mode}_custom_product_order_amount`} type="number" value={orderAmount} readOnly tabIndex={-1} className="bg-muted/40" />
+              <p className="text-xs text-muted-foreground">数量 × 销售单价，自动计算</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${mode}_custom_product_received`}>实收金额（{currency}）</Label>
+              <Input id={`${mode}_custom_product_received`} type="number" min="0" step="0.01" value={receivedAmount} onChange={(event) => changeReceivedAmount(event.target.value)} placeholder="可留空" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor={`${mode}_custom_product_outstanding`}>未收尾款（{currency}）</Label>
+              <Input id={`${mode}_custom_product_outstanding`} type="number" step="0.01" value={outstandingAmount} onChange={(event) => changeOutstandingAmount(event.target.value)} />
+              <p className="text-xs text-muted-foreground">订单金额 − 实收金额；修改后会反算实收金额</p>
             </div>
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor={`${mode}_custom_product_image`}>产品图片</Label>

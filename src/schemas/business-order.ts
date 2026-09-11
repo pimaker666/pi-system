@@ -299,11 +299,11 @@ export const businessOrderAttachmentInputSchema = z
 export const businessCustomProductVersionInputSchema = z
   .object({
     product_group_id: z.string().uuid('请选择产品分组'),
-    code: z.string().trim().min(1, '请填写定制产品编码').max(100, '定制产品编码不能超过 100 字'),
+    code: optionalText(100, '定制产品编码不能超过 100 字'),
     name: z.string().trim().min(1, '请填写定制产品名称').max(300, '定制产品名称不能超过 300 字'),
     description: optionalText(4000, '定制产品描述不能超过 4000 字'),
     specification: optionalText(2000, '定制产品规格不能超过 2000 字'),
-    unit: z.string().trim().min(1, '请填写单位').max(100, '单位不能超过 100 字'),
+    unit: optionalText(100, '单位不能超过 100 字'),
     image_url: optionalText(2000, '图片地址不能超过 2000 字'),
     quantity: positiveQuantitySchema,
     default_unit_price: nonNegativeAmountSchema,

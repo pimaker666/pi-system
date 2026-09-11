@@ -70,11 +70,9 @@ interface EditableItem {
   quantity: number | ''
   unit_price: number | ''
   daily_shipping_category: DailyOrderShippingCategory
-  product_received_amount: number
-  product_received_overridden: boolean
+  received_amount: string
+  outstanding_amount: string
   logistics_fee_amount: number
-  sales_total_amount: number
-  sales_total_overridden: boolean
   default_currency: CurrencyCode | null
 }
 
@@ -146,12 +144,16 @@ function roundMoney(value: number) {
   return roundToScale(value, 2)
 }
 
-function derivedProductReceived(quantity: number, unitPrice: number) {
-  return roundMoney(quantity * unitPrice)
+function derivedOrderAmount(quantity: number | '', unitPrice: number | '') {
+  return roundMoney(numericValue(quantity) * numericValue(unitPrice))
 }
 
-function derivedSalesTotal(productReceived: number, logisticsFee: number) {
-  return roundMoney(productReceived + logisticsFee)
+function derivedOutstanding(
+  quantity: number | '',
+  unitPrice: number | '',
+  received: string,
+) {
+  return String(roundMoney(derivedOrderAmount(quantity, unitPrice) - numericValue(received)))
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -311,11 +313,13 @@ export function BusinessOrderForm({
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price),
         daily_shipping_category: item.daily_shipping_category ?? 'stock',
-        product_received_amount: Number(item.product_received_amount ?? item.line_amount),
-        product_received_overridden: item.product_received_overridden,
+        received_amount: String(Number(item.product_received_amount ?? item.line_amount)),
+        outstanding_amount: derivedOutstanding(
+          Number(item.quantity),
+          Number(item.unit_price),
+          String(Number(item.product_received_amount ?? item.line_amount)),
+        ),
         logistics_fee_amount: Number(item.logistics_fee_amount ?? 0),
-        sales_total_amount: Number(item.sales_total_amount ?? item.line_amount),
-        sales_total_overridden: item.sales_total_overridden,
         default_currency: null,
       })) ?? [],
   )
@@ -351,17 +355,14 @@ export function BusinessOrderForm({
     return salespeople.filter((person) => ids.has(person.id))
   }, [shopId, shops, salespeople])
   const automaticProductTotal = useMemo(
-    () => roundMoney(items.reduce((sum, item) => sum + item.product_received_amount, 0)),
+    () => roundMoney(items.reduce((sum, item) => sum + numericValue(item.received_amount), 0)),
     [items],
   )
   const automaticShippingTotal = useMemo(
     () => roundMoney(items.reduce((sum, item) => sum + item.logistics_fee_amount, 0)),
     [items],
   )
-  const automaticSalesTotal = useMemo(
-    () => roundMoney(items.reduce((sum, item) => sum + item.sales_total_amount, 0)),
-    [items],
-  )
+  const automaticSalesTotal = roundMoney(automaticProductTotal + automaticShippingTotal)
   const effectiveProductTotal = totalProductOverride ?? automaticProductTotal
   const effectiveShippingTotal = totalShippingOverride ?? automaticShippingTotal
   const effectiveSalesTotal = roundMoney(effectiveProductTotal + effectiveShippingTotal)
@@ -413,11 +414,9 @@ export function BusinessOrderForm({
         quantity: '',
         unit_price: '',
         daily_shipping_category: 'stock',
-        product_received_amount: 0,
-        product_received_overridden: false,
+        received_amount: '',
+        outstanding_amount: '0',
         logistics_fee_amount: 0,
-        sales_total_amount: 0,
-        sales_total_overridden: false,
         default_currency: product.currency,
       },
     ])
@@ -429,6 +428,9 @@ export function BusinessOrderForm({
       toast.error('该定制产品版本已在订单中')
       return
     }
+    const quantity = product.quantity ?? ''
+    const unitPrice = product.default_currency === currency ? product.default_unit_price : ''
+    const received = product.received_amount == null ? '' : String(product.received_amount)
     setItems((current) => [
       ...current,
       {
@@ -443,14 +445,12 @@ export function BusinessOrderForm({
         description: product.description,
         specification: product.specification,
         unit: product.unit,
-        quantity: '',
-        unit_price: '',
+        quantity,
+        unit_price: unitPrice,
         daily_shipping_category: 'custom',
-        product_received_amount: 0,
-        product_received_overridden: false,
+        received_amount: received,
+        outstanding_amount: derivedOutstanding(quantity, unitPrice, received),
         logistics_fee_amount: 0,
-        sales_total_amount: 0,
-        sales_total_overridden: false,
         default_currency: product.default_currency,
       },
     ])
@@ -479,48 +479,48 @@ export function BusinessOrderForm({
       current.map((item) => {
         if (item.key !== key) return item
         const next = { ...item, [field]: number }
-        if (!next.product_received_overridden) {
-          next.product_received_amount = derivedProductReceived(
-            numericValue(next.quantity),
-            numericValue(next.unit_price),
-          )
-        }
-        if (!next.sales_total_overridden) {
-          next.sales_total_amount = derivedSalesTotal(
-            next.product_received_amount,
-            next.logistics_fee_amount,
-          )
-        }
+        next.outstanding_amount = derivedOutstanding(
+          next.quantity,
+          next.unit_price,
+          next.received_amount,
+        )
         return next
       }),
     )
   }
 
-  function updateDailyItem(
-    key: string,
-    patch: Partial<
-      Pick<
-        EditableItem,
-        | 'daily_shipping_category'
-        | 'product_received_amount'
-        | 'product_received_overridden'
-        | 'logistics_fee_amount'
-        | 'sales_total_amount'
-        | 'sales_total_overridden'
-      >
-    >,
-  ) {
+  function updateShippingCategory(key: string, value: DailyOrderShippingCategory) {
+    setItems((current) =>
+      current.map((item) =>
+        item.key === key ? { ...item, daily_shipping_category: value } : item,
+      ),
+    )
+  }
+
+  function updateReceivedAmount(key: string, value: string) {
+    setItems((current) =>
+      current.map((item) =>
+        item.key === key
+          ? {
+              ...item,
+              received_amount: value,
+              outstanding_amount: derivedOutstanding(item.quantity, item.unit_price, value),
+            }
+          : item,
+      ),
+    )
+  }
+
+  function updateOutstandingAmount(key: string, value: string) {
     setItems((current) =>
       current.map((item) => {
         if (item.key !== key) return item
-        const next = { ...item, ...patch }
-        if (!next.sales_total_overridden) {
-          next.sales_total_amount = derivedSalesTotal(
-            next.product_received_amount,
-            next.logistics_fee_amount,
-          )
+        const orderAmount = derivedOrderAmount(item.quantity, item.unit_price)
+        return {
+          ...item,
+          received_amount: String(Math.max(0, roundMoney(orderAmount - numericValue(value)))),
+          outstanding_amount: value,
         }
-        return next
       }),
     )
   }
@@ -540,18 +540,15 @@ export function BusinessOrderForm({
       setItems((current) =>
         current.map((item) => {
           if (!item.default_currency || item.default_currency === value) return item
-          const productReceived = item.product_received_overridden ? item.product_received_amount : 0
           return {
             ...item,
             unit_price: '',
-            product_received_amount: productReceived,
-            sales_total_amount: item.sales_total_overridden
-              ? item.sales_total_amount
-              : derivedSalesTotal(productReceived, item.logistics_fee_amount),
+            received_amount: '',
+            outstanding_amount: '0',
           }
         }),
       )
-      toast.info('币种已变更，来源币种不同的新增产品单价已清零，请重新填写')
+      toast.info('币种已变更，来源币种不同的产品单价与实收金额已清空，请重新填写')
     }
   }
 
@@ -726,13 +723,17 @@ export function BusinessOrderForm({
         ? receivableReceivedDifferenceReason
         : '',
       items: items.map((item) => {
+        const orderAmount = derivedOrderAmount(item.quantity, item.unit_price)
+        const productReceived = roundMoney(numericValue(item.received_amount))
+        const logisticsFee = roundMoney(item.logistics_fee_amount)
         const dailyFields = {
           daily_shipping_category: item.daily_shipping_category,
-          product_received_amount: item.product_received_amount,
-          product_received_overridden: item.product_received_overridden,
-          logistics_fee_amount: item.logistics_fee_amount,
-          sales_total_amount: item.sales_total_amount,
-          sales_total_overridden: item.sales_total_overridden,
+          product_received_amount: productReceived,
+          product_received_overridden:
+            Math.round(productReceived * 100) !== Math.round(orderAmount * 100),
+          logistics_fee_amount: logisticsFee,
+          sales_total_amount: roundMoney(productReceived + logisticsFee),
+          sales_total_overridden: false,
         }
         if (item.source_type === 'catalog' && item.product_id) {
           return {
@@ -1086,7 +1087,7 @@ export function BusinessOrderForm({
                 return (
                   <div
                     key={item.key}
-                    className="grid gap-3 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_140px_160px_120px_40px] sm:items-end"
+                    className="grid gap-3 rounded-md border p-3 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)_40px] lg:items-start"
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1099,7 +1100,11 @@ export function BusinessOrderForm({
                               : '普通产品'}
                         </Badge>
                       </div>
-                      <div className="text-xs text-muted-foreground">{item.sku} · {item.unit}</div>
+                      {[item.sku, item.unit].filter(Boolean).length > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          {[item.sku, item.unit].filter(Boolean).join(' · ')}
+                        </div>
+                      )}
                       {item.specification && (
                         <div className="mt-1 text-xs text-muted-foreground">规格：{item.specification}</div>
                       )}
@@ -1126,139 +1131,77 @@ export function BusinessOrderForm({
                         </div>
                       )}
                     </div>
-                    <div className="space-y-1">
-                      <Label>数量</Label>
-                      <Input
-                        type="number"
-                        min={minimumQuantity}
-                        step="0.0001"
-                        value={item.quantity}
-                        onChange={(event) => updateItem(item.key, 'quantity', event.target.value)}
-                        disabled={quantityLocked}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>销售单价（{currency}）</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.unit_price}
-                        onChange={(event) => updateItem(item.key, 'unit_price', event.target.value)}
-                        disabled={unitPriceLocked}
-                        required
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>发货分类</Label>
-                      <Select
-                        value={item.daily_shipping_category}
-                        onValueChange={(value) =>
-                          updateDailyItem(item.key, {
-                            daily_shipping_category: value as DailyOrderShippingCategory,
-                          })
-                        }
-                      >
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {SHIPPING_OPTIONS.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <Label>产品实收（{currency}）</Label>
-                        {item.product_received_overridden && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-auto px-1 py-0 text-xs"
-                            onClick={() => {
-                              const value = derivedProductReceived(
-                                numericValue(item.quantity),
-                                numericValue(item.unit_price),
-                              )
-                              updateDailyItem(item.key, {
-                                product_received_amount: value,
-                                product_received_overridden: false,
-                              })
-                            }}
-                          >恢复自动</Button>
-                        )}
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      <div className="space-y-1">
+                        <Label>数量</Label>
+                        <Input
+                          type="number"
+                          min={minimumQuantity}
+                          step="0.0001"
+                          value={item.quantity}
+                          onChange={(event) => updateItem(item.key, 'quantity', event.target.value)}
+                          disabled={quantityLocked}
+                          required
+                        />
                       </div>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.product_received_amount}
-                        onChange={(event) =>
-                          updateDailyItem(item.key, {
-                            product_received_amount: Number(event.target.value),
-                            product_received_overridden: true,
-                          })
-                        }
-                        required
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>运费实收（{currency}）</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.logistics_fee_amount}
-                        onChange={(event) =>
-                          updateDailyItem(item.key, {
-                            logistics_fee_amount: Number(event.target.value),
-                          })
-                        }
-                        required
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <Label>明细实收合计（{currency}）</Label>
-                        {item.sales_total_overridden && (
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="ghost"
-                            className="h-auto px-1 py-0 text-xs"
-                            onClick={() =>
-                              updateDailyItem(item.key, {
-                                sales_total_amount: derivedSalesTotal(
-                                  item.product_received_amount,
-                                  item.logistics_fee_amount,
-                                ),
-                                sales_total_overridden: false,
-                              })
-                            }
-                          >恢复自动</Button>
-                        )}
+                      <div className="space-y-1">
+                        <Label>销售单价（{currency}）</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.unit_price}
+                          onChange={(event) => updateItem(item.key, 'unit_price', event.target.value)}
+                          disabled={unitPriceLocked}
+                          required
+                        />
                       </div>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.sales_total_amount}
-                        onChange={(event) =>
-                          updateDailyItem(item.key, {
-                            sales_total_amount: Number(event.target.value),
-                            sales_total_overridden: true,
-                          })
-                        }
-                        required
-                      />
-                    </div>
-                    <div className="text-right font-medium tabular-nums">
-                      {formatCurrency(
-                        numericValue(item.quantity) * numericValue(item.unit_price),
-                        currency,
-                      )}
+                      <div className="space-y-1">
+                        <Label>订单金额（{currency}）</Label>
+                        <Input
+                          type="number"
+                          value={derivedOrderAmount(item.quantity, item.unit_price)}
+                          readOnly
+                          tabIndex={-1}
+                          className="bg-muted/40"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>实收金额（{currency}）</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={item.received_amount}
+                          onChange={(event) => updateReceivedAmount(item.key, event.target.value)}
+                          placeholder="可留空"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>未收尾款（{currency}）</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={item.outstanding_amount}
+                          onChange={(event) => updateOutstandingAmount(item.key, event.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>发货分类</Label>
+                        <Select
+                          value={item.daily_shipping_category}
+                          onValueChange={(value) =>
+                            updateShippingCategory(item.key, value as DailyOrderShippingCategory)
+                          }
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {SHIPPING_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                     <Button
                       type="button"
