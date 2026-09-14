@@ -64,12 +64,14 @@ interface BusinessOrderAppendDialogProps {
   orderId: string
   orderVersion: number
   currency: CurrencyCode
+  needsReapproval?: boolean
 }
 
 export function BusinessOrderAppendDialog({
   orderId,
   orderVersion,
   currency,
+  needsReapproval = false,
 }: BusinessOrderAppendDialogProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -218,7 +220,9 @@ export function BusinessOrderAppendDialog({
         toast.error(result.error ?? '追加产品失败')
         return
       }
-      toast.success('加单成功，订单金额已更新')
+      toast.success(
+        needsReapproval ? '加单成功，订单已重新提交审核' : '加单成功，订单金额已更新',
+      )
       setOpen(false)
       setRows([emptyRow()])
       setReason('')
@@ -246,7 +250,9 @@ export function BusinessOrderAppendDialog({
           <DialogHeader>
             <DialogTitle>追加产品（加单）</DialogTitle>
             <DialogDescription>
-              已审核订单可直接追加产品明细，追加后订单应收金额会相应增加，并记录加单审计。
+              可直接追加产品明细，追加后订单应收金额会相应增加，并记录加单审计。
+              {needsReapproval && ' 订单将重新进入待审核状态，由管理员确认后生效收款发货。'}
+              {' '}同一产品多次追加会各自新增一行，不会覆盖历史下单数据。
             </DialogDescription>
           </DialogHeader>
 

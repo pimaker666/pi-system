@@ -80,13 +80,16 @@ export function BusinessOrderActions({
   const canSpecialClose =
     !isClosed && profile.role === 'admin' && order.status !== 'completed'
   const showEditOrder = canEditOrder ?? canOwnerEdit
+  const appendNeedsReapproval =
+    (profile.role === 'sales' || profile.role === 'supervisor') &&
+    order.status === 'approved' &&
+    order.approval_status === 'approved'
   const canAppendItems =
     !isClosed &&
-    order.status === 'approved' &&
-    order.approval_status === 'approved' &&
+    order.status !== 'completed' &&
     (profile.role === 'admin' ||
-      ((profile.role === 'sales' || profile.role === 'supervisor') &&
-        order.salesperson_id === profile.id))
+      profile.role === 'finance' ||
+      (appendNeedsReapproval && order.salesperson_id === profile.id))
 
   function runAction(
     action: () => Promise<{ ok: boolean; error?: string }>,
@@ -123,6 +126,7 @@ export function BusinessOrderActions({
               orderId={order.id}
               orderVersion={order.version}
               currency={order.currency}
+              needsReapproval={appendNeedsReapproval}
             />
           )}
           {canOwnerEdit && (

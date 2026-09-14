@@ -181,7 +181,7 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Completed or closed business order cannot be edited', '已完成或已关闭订单不可编辑'],
     ['Closed business order cannot be adjusted', '已特殊关闭的订单不能追加产品'],
     ['Completed business order is immutable', '已完成订单不可追加产品'],
-    ['Only approved orders can be adjusted', '仅已审核订单支持直接追加产品，草稿请使用编辑订单'],
+    ['Only approved orders can be adjusted', '仅业务员/主管本人已审核的订单支持直接追加，草稿请使用编辑订单'],
     ['Sales user cannot adjust another owner business order', '不能为其他业务员的订单追加产品'],
     ['Adjustment can only increase an existing order item quantity', '加单只能增加已有明细数量，不能减少'],
     ['Order item unit price cannot be changed by an adjustment', '加单不能修改已有明细的成交单价'],
@@ -1108,10 +1108,7 @@ export async function listBusinessOrderAppendCatalog(): Promise<BusinessOrderApp
 }
 
 export async function appendBusinessOrderItems(rawInput: unknown): Promise<ActionResult> {
-  const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
-    return { ok: false, error: '仅业务员、业务主管或管理员可以追加订单产品' }
-  }
+  await requireApproved()
   const parsed = businessOrderAppendItemsInputSchema.safeParse(rawInput)
   if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
 

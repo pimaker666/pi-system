@@ -111,6 +111,35 @@ export default async function BusinessOrderDetailPage({
     business_order_returns?: BusinessOrderReturnView[]
   }
   order.business_order_items.sort((a, b) => a.sort_order - b.sort_order)
+  // 同一产品多次加单各自独立成行，此处把同一产品的历次下单合并出累计数量与金额。
+  const itemProductSummaries = (() => {
+    const groups = new Map<
+      string,
+      { name: string; sku: string; unit: string; times: number; quantity: number; amount: number }
+    >()
+    for (const item of order.business_order_items) {
+      const key =
+        item.source_type === 'custom'
+          ? `custom:${item.custom_product_id ?? item.id}`
+          : `catalog:${item.product_id ?? item.id}`
+      const current = groups.get(key)
+      if (current) {
+        current.times += 1
+        current.quantity += Number(item.quantity)
+        current.amount += Number(item.line_amount)
+      } else {
+        groups.set(key, {
+          name: item.name_snapshot,
+          sku: item.sku_snapshot,
+          unit: item.unit_snapshot,
+          times: 1,
+          quantity: Number(item.quantity),
+          amount: Number(item.line_amount),
+        })
+      }
+    }
+    return [...groups.values()].filter((group) => group.times > 1)
+  })()
   order.business_order_payments.sort(
     (a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime(),
   )
@@ -458,6 +487,31 @@ export default async function BusinessOrderDetailPage({
                   ))}
                 </TableBody>
               </Table>
+              {itemProductSummaries.length > 0 && (
+                <div className="mt-4 border-t pt-3">
+                  <div className="mb-2 text-sm font-medium">按产品累计（含历次追加）</div>
+                  <div className="space-y-1">
+                    {itemProductSummaries.map((group) => (
+                      <div
+                        key={`${group.sku}-${group.name}`}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted px-3 py-2 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-medium">{group.name}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {group.sku} · 共下单 {group.times} 次
+                          </span>
+                        </div>
+                        <div className="tabular-nums">
+                          累计数量 {group.quantity.toLocaleString('zh-CN')} {group.unit}
+                          <span className="mx-2 text-muted-foreground">·</span>
+                          累计金额 {formatCurrency(group.amount, order.currency)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
