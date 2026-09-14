@@ -2,6 +2,10 @@ import type {
   BusinessOrder,
   BusinessOrderAttachment,
   BusinessOrderItem,
+  BusinessOrderReturn,
+  BusinessOrderReturnItem,
+  BusinessOrderShipment,
+  BusinessOrderShipmentItem,
   CurrencyCode,
   Profile,
 } from '@/types'
@@ -14,6 +18,13 @@ import type {
 export interface BusinessDailyLedgerOrder extends BusinessOrder {
   business_order_items: BusinessOrderItem[]
   business_order_attachments?: BusinessOrderAttachment[]
+  business_order_shipments?: Array<
+    BusinessOrderShipment & { business_order_shipment_items?: BusinessOrderShipmentItem[] }
+  >
+  business_order_returns?: Array<
+    BusinessOrderReturn & { business_order_return_items?: BusinessOrderReturnItem[] }
+  >
+  outstanding_amount: number
 }
 
 export type BusinessDailyTotalField =
@@ -100,6 +111,38 @@ export function sortedBusinessDailyItems(order: BusinessDailyLedgerOrder) {
   })
 }
 
+export function formatBusinessDailyShippingProgress(
+  order: BusinessDailyLedgerOrder,
+  item: BusinessOrderItem,
+) {
+  const activeShipmentIds = new Set(
+    (order.business_order_shipments ?? [])
+      .filter((shipment) => !shipment.voided_at)
+      .map((shipment) => shipment.id),
+  )
+  const shipped = (order.business_order_shipments ?? []).reduce((total, shipment) => {
+    if (!activeShipmentIds.has(shipment.id)) return total
+    return total + (shipment.business_order_shipment_items ?? [])
+      .filter((shipmentItem) => shipmentItem.order_item_id === item.id)
+      .reduce((sum, shipmentItem) => sum + Number(shipmentItem.quantity), 0)
+  }, 0)
+  const activeReturnIds = new Set(
+    (order.business_order_returns ?? [])
+      .filter((returnRecord) => !returnRecord.voided_at)
+      .map((returnRecord) => returnRecord.id),
+  )
+  const returned = (order.business_order_returns ?? []).reduce((total, returnRecord) => {
+    if (!activeReturnIds.has(returnRecord.id)) return total
+    return total + (returnRecord.business_order_return_items ?? [])
+      .filter((returnItem) => returnItem.order_item_id === item.id)
+      .reduce((sum, returnItem) => sum + Number(returnItem.quantity), 0)
+  }, 0)
+  const netShipped = Math.max(0, shipped - returned)
+  const formatQuantity = (value: number) =>
+    value.toLocaleString('zh-CN', { maximumFractionDigits: 4 })
+  return `已发 ${formatQuantity(netShipped)} / ${formatQuantity(Number(item.quantity))}`
+}
+
 /** 订单在台账中可否直接编辑，与 /finance/daily-orders/[id]/edit 的服务端门禁保持一致。 */
 export function canEditBusinessDailyOrder(
   order: BusinessOrder,
@@ -128,10 +171,12 @@ export interface BusinessDailyExportRow {
   productName: string
   productSku: string
   quantity: string
+  shippingProgress: string
   unitPrice: string
   productReceived: string
   logisticsFee: string
-  salesTotal: string
+  orderTotal: string
+  outstandingAmount: string
   paymentCategory: string
   remarks: string
   /** 订单截图只挂在该订单的第一行，避免同一订单重复导出图片。 */
@@ -181,6 +226,8 @@ export function buildBusinessDailyExportRows(
       orderNumber: order.external_order_number || order.order_number,
       shippingDate: order.daily_shipping_date ?? '',
       shippingNumber: order.daily_shipping_number || order.tracking_number || '',
+      orderTotal: format.money(Number(order.total_amount), order.currency),
+      outstandingAmount: format.money(order.outstanding_amount, order.currency),
       paymentCategory: format.payment(order.daily_payment_category),
       remarks: order.sales_notes ?? '',
     }
@@ -194,10 +241,10 @@ export function buildBusinessDailyExportRows(
           productName: '',
           productSku: '',
           quantity: '',
+          shippingProgress: '',
           unitPrice: '',
           productReceived: '',
           logisticsFee: '',
-          salesTotal: '',
           attachments,
         },
       ]
@@ -213,11 +260,11 @@ export function buildBusinessDailyExportRows(
         productName: item.name_snapshot,
         productSku: item.sku_snapshot,
         quantity: String(Number(item.quantity)),
+        shippingProgress: formatBusinessDailyShippingProgress(order, item),
         unitPrice: format.money(amounts.unitPrice, order.currency),
         productReceived: format.money(amounts.productReceived, order.currency),
         logisticsFee:
           amounts.logisticsFee === null ? '' : format.money(amounts.logisticsFee, order.currency),
-        salesTotal: format.money(amounts.salesTotal, order.currency),
         attachments: itemIndex === 0 ? attachments : [],
       }
     })

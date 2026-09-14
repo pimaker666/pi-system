@@ -673,8 +673,9 @@ export async function recordBusinessCustomerTransfer(
   const input = parsed.data
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('record_business_customer_transfer', {
+  const { data, error } = await supabase.rpc('record_business_customer_transfer_v2', {
     p_customer_id: input.customer_id,
+    p_order_id: input.order_id,
     p_currency: input.currency,
     p_amount: input.amount,
     p_exchange_rate_to_cny: input.exchange_rate_to_cny,

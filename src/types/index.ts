@@ -495,7 +495,8 @@ export interface BusinessCustomProductLibraryItem {
 
 export interface BusinessCustomerTransfer {
   id: string
-  customer_id: string
+  customer_id: string | null
+  order_id: string | null
   currency: CurrencyCode
   amount: number
   exchange_rate_to_cny: number

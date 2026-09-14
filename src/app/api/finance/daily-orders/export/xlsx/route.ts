@@ -21,7 +21,7 @@ import { displayProfileName } from '@/lib/utils'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** 截图列（第 17 列）的 0 基列号，用于 addImage 定位。 */
+/** 截图列的 0 基列号，用于 addImage 定位。 */
 const SCREENSHOT_COLUMN_INDEX = DAILY_ORDER_COLUMNS.length - 1
 
 export async function GET(request: Request) {
@@ -45,7 +45,8 @@ export async function GET(request: Request) {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'PI System'
   const sheet = workbook.addWorksheet('每日订单台账', { views: [{ state: 'frozen', ySplit: 1 }] })
-  sheet.columns = [6, 13, 16, 16, 18, 13, 20, 12, 28, 12, 18, 20, 18, 20, 12, 30, 28].map((width) => ({ width }))
+  sheet.columns = [6, 13, 16, 16, 18, 13, 20, 12, 28, 12, 18, 18, 20, 18, 18, 18, 12, 30, 28]
+    .map((width) => ({ width }))
   const header = sheet.addRow([...DAILY_ORDER_COLUMNS])
   header.height = 24
   header.eachCell((cell) => {
@@ -67,10 +68,12 @@ export async function GET(request: Request) {
       exportRow.shippingCategory,
       exportRow.productSku ? `${exportRow.productName}\n${exportRow.productSku}` : exportRow.productName,
       exportRow.quantity ? Number(exportRow.quantity) : '',
+      exportRow.shippingProgress,
       exportRow.unitPrice,
       exportRow.productReceived,
       exportRow.logisticsFee,
-      exportRow.salesTotal,
+      exportRow.orderTotal,
+      exportRow.outstandingAmount,
       exportRow.paymentCategory,
       exportRow.remarks,
       '',
@@ -123,7 +126,7 @@ export async function GET(request: Request) {
     }
   }
 
-  sheet.autoFilter = { from: 'A1', to: 'Q1' }
+  sheet.autoFilter = { from: 'A1', to: 'S1' }
   const buffer = await workbook.xlsx.writeBuffer()
   const body = new Uint8Array(buffer as ArrayBuffer)
   const date = new Date().toISOString().slice(0, 10)

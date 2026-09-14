@@ -14,7 +14,7 @@ export interface DailyOrderPdfRow extends BusinessDailyExportRow {
   imageSources: Array<string | null>
 }
 
-const widths = [3, 5, 6, 6, 7, 5, 7, 5, 8, 4, 7, 7, 6, 7, 5, 8, 4]
+const widths = [2.5, 4.5, 5, 5, 6, 4, 6, 4, 8, 3.5, 5.5, 5.5, 6, 5, 6.5, 6.5, 4.5, 8, 4.5]
 const styles = StyleSheet.create({
   page: { fontFamily: 'NotoSansSC', padding: 12, fontSize: 5, color: '#111827' },
   title: { fontSize: 13, fontWeight: 'bold', marginBottom: 8 },
@@ -41,12 +41,12 @@ export function DailyOrdersPdf({ orders }: { orders: DailyOrderPdfRow[] }) {
           row.sequence, row.orderDate, row.shop, row.salesperson,
           row.orderNumber, row.shippingDate, row.shippingNumber, row.shippingCategory,
           row.productSku ? `${row.productName}\n${row.productSku}` : row.productName, row.quantity,
-          row.unitPrice, row.productReceived, row.logisticsFee, row.salesTotal,
-          row.paymentCategory, row.remarks,
+          row.shippingProgress, row.unitPrice, row.productReceived, row.logisticsFee,
+          row.orderTotal, row.outstandingAmount, row.paymentCategory, row.remarks,
         ]
         return <View key={`${row.orderId}-${rowIndex}`} style={styles.row} wrap={false}>
           {values.map((value, index) => <Cell key={index} index={index}><Text>{value}</Text></Cell>)}
-          <Cell index={16}><View style={styles.images}>{row.imageSources.map((source, index) => source ? <Image key={index} src={source} style={styles.image} /> : <Text key={index} style={styles.unavailable}>图片不可用</Text>)}</View></Cell>
+          <Cell index={18}><View style={styles.images}>{row.imageSources.map((source, index) => source ? <Image key={index} src={source} style={styles.image} /> : <Text key={index} style={styles.unavailable}>图片不可用</Text>)}</View></Cell>
         </View>
       })}
     </View>

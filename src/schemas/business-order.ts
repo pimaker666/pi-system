@@ -29,6 +29,10 @@ const CUSTOMER_TRANSFER_PROOF_PATTERN = new RegExp(
   `^${UUID_PATTERN}/customer/${UUID_PATTERN}/${UUID_PATTERN}\\.(?:jpe?g|png|webp)$`,
   'i',
 )
+const ORDER_TRANSFER_PROOF_PATTERN = new RegExp(
+  `^${UUID_PATTERN}/order/${UUID_PATTERN}/${UUID_PATTERN}\\.(?:jpe?g|png|webp)$`,
+  'i',
+)
 const BUSINESS_ORDER_ATTACHMENT_PATTERN = new RegExp(
   `^${UUID_PATTERN}/${UUID_PATTERN}/${UUID_PATTERN}\\.(?:jpe?g|png)$`,
   'i',
@@ -350,7 +354,8 @@ const businessOrderPaymentAllocationsSchema = z
   })
 
 const businessCustomerTransferBaseSchema = z.object({
-  customer_id: z.string().uuid('请选择客户'),
+  customer_id: z.string().uuid('请选择客户').nullable().default(null),
+  order_id: z.string().uuid('请选择有效订单').nullable().default(null),
   currency: z.enum(CURRENCIES),
   amount: positiveAmountSchema,
   exchange_rate_to_cny: exchangeRateSchema,
@@ -359,14 +364,18 @@ const businessCustomerTransferBaseSchema = z.object({
   proof_path: z
     .string()
     .trim()
-    .regex(CUSTOMER_TRANSFER_PROOF_PATTERN, '收款凭证必须使用 uid/customer/customerId/file 路径'),
+    .refine(
+      (value) => CUSTOMER_TRANSFER_PROOF_PATTERN.test(value) || ORDER_TRANSFER_PROOF_PATTERN.test(value),
+      '收款凭证必须使用 uid/customer/customerId/file 或 uid/order/orderId/file 路径',
+    ),
   notes: optionalText(1000, '收款备注不能超过 1000 字'),
   idempotency_key: z.string().trim().min(1, '缺少幂等键').max(200, '幂等键不能超过 200 字'),
 })
 
 function validateCustomerTransfer(
   value: {
-    customer_id: string
+    customer_id: string | null
+    order_id: string | null
     currency: (typeof CURRENCIES)[number]
     exchange_rate_to_cny: number
     proof_path: string
@@ -380,11 +389,25 @@ function validateCustomerTransfer(
       message: '人民币转账汇率必须为 1',
     })
   }
-  if (value.proof_path.split('/')[2]?.toLowerCase() !== value.customer_id.toLowerCase()) {
+  if (Boolean(value.customer_id) === Boolean(value.order_id)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['customer_id'],
+      message: '转账必须且只能关联客户或订单之一',
+    })
+    return
+  }
+
+  const [, scope, scopeId] = value.proof_path.split('/')
+  const expectedScope = value.customer_id ? 'customer' : 'order'
+  const expectedId = value.customer_id ?? value.order_id
+  if (scope !== expectedScope || scopeId?.toLowerCase() !== expectedId?.toLowerCase()) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['proof_path'],
-      message: '收款凭证路径中的客户与转账客户不一致',
+      message: value.customer_id
+        ? '收款凭证路径中的客户与转账客户不一致'
+        : '收款凭证路径中的订单与转账订单不一致',
     })
   }
 }
@@ -509,6 +532,8 @@ export const businessOrderVoidReasonSchema = z
 /** Legacy component input; writes are adapted to a customer transfer plus one allocation. */
 export const businessOrderPaymentInputSchema = businessCustomerTransferBaseSchema
   .extend({
+    customer_id: z.string().uuid('请选择客户'),
+    order_id: z.null().optional().default(null),
     reason: optionalText(1000, '修正原因不能超过 1000 字'),
   })
   .strict()

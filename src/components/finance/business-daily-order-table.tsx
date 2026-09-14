@@ -25,6 +25,7 @@ import {
   businessDailyItemAmounts,
   businessDailyOrderTotals,
   canEditBusinessDailyOrder,
+  formatBusinessDailyShippingProgress,
   sortedBusinessDailyItems,
   type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
@@ -41,7 +42,7 @@ export interface BusinessDailyOrderTableProps {
 
 /**
  * 恢复后的每日订单台账：表头字段跨明细行合并，产品字段逐行展示，
- * 列顺序与旧版 17 列完全一致，数据来自 business_orders 单一事实源。
+ * 列顺序与每日订单导出完全一致，数据来自 business_orders 单一事实源。
  */
 export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTableProps) {
   const [pending, startTransition] = useTransition()
@@ -65,7 +66,7 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
 
   return (
     <div className="overflow-x-auto rounded-md border">
-      <Table className="min-w-[2450px]">
+      <Table className="min-w-[2750px]">
         <TableHeader>
           <TableRow>
             {DAILY_ORDER_COLUMNS.map((label) => (
@@ -201,6 +202,9 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
                   <TableCell className="tabular-nums">
                     {item ? Number(item.quantity).toLocaleString() : '—'}
                   </TableCell>
+                  <TableCell className="whitespace-nowrap tabular-nums">
+                    {item ? formatBusinessDailyShippingProgress(order, item) : '—'}
+                  </TableCell>
                   <TableCell>
                     {amounts ? formatDailyMoney(amounts.unitPrice, order.currency) : '—'}
                   </TableCell>
@@ -212,12 +216,15 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
                       ? formatDailyMoney(amounts.logisticsFee, order.currency)
                       : '—'}
                   </TableCell>
-                  <TableCell className="font-medium">
-                    {amounts ? formatDailyMoney(amounts.salesTotal, order.currency) : '—'}
-                  </TableCell>
 
                   {isFirstRow && (
                     <>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                        {formatDailyMoney(Number(order.total_amount), order.currency)}
+                      </TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                        {formatDailyMoney(order.outstanding_amount, order.currency)}
+                      </TableCell>
                       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
                         {order.daily_payment_category
                           ? PAYMENT_LABELS[order.daily_payment_category]

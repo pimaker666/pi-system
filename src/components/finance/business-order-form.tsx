@@ -1233,7 +1233,12 @@ export function BusinessOrderForm({
           <CardTitle className="text-base">订单金额汇总</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-1">
+              <Label>订单总金额（{currency}）</Label>
+              <Input type="number" value={total} readOnly className="bg-muted/40" />
+              <p className="text-xs text-muted-foreground">与上方订单应收金额一致</p>
+            </div>
             <div className="space-y-1">
               <div className="flex items-center justify-between gap-2">
                 <Label>总产品实收（{currency}）</Label>

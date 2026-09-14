@@ -5,8 +5,33 @@ import type { BusinessDailyLedgerOrder } from '@/lib/business-daily-orders'
 /** 台账与导出的统一上限，和旧版每日订单台账保持一致。 */
 export const BUSINESS_DAILY_LEDGER_LIMIT = 500
 
-const LEDGER_TAIL =
-  'salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), business_order_attachments(*)'
+const LEDGER_TAIL = `
+  salesperson:profiles!salesperson_id(id, chinese_name, full_name, email),
+  business_order_attachments(*),
+  business_order_shipments(*, business_order_shipment_items(*)),
+  business_order_returns(*, business_order_return_items(*))
+`
+
+async function attachOutstandingAmounts(
+  supabase: SupabaseClient,
+  orders: BusinessDailyLedgerOrder[],
+): Promise<BusinessDailyLedgerOrder[]> {
+  if (orders.length === 0) return []
+
+  const { data, error } = await supabase.rpc('get_business_orders_outstanding_amount', {
+    p_order_ids: orders.map((order) => order.id),
+  })
+  if (error) throw new Error(`每日订单未收尾款读取失败：${error.message}`)
+
+  const amounts = new Map(
+    ((data ?? []) as Array<{ order_id: string; outstanding_amount: number | string }>)
+      .map((row) => [row.order_id, Number(row.outstanding_amount)]),
+  )
+  return orders.map((order) => ({
+    ...order,
+    outstanding_amount: amounts.get(order.id) ?? 0,
+  }))
+}
 
 /** 关键字里 PostgREST 的保留字符会破坏 or() 语法，先清掉。 */
 function normalizeKeyword(raw: string) {
@@ -90,7 +115,10 @@ export async function fetchBusinessDailyLedger(
   if (!keyword) {
     const { data, error } = await buildLedgerQuery(supabase, filters, effectiveLimit, false)
     if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
-    return (data ?? []) as unknown as BusinessDailyLedgerOrder[]
+    return attachOutstandingAmounts(
+      supabase,
+      (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+    )
   }
 
   const [headResult, itemResult] = await Promise.all([
@@ -108,5 +136,8 @@ export async function fetchBusinessDailyLedger(
     if (!merged.has(order.id)) merged.set(order.id, order)
   }
 
-  return [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit)
+  return attachOutstandingAmounts(
+    supabase,
+    [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+  )
 }
