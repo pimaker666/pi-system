@@ -12,6 +12,7 @@ import {
   businessCustomProductLibraryFilterSchema,
   businessCustomProductStateInputSchema,
   businessCustomProductVersionInputSchema,
+  businessOrderAppendItemsInputSchema,
   businessOrderAttachmentInputSchema,
   businessOrderFinanceSchema,
   businessOrderInputSchema,
@@ -38,6 +39,8 @@ import type {
   BusinessOrderShipment,
   BusinessOrderShipmentItem,
   BusinessOrderStatus,
+  Product,
+  ProductGroup,
 } from '@/types'
 import type { ActionResult } from './products'
 
@@ -148,6 +151,8 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Default unit price is invalid', '定制产品默认单价不合法'],
     ['Reason cannot exceed', '原因不能超过 1000 字'],
     ['Product does not exist or is inactive', '订单中包含不存在或已停用的产品'],
+    ['Quantity is invalid', '产品数量不合法'],
+    ['Unit price is invalid', '成交单价不合法'],
     ['Catalog item requires only product_id', '目录产品明细只能指定产品 ID'],
     ['Custom item requires only', '定制产品明细必须指定产品及版本，且不能指定目录产品'],
     ['Invalid order item source_type', '订单明细来源类型不合法'],
@@ -174,6 +179,20 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Business order version conflict', '订单已被其他人修改，请刷新后重试'],
     ['Business order cannot be edited in current status', '当前订单状态不可编辑'],
     ['Completed or closed business order cannot be edited', '已完成或已关闭订单不可编辑'],
+    ['Closed business order cannot be adjusted', '已特殊关闭的订单不能追加产品'],
+    ['Completed business order is immutable', '已完成订单不可追加产品'],
+    ['Only approved orders can be adjusted', '仅已审核订单支持直接追加产品，草稿请使用编辑订单'],
+    ['Sales user cannot adjust another owner business order', '不能为其他业务员的订单追加产品'],
+    ['Adjustment can only increase an existing order item quantity', '加单只能增加已有明细数量，不能减少'],
+    ['Order item unit price cannot be changed by an adjustment', '加单不能修改已有明细的成交单价'],
+    ['Order item product cannot be replaced by an adjustment', '加单不能更换已有明细的产品'],
+    ['Order item id does not belong to order', '订单明细不属于该订单'],
+    ['Adjustment does not change the order amount', '本次加单没有改变订单金额'],
+    ['Adjustment items count must be between', '加单明细条数必须在 1 到 500 之间'],
+    ['Each adjustment order item id must be unique', '加单明细存在重复的明细 ID'],
+    ['Adjustment reason type must be', '加单原因类型不合法'],
+    ['Adjustment reason cannot exceed', '加单原因不能超过 1000 字'],
+    ['Idempotency key is invalid', '加单请求标识不合法，请关闭弹窗后重试'],
     ['Business order daily fields cannot be changed after payment or shipment', '订单已有收款或发货记录，不能修改每日订单字段'],
     ['Business order item daily fields cannot be changed after payment or shipment', '订单明细已有收款或发货记录，不能修改每日订单字段'],
     ['Business order attachments cannot be changed in current status', '当前订单状态不能增删附件'],
@@ -1060,4 +1079,52 @@ export async function completeBusinessOrder(id: string, note = ''): Promise<Acti
   const profile = await requireFinanceAccess()
   if (profile.role !== 'finance') return { ok: false, error: '仅财务可以完成订单' }
   return transitionBusinessOrder(id, 'completed', note)
+}
+
+export interface BusinessOrderAppendCatalogResult extends ActionResult {
+  data?: { products: Product[]; productGroups: ProductGroup[] }
+}
+
+export async function listBusinessOrderAppendCatalog(): Promise<BusinessOrderAppendCatalogResult> {
+  await requireApproved()
+  const supabase = await createClient()
+  const [productsResult, groupsResult] = await Promise.all([
+    supabase.from('products').select('*').eq('is_active', true).order('name'),
+    supabase.from('product_groups').select('*').order('sort_order'),
+  ])
+  if (productsResult.error) {
+    return { ok: false, error: `读取产品列表失败：${productsResult.error.message}` }
+  }
+  if (groupsResult.error) {
+    return { ok: false, error: `读取产品分组失败：${groupsResult.error.message}` }
+  }
+  return {
+    ok: true,
+    data: {
+      products: (productsResult.data ?? []) as Product[],
+      productGroups: (groupsResult.data ?? []) as ProductGroup[],
+    },
+  }
+}
+
+export async function appendBusinessOrderItems(rawInput: unknown): Promise<ActionResult> {
+  const profile = await requireApproved()
+  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管或管理员可以追加订单产品' }
+  }
+  const parsed = businessOrderAppendItemsInputSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('adjust_business_order_items', {
+    p_order_id: parsed.data.order_id,
+    p_expected_version: parsed.data.expected_version,
+    p_items: parsed.data.items,
+    p_reason_type: 'add_on',
+    p_reason: nullableText(parsed.data.reason),
+    p_idempotency_key: crypto.randomUUID(),
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '追加产品失败') }
+  revalidateBusinessOrders(parsed.data.order_id)
+  return { ok: true }
 }

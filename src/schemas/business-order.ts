@@ -140,6 +140,37 @@ export const businessOrderItemInputSchema = z.preprocess((value) => {
   return { ...value, source_type: 'catalog' }
 }, businessOrderItemDiscriminatedSchema)
 
+const appendCatalogItemSchema = z
+  .object({
+    source_type: z.literal('catalog'),
+    product_id: z.string().uuid('请选择有效产品'),
+    quantity: positiveQuantitySchema,
+    unit_price: nonNegativeAmountSchema,
+  })
+  .strict()
+
+const appendCustomItemSchema = z
+  .object({
+    source_type: z.literal('custom'),
+    custom_product_id: z.string().uuid('请选择有效定制产品'),
+    custom_product_version_id: z.string().uuid('请选择有效定制产品版本'),
+    quantity: positiveQuantitySchema,
+    unit_price: nonNegativeAmountSchema,
+  })
+  .strict()
+
+export const businessOrderAppendItemsInputSchema = z
+  .object({
+    order_id: z.string().uuid('订单 ID 不合法'),
+    expected_version: z.number().int('订单版本号不合法'),
+    reason: optionalText(1000, '加单原因不能超过 1000 字'),
+    items: z
+      .array(z.discriminatedUnion('source_type', [appendCatalogItemSchema, appendCustomItemSchema]))
+      .min(1, '请至少添加一条加单明细')
+      .max(MAX_BATCH_SIZE, '加单明细不能超过 500 条'),
+  })
+  .strict()
+
 export const businessOrderInputSchema = z
   .object({
     customer_id: z.string().uuid('请选择有效客户').nullable(),
@@ -549,6 +580,7 @@ export const businessOrderFinanceSchema = z.object({
 
 export type BusinessOrderInput = z.infer<typeof businessOrderInputSchema>
 export type BusinessOrderItemInput = z.infer<typeof businessOrderItemInputSchema>
+export type BusinessOrderAppendItemsInput = z.infer<typeof businessOrderAppendItemsInputSchema>
 export type BusinessOrderAttachmentInput = z.infer<typeof businessOrderAttachmentInputSchema>
 export type BusinessCustomProductVersionInput = z.infer<
   typeof businessCustomProductVersionInputSchema

@@ -27,6 +27,7 @@ import {
   submitBusinessOrder,
 } from '@/lib/actions/business-orders'
 import type { BusinessOrder, BusinessOrderFinanceDetail, Profile } from '@/types'
+import { BusinessOrderAppendDialog } from './business-order-append-dialog'
 
 interface BusinessOrderActionsProps {
   order: Pick<
@@ -38,6 +39,7 @@ interface BusinessOrderActionsProps {
     | 'approval_status'
     | 'payment_status'
     | 'fulfillment_status'
+    | 'currency'
   > & { closed_at?: string | null }
   profile: Pick<Profile, 'id' | 'role'>
   financeReady: boolean
@@ -78,6 +80,13 @@ export function BusinessOrderActions({
   const canSpecialClose =
     !isClosed && profile.role === 'admin' && order.status !== 'completed'
   const showEditOrder = canEditOrder ?? canOwnerEdit
+  const canAppendItems =
+    !isClosed &&
+    order.status === 'approved' &&
+    order.approval_status === 'approved' &&
+    (profile.role === 'admin' ||
+      ((profile.role === 'sales' || profile.role === 'supervisor') &&
+        order.salesperson_id === profile.id))
 
   function runAction(
     action: () => Promise<{ ok: boolean; error?: string }>,
@@ -108,6 +117,13 @@ export function BusinessOrderActions({
                 <Pencil className="h-4 w-4" />编辑订单
               </Link>
             </Button>
+          )}
+          {canAppendItems && (
+            <BusinessOrderAppendDialog
+              orderId={order.id}
+              orderVersion={order.version}
+              currency={order.currency}
+            />
           )}
           {canOwnerEdit && (
             <Button
