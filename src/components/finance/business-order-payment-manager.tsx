@@ -396,7 +396,7 @@ export function BusinessOrderPaymentManager({
     if (!extension || !allowedExtensions.includes(extension) || !allowedTypes.includes(file.type)) {
       throw new Error('凭证仅支持 JPG、JPEG、PNG 或 WebP 图片')
     }
-    if (file.size > 5 * 1024 * 1024) throw new Error('凭证图片不能超过 5MB')
+    if (file.size > 20 * 1024 * 1024) throw new Error('凭证图片不能超过 20MB')
 
     const fileName = `${objectId}.${extension}`
     const folder = `${profile.id}/${scope}/${scopeId}`
@@ -872,7 +872,7 @@ export function BusinessOrderPaymentManager({
                 <Input id="received_at" type="datetime-local" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)} required />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="proof">收款截图（最大 5MB）</Label>
+                <Label htmlFor="proof">收款截图（最大 20MB）</Label>
                 <Input
                   ref={fileRef}
                   id="proof"
