@@ -374,10 +374,18 @@ function customVersionPayload(
 }
 
 function allocationPayload(
-  allocations: Array<{ order_id: string; amount: number; payment_type?: string }>,
+  allocations: Array<{
+    order_id: string
+    order_item_id?: string | null
+    allocation_target?: 'order' | 'item' | 'shipping'
+    amount: number
+    payment_type?: string
+  }>,
 ) {
   return allocations.map((allocation) => ({
     order_id: allocation.order_id,
+    order_item_id: allocation.order_item_id ?? null,
+    allocation_target: allocation.allocation_target ?? 'order',
     amount: allocation.amount,
     payment_type: allocation.payment_type ?? null,
   }))

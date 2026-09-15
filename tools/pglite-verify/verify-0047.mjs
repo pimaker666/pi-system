@@ -213,7 +213,7 @@ function item(qty, unitPrice, received) {
 }
 
 async function createOrder({ label, itemsJson, shippingFee, customerId: cid }) {
-  const [product, shipping, sales] = JSON.parse(itemsJson).reduce(
+  const [productTotal, shippingTotal, salesTotal] = JSON.parse(itemsJson).reduce(
     (acc, it) => [
       acc[0] + it.product_received_amount,
       acc[1] + it.logistics_fee_amount,
@@ -228,7 +228,7 @@ async function createOrder({ label, itemsJson, shippingFee, customerId: cid }) {
       'USD'::public.currency_code, 7.2, ${shippingFee}, null, null,
       '${itemsJson}'::jsonb, null, '${shopId}', '${sales}', '0047-${label}',
       current_date, 'SHIP-${label}', 'full'::public.daily_order_payment_category,
-      ${product}, false, ${shipping}, false, ${sales}, false,
+      ${productTotal}, false, ${shippingTotal}, false, ${salesTotal}, false,
       'partial prepayment recorded at order creation', null)
   `)
   return result.rows[0].id
@@ -320,7 +320,7 @@ async function recordTransfer({ customerId: cid, orderId, amount, allocations, k
   return db.query(`
     select public.record_business_customer_transfer_v2(
       ${cid ? `'${cid}'` : 'null'}, ${orderId ? `'${orderId}'` : 'null'},
-      'USD'::public.currency_code, ${amount}, 7.2, now(),
+      'USD'::public.currency_code, ${amount}, 7.2, '2026-09-15T12:00:00Z'::timestamptz,
       'balance'::public.business_payment_type, '${proof}', null, null,
       '${key}', '${JSON.stringify(allocations)}'::jsonb)
   `)
@@ -354,7 +354,7 @@ await recordTransfer({
 })
 
 const targetAllocs = await rows(`
-  select order_item_id::text item_id, allocation_target target, amount::numeric amt
+  select order_item_id::text item_id, allocation_target target, a.amount::numeric amt
   from public.business_order_payment_allocations a
   join public.business_customer_transfers t on t.id = a.transfer_id
   where t.idempotency_key='IDEM-0047-OK'
@@ -412,7 +412,7 @@ assert(
 const tamperProof = await seedOrderProof(targetOrder)
 await expectReject(
   'the same idempotency key with a different allocation payload is rejected',
-  () =>
+  async () =>
     recordTransfer({
       orderId: targetOrder,
       amount: 1409,
@@ -433,7 +433,7 @@ const otherE = otherItems[1].id
 
 await expectReject(
   'batch total above order settlement outstanding is rejected',
-  () =>
+  async () =>
     recordTransfer({
       orderId: otherOrder,
       amount: 500,
@@ -446,7 +446,7 @@ await expectReject(
 
 await expectReject(
   'a single item allocation above its remaining outstanding is rejected',
-  () =>
+  async () =>
     recordTransfer({
       orderId: otherOrder,
       amount: 200,
@@ -459,7 +459,7 @@ await expectReject(
 
 await expectReject(
   'a shipping allocation above the shipping outstanding is rejected',
-  () =>
+  async () =>
     recordTransfer({
       orderId: otherOrder,
       amount: 100,
@@ -472,7 +472,7 @@ await expectReject(
 
 await expectReject(
   'order-scoped transfers can no longer post a legacy order-level row',
-  () =>
+  async () =>
     recordTransfer({
       orderId: otherOrder,
       amount: 60,
@@ -485,7 +485,7 @@ await expectReject(
 
 await expectReject(
   'an item id paired with the order target is rejected',
-  () =>
+  async () =>
     recordTransfer({
       orderId: otherOrder,
       amount: 20,
@@ -500,7 +500,7 @@ await expectReject(
 
 await expectReject(
   'two allocations targeting the same order item are rejected',
-  () =>
+  async () =>
     recordTransfer({
       orderId: otherOrder,
       amount: 20,
@@ -513,7 +513,7 @@ await expectReject(
 
 await expectReject(
   'an item id from another order is rejected',
-  () =>
+  async () =>
     recordTransfer({
       orderId: otherOrder,
       amount: 10,
@@ -570,7 +570,7 @@ await recordTransfer({
   proof: customerProof2,
 })
 const customerAllocs = await rows(`
-  select order_item_id::text item_id, allocation_target target, amount::numeric amt
+  select order_item_id::text item_id, allocation_target target, a.amount::numeric amt
   from public.business_order_payment_allocations a
   join public.business_customer_transfers t on t.id = a.transfer_id
   where a.order_id='${customerOrder}'
@@ -638,12 +638,16 @@ await expectReject(
 await adjust(targetOrder, [{ ...item(1, 10, 0) }], 'IDEM-0047-APPEND-H')
 const appendedH = (await orderItems(targetOrder)).filter((r) => r.origin === 'append')[1]
 assert(!!appendedH, 'second append adds another item row without allocations')
-await adjust(targetOrder, [{ id: appendedH.id, action: 'delete' }], 'IDEM-0047-DEL-H')
+await expectReject(
+  'the 0030 order-level guard still blocks deleting any item once the order carries active allocations',
+  () => adjust(targetOrder, [{ id: appendedH.id, action: 'delete' }], 'IDEM-0047-DEL-H'),
+  'Order items cannot be deleted after an active payment allocation',
+)
 assert(
   (await scalar(
     `select count(*)::int from public.business_order_items where id='${appendedH.id}'`,
-  )) === 0,
-  'deleting an item row without payment allocations still works',
+  )) === 1,
+  'the unallocated appended row survives because the order-level guard rejects the delete',
 )
 
 assert(

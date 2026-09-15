@@ -567,10 +567,14 @@ export interface BusinessCustomerTransfer {
   legacy_payment_id: string | null
 }
 
+export type BusinessOrderPaymentAllocationTarget = 'order' | 'item' | 'shipping'
+
 export interface BusinessOrderPaymentAllocation {
   id: string
   transfer_id: string
   order_id: string
+  order_item_id: string | null
+  allocation_target: BusinessOrderPaymentAllocationTarget
   amount: number
   payment_type: BusinessPaymentType
   created_by: string | null

@@ -39,10 +39,17 @@ import {
   getBusinessDateTimeLocal,
   getBusinessOverdueDays,
 } from '@/lib/business-orders'
+import {
+  attachBusinessOrderItemsDisplay,
+  businessOrderItemDisplayName,
+  businessOrderItemDisplaySku,
+  type BusinessOrderItemWithDisplay,
+} from '@/lib/business-order-financials'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type {
   BusinessCustomerTransfer,
+  BusinessOrderItem,
   BusinessOrderPaymentAllocation,
   BusinessOrderSettlementSummary,
   BusinessOrderStatus,
@@ -69,6 +76,7 @@ interface OrderOption {
   order_number: string
   salesperson_id: string | null
   total_amount: number
+  total_sales_amount: number | null
   payment_due_date: string | null
   payment_status: 'unpaid' | 'partially_paid' | 'fully_paid'
   status: BusinessOrderStatus
@@ -77,7 +85,21 @@ interface OrderOption {
 
 type AllocationRow = BusinessOrderPaymentAllocation
 
+type AllocationTarget = 'order' | 'item' | 'shipping'
+
+interface DraftAllocation {
+  order_id: string
+  order_item_id: string | null
+  allocation_target: AllocationTarget
+  amount: number
+}
+
 type AllocationDraft = Record<string, string>
+
+// 草稿键 = 订单|目标|明细ID，与 RPC 的 (order_id, allocation_target, order_item_id) 唯一键一一对应
+function allocationKey(orderId: string, target: AllocationTarget, orderItemId?: string | null) {
+  return `${orderId}|${target}|${orderItemId ?? ''}`
+}
 
 interface PendingTransferUpload {
   scope: 'customer' | 'order'
@@ -127,6 +149,11 @@ export function BusinessOrderPaymentManager({
   const [allocations, setAllocations] = useState<AllocationRow[]>([])
   const [settlement, setSettlement] = useState<BusinessOrderSettlementSummary | null>(null)
   const [prepayment, setPrepayment] = useState(0)
+  const [orderItems, setOrderItems] = useState<BusinessOrderItemWithDisplay[]>([])
+  const [orderDetail, setOrderDetail] = useState<{
+    shipping_fee: number | null
+    total_shipping_received_amount: number | null
+  } | null>(null)
 
   const [formOpen, setFormOpen] = useState(false)
   const [paymentType, setPaymentType] = useState<BusinessPaymentType>('full')
@@ -172,7 +199,7 @@ export function BusinessOrderPaymentManager({
       const { data: currentOrder, error: orderError } = await supabase
         .from('business_orders')
         .select(
-          'id, customer_id, currency, exchange_rate_to_cny, order_number, salesperson_id, total_amount, payment_due_date, payment_status, status, completion_gate_version',
+          'id, customer_id, currency, exchange_rate_to_cny, order_number, salesperson_id, total_amount, total_sales_amount, shipping_fee, total_shipping_received_amount, payment_due_date, payment_status, status, completion_gate_version',
         )
         .eq('id', orderId)
         .single()
@@ -183,12 +210,12 @@ export function BusinessOrderPaymentManager({
       const currentCustomerId = currentOrder.customer_id as string | null
       const currentCurrency = currentOrder.currency as CurrencyCode
       const customerScoped = Boolean(currentCustomerId)
-      const [ordersResult, transfersResult, allocationsResult, settlementResult, prepaymentResult] = await Promise.all([
+      const [ordersResult, transfersResult, allocationsResult, itemsResult, settlementResult, prepaymentResult] = await Promise.all([
         customerScoped
           ? supabase
               .from('business_orders')
               .select(
-                'id, order_number, salesperson_id, total_amount, payment_due_date, payment_status, status, completion_gate_version',
+                'id, order_number, salesperson_id, total_amount, total_sales_amount, payment_due_date, payment_status, status, completion_gate_version',
               )
               .eq('customer_id', currentCustomerId)
               .eq('currency', currentCurrency)
@@ -221,6 +248,10 @@ export function BusinessOrderPaymentManager({
               .select('*')
               .eq('order_id', orderId)
               .order('created_at', { ascending: false }),
+        supabase
+          .from('business_order_items')
+          .select('*')
+          .eq('order_id', orderId),
         getBusinessOrderSettlementSummary(orderId),
         currentCustomerId
           ? getBusinessCustomerPrepayment(currentCustomerId)
@@ -232,6 +263,7 @@ export function BusinessOrderPaymentManager({
       if (ordersResult.error) throw new Error(ordersResult.error.message)
       if (transfersResult.error) throw new Error(transfersResult.error.message)
       if (allocationsResult.error) throw new Error(allocationsResult.error.message)
+      if (itemsResult.error) throw new Error(itemsResult.error.message)
       if (!settlementResult.ok || !settlementResult.data) {
         throw new Error(settlementResult.error ?? '订单结算汇总读取失败')
       }
@@ -242,11 +274,24 @@ export function BusinessOrderPaymentManager({
       const orderRows = (ordersResult.data ?? []) as OrderOption[]
       const transferRows = (transfersResult.data ?? []) as BusinessCustomerTransfer[]
       const allocationRows = (allocationsResult.data ?? []) as unknown as AllocationRow[]
+      const itemRows = [...((itemsResult.data ?? []) as BusinessOrderItem[])].sort((left, right) => {
+        if (left.sort_order !== right.sort_order) return left.sort_order - right.sort_order
+        return left.created_at.localeCompare(right.created_at)
+      })
+      const displayItems = await attachBusinessOrderItemsDisplay(supabase, itemRows)
 
       setCustomerId(currentCustomerId)
       setOrders(orderRows)
       setTransfers(transferRows)
       setAllocations(allocationRows)
+      setOrderItems(displayItems)
+      setOrderDetail({
+        shipping_fee: currentOrder.shipping_fee === null ? null : Number(currentOrder.shipping_fee),
+        total_shipping_received_amount:
+          currentOrder.total_shipping_received_amount === null
+            ? null
+            : Number(currentOrder.total_shipping_received_amount),
+      })
       setSettlement(settlementResult.data)
       setExchangeRate(currentCurrency === 'CNY' ? '1' : String(currentOrder.exchange_rate_to_cny ?? ''))
       setPrepayment(
@@ -283,6 +328,83 @@ export function BusinessOrderPaymentManager({
     return paid
   }, [allocations, transferById])
 
+  const itemAllocationByItem = useMemo(() => {
+    const sums = new Map<string, number>()
+    for (const allocation of allocations) {
+      const transfer = transferById.get(allocation.transfer_id)
+      if (allocation.voided_at || !transfer || transfer.voided_at) continue
+      if (allocation.allocation_target === 'item' && allocation.order_item_id) {
+        sums.set(
+          allocation.order_item_id,
+          (sums.get(allocation.order_item_id) ?? 0) + Number(allocation.amount),
+        )
+      }
+    }
+    return sums
+  }, [allocations, transferById])
+
+  const shippingAllocationByOrder = useMemo(() => {
+    const sums = new Map<string, number>()
+    for (const allocation of allocations) {
+      const transfer = transferById.get(allocation.transfer_id)
+      if (allocation.voided_at || !transfer || transfer.voided_at) continue
+      if (allocation.allocation_target === 'shipping') {
+        sums.set(allocation.order_id, (sums.get(allocation.order_id) ?? 0) + Number(allocation.amount))
+      }
+    }
+    return sums
+  }, [allocations, transferById])
+
+  const orderItemById = useMemo(
+    () => new Map(orderItems.map((item) => [item.id, item])),
+    [orderItems],
+  )
+
+  const orderOutstandingAmount = useCallback(
+    (order: OrderOption) =>
+      Math.max(
+        Number(order.total_amount)
+          - Number(order.total_sales_amount ?? 0)
+          - (activePaidByOrder.get(order.id) ?? 0),
+        0,
+      ),
+    [activePaidByOrder],
+  )
+
+  // 当前订单按明细/运费的未收：先取 RPC 原始口径（行金额−产品实收−明细分摊；
+  // 运费−运费实收−运费分摊），再把历史整单分摊等口径差按顺序冲抵产品行、
+  // 最后冲抵运费行，保证各行合计与结算卡的未收尾款一致。
+  const currentOrderAllocationRows = useMemo(() => {
+    if (!orderDetail) return null
+    const rows = orderItems.map((item) => ({
+      item,
+      outstanding: Math.max(
+        Number(item.line_amount)
+          - Number(item.product_received_amount ?? 0)
+          - (itemAllocationByItem.get(item.id) ?? 0),
+        0,
+      ),
+    }))
+    const shippingRaw = Math.max(
+      Number(orderDetail.shipping_fee ?? 0)
+        - Number(orderDetail.total_shipping_received_amount ?? 0)
+        - (shippingAllocationByOrder.get(orderId) ?? 0),
+      0,
+    )
+    const rawSum = rows.reduce((sum, row) => sum + row.outstanding, 0) + shippingRaw
+    let toSubtract =
+      settlement !== null ? Math.max(rawSum - Number(settlement.outstanding_amount), 0) : 0
+    const itemRows = rows.map((row) => {
+      const attributed = Math.min(toSubtract, row.outstanding)
+      toSubtract -= attributed
+      return { item: row.item, outstanding: Math.round((row.outstanding - attributed) * 100) / 100 }
+    })
+    return {
+      itemRows,
+      shippingOutstanding: Math.round((shippingRaw - toSubtract) * 100) / 100,
+    }
+  }, [itemAllocationByItem, orderDetail, orderItems, orderId, settlement, shippingAllocationByOrder])
+
   const availableOrders = useMemo(
     () =>
       orders
@@ -300,10 +422,10 @@ export function BusinessOrderPaymentManager({
           ) {
             return false
           }
-          return Number(order.total_amount) - (activePaidByOrder.get(order.id) ?? 0) > 0.005
+          return orderOutstandingAmount(order) > 0.005
         })
         .sort((a, b) => Number(b.id === orderId) - Number(a.id === orderId)),
-    [activePaidByOrder, orderId, orders, profile.id, profile.role],
+    [orderOutstandingAmount, orderId, orders, profile.id, profile.role],
   )
 
   const currentAllocations = useMemo(
@@ -364,7 +486,7 @@ export function BusinessOrderPaymentManager({
     setAmount('')
     setReceivedAt(getBusinessDateTimeLocal())
     setNotes('')
-    setAllocationDraft(isOrderScoped ? { [orderId]: '' } : {})
+    setAllocationDraft({})
     setCorrectionReason('')
     setIdempotencyKey(nextIdempotencyKey)
     setUploadedProofPath(pendingUpload?.proof_path ?? null)
@@ -420,9 +542,17 @@ export function BusinessOrderPaymentManager({
     return path
   }
 
-  function buildAllocations(draft: AllocationDraft) {
+  function buildAllocations(draft: AllocationDraft): DraftAllocation[] {
     return Object.entries(draft)
-      .map(([targetOrderId, value]) => ({ order_id: targetOrderId, amount: amountValue(value) }))
+      .map(([key, value]) => {
+        const [targetOrderId, target, targetItemId] = key.split('|')
+        return {
+          order_id: targetOrderId,
+          order_item_id: targetItemId || null,
+          allocation_target: (target || 'order') as AllocationTarget,
+          amount: amountValue(value),
+        }
+      })
       .filter((allocation) => allocation.amount > 0)
   }
 
@@ -431,6 +561,29 @@ export function BusinessOrderPaymentManager({
       const targetOrder = orderById.get(targetOrderId)
       return targetOrder?.status === 'completed' && targetOrder.completion_gate_version < 2
     })
+  }
+
+  function allocationTargetSuffix(allocation: AllocationRow) {
+    if (allocation.allocation_target === 'shipping') return '（运费）'
+    if (allocation.allocation_target === 'item') {
+      const item = allocation.order_item_id ? orderItemById.get(allocation.order_item_id) : undefined
+      return `（${item ? businessOrderItemDisplayName(item) : '产品'}）`
+    }
+    return ''
+  }
+
+  function allocationExceedsOutstanding(allocation: DraftAllocation) {
+    if (allocation.order_id === orderId && allocation.allocation_target === 'item') {
+      const row = currentOrderAllocationRows?.itemRows.find(
+        (candidate) => candidate.item.id === allocation.order_item_id,
+      )
+      return !row || allocation.amount > row.outstanding + 0.005
+    }
+    if (allocation.order_id === orderId && allocation.allocation_target === 'shipping') {
+      return allocation.amount > (currentOrderAllocationRows?.shippingOutstanding ?? 0) + 0.005
+    }
+    const targetOrder = orderById.get(allocation.order_id)
+    return !targetOrder || allocation.amount > orderOutstandingAmount(targetOrder) + 0.005
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -459,11 +612,20 @@ export function BusinessOrderPaymentManager({
     }
     if (
       isOrderScoped &&
-      (nextAllocations.length !== 1 ||
-        nextAllocations[0].order_id !== orderId ||
+      (nextAllocations.length === 0 ||
+        nextAllocations.some(
+          (allocation) =>
+            allocation.order_id !== orderId ||
+            allocation.allocation_target === 'order' ||
+            (allocation.allocation_target === 'item') !== Boolean(allocation.order_item_id),
+        ) ||
         Math.abs(allocatedAmount - transferAmount) > 0.005)
     ) {
-      toast.error('无客户订单的转账必须全额分摊到当前订单')
+      toast.error('无客户订单的转账必须按产品明细或运费全额分摊到当前订单')
+      return
+    }
+    if (nextAllocations.some(allocationExceedsOutstanding)) {
+      toast.error('分摊金额不能超过对应产品、运费或订单的未收金额')
       return
     }
     const needsCorrection = allocationsNeedCorrection(allocationDraft)
@@ -555,6 +717,10 @@ export function BusinessOrderPaymentManager({
       toast.error('分摊合计不能超过该转账可用余额')
       return
     }
+    if (nextAllocations.some(allocationExceedsOutstanding)) {
+      toast.error('分摊金额不能超过对应产品、运费或订单的未收金额')
+      return
+    }
     const needsCorrection = allocationsNeedCorrection(extraAllocationDraft)
     if (needsCorrection && !allocationCorrectionReason.trim()) {
       toast.error('分摊到历史已完成订单时必须填写修正原因')
@@ -627,6 +793,12 @@ export function BusinessOrderPaymentManager({
         settlement.payment_status === 'fully_paid',
       ) > 0,
   )
+  const currentOrderOption = orderById.get(orderId)
+  const currentOrderOutstanding = currentOrderOption ? orderOutstandingAmount(currentOrderOption) : 0
+  const showCurrentOrderRows = isOrderScoped || availableOrders.some((order) => order.id === orderId)
+  const otherAllocationOrders = isOrderScoped
+    ? []
+    : availableOrders.filter((order) => order.id !== orderId)
 
   return (
     <Card>
@@ -784,7 +956,7 @@ export function BusinessOrderPaymentManager({
                           <div className="mt-1 text-xs text-muted-foreground">
                             {relatedAllocations.map((allocation) => {
                               const targetOrder = orderById.get(allocation.order_id)
-                              return `${targetOrder?.order_number ?? '不可见订单'} ${formatCurrency(Number(allocation.amount), transfer.currency)}${allocation.voided_at ? '（已作废）' : ''}`
+                              return `${targetOrder?.order_number ?? '不可见订单'}${allocationTargetSuffix(allocation)} ${formatCurrency(Number(allocation.amount), transfer.currency)}${allocation.voided_at ? '（已作废）' : ''}`
                             }).join('；')}
                           </div>
                         )}
@@ -834,7 +1006,7 @@ export function BusinessOrderPaymentManager({
             <DialogTitle>登记{isOrderScoped ? '订单' : '客户'}转账</DialogTitle>
             <DialogDescription>
               {isOrderScoped
-                ? '该订单未关联客户；转账必须全额分摊至当前订单，不产生预收余额。'
+                ? '该订单未关联客户；转账金额须按产品明细或运费全额分摊至当前订单，不产生预收余额。'
                 : '分摊可以留空；未分摊金额将作为该客户的预收款。'}
             </DialogDescription>
           </DialogHeader>
@@ -859,11 +1031,7 @@ export function BusinessOrderPaymentManager({
                   min="0.01"
                   step="0.01"
                   value={amount}
-                  onChange={(event) => {
-                    const value = event.target.value
-                    setAmount(value)
-                    if (isOrderScoped) setAllocationDraft({ [orderId]: value })
-                  }}
+                  onChange={(event) => setAmount(event.target.value)}
                   required
                 />
               </div>
@@ -900,35 +1068,102 @@ export function BusinessOrderPaymentManager({
 
             <div className="space-y-2 border-t pt-4">
               <div className="flex items-center justify-between">
-                <Label>订单分摊（{isOrderScoped ? '全额必填' : '可选'}）</Label>
+                <Label>订单分摊（{isOrderScoped ? '按产品或运费全额分摊' : '可选'}）</Label>
                 <span className="text-xs text-muted-foreground">
                   分摊 {formatCurrency(allocatedDraftTotal, currency)}
                   {!isOrderScoped && ` · 预收 ${formatCurrency(unallocatedDraft, currency)}`}
                 </span>
               </div>
-              {(isOrderScoped ? orders.filter((order) => order.id === orderId) : availableOrders).map((order) => {
-                const outstanding = Math.max(Number(order.total_amount) - (activePaidByOrder.get(order.id) ?? 0), 0)
-                return (
-                  <div key={order.id} className={`grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center ${order.id === orderId ? 'border-primary/50' : ''}`}>
+              {currentOrderAllocationRows && showCurrentOrderRows && (
+                <div className="space-y-2 rounded-md border border-primary/50 p-3">
+                  <div>
+                    <div className="font-medium">
+                      {currentOrderOption?.order_number ?? '当前订单'}（当前订单）
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      未收 {formatCurrency(currentOrderOutstanding, currency)}
+                    </div>
+                  </div>
+                  {currentOrderAllocationRows.itemRows.map(({ item, outstanding }) => (
+                    <div key={item.id} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-medium">{businessOrderItemDisplayName(item)}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {[
+                            businessOrderItemDisplaySku(item),
+                            item.specification_snapshot,
+                            item.unit_snapshot,
+                            `未收 ${formatCurrency(outstanding, currency)}`,
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
+                      </div>
+                      <Input
+                        aria-label={`${businessOrderItemDisplayName(item)} 分摊金额`}
+                        type="number"
+                        min="0"
+                        max={outstanding}
+                        step="0.01"
+                        placeholder="分摊金额"
+                        value={allocationDraft[allocationKey(orderId, 'item', item.id)] ?? ''}
+                        onChange={(event) =>
+                          setAllocationDraft((current) => ({
+                            ...current,
+                            [allocationKey(orderId, 'item', item.id)]: event.target.value,
+                          }))
+                        }
+                      />
+                    </div>
+                  ))}
+                  <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center">
                     <div>
-                      <div className="font-medium">{order.order_number}{order.id === orderId ? '（当前订单）' : ''}</div>
-                      <div className="text-xs text-muted-foreground">未收 {formatCurrency(outstanding, currency)}</div>
+                      <div className="text-sm font-medium">运费</div>
+                      <div className="text-xs text-muted-foreground">
+                        未收 {formatCurrency(currentOrderAllocationRows.shippingOutstanding, currency)}
+                      </div>
                     </div>
                     <Input
-                      aria-label={`${order.order_number} 分摊金额`}
+                      aria-label="运费分摊金额"
                       type="number"
                       min="0"
-                      max={outstanding}
+                      max={currentOrderAllocationRows.shippingOutstanding}
                       step="0.01"
                       placeholder="分摊金额"
-                      value={allocationDraft[order.id] ?? ''}
-                      onChange={(event) => setAllocationDraft((current) => ({ ...current, [order.id]: event.target.value }))}
-                      readOnly={isOrderScoped}
-                      className={isOrderScoped ? 'bg-muted/40' : undefined}
+                      value={allocationDraft[allocationKey(orderId, 'shipping')] ?? ''}
+                      onChange={(event) =>
+                        setAllocationDraft((current) => ({
+                          ...current,
+                          [allocationKey(orderId, 'shipping')]: event.target.value,
+                        }))
+                      }
                     />
                   </div>
-                )
-              })}
+                </div>
+              )}
+              {otherAllocationOrders.map((order) => (
+                <div key={order.id} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center">
+                  <div>
+                    <div className="font-medium">{order.order_number}</div>
+                    <div className="text-xs text-muted-foreground">未收 {formatCurrency(orderOutstandingAmount(order), currency)}</div>
+                  </div>
+                  <Input
+                    aria-label={`${order.order_number} 分摊金额`}
+                    type="number"
+                    min="0"
+                    max={orderOutstandingAmount(order)}
+                    step="0.01"
+                    placeholder="分摊金额"
+                    value={allocationDraft[allocationKey(order.id, 'order')] ?? ''}
+                    onChange={(event) =>
+                      setAllocationDraft((current) => ({
+                        ...current,
+                        [allocationKey(order.id, 'order')]: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+              ))}
               {!isOrderScoped && availableOrders.length === 0 && <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">暂无可分摊订单，本次转账将全部计入预收款</div>}
             </div>
 
@@ -971,26 +1206,96 @@ export function BusinessOrderPaymentManager({
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            {availableOrders.map((order) => {
-              const outstanding = Math.max(Number(order.total_amount) - (activePaidByOrder.get(order.id) ?? 0), 0)
-              return (
-                <div key={order.id} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center">
+            {currentOrderAllocationRows && showCurrentOrderRows && (
+              <div className="space-y-2 rounded-md border border-primary/50 p-3">
+                <div>
+                  <div className="font-medium">
+                    {currentOrderOption?.order_number ?? '当前订单'}（当前订单）
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    未收 {formatCurrency(currentOrderOutstanding, currency)}
+                  </div>
+                </div>
+                {currentOrderAllocationRows.itemRows.map(({ item, outstanding }) => (
+                  <div key={item.id} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{businessOrderItemDisplayName(item)}</div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {[
+                          businessOrderItemDisplaySku(item),
+                          item.specification_snapshot,
+                          item.unit_snapshot,
+                          `未收 ${formatCurrency(outstanding, currency)}`,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </div>
+                    </div>
+                    <Input
+                      aria-label={`${businessOrderItemDisplayName(item)} 分摊金额`}
+                      type="number"
+                      min="0"
+                      max={Math.min(outstanding, allocatingTransfer ? transferAvailable(allocatingTransfer) : 0)}
+                      step="0.01"
+                      placeholder="分摊金额"
+                      value={extraAllocationDraft[allocationKey(orderId, 'item', item.id)] ?? ''}
+                      onChange={(event) =>
+                        setExtraAllocationDraft((current) => ({
+                          ...current,
+                          [allocationKey(orderId, 'item', item.id)]: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                ))}
+                <div className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center">
                   <div>
-                    <div className="font-medium">{order.order_number}{order.id === orderId ? '（当前订单）' : ''}</div>
-                    <div className="text-xs text-muted-foreground">未收 {formatCurrency(outstanding, currency)}</div>
+                    <div className="text-sm font-medium">运费</div>
+                    <div className="text-xs text-muted-foreground">
+                      未收 {formatCurrency(currentOrderAllocationRows.shippingOutstanding, currency)}
+                    </div>
                   </div>
                   <Input
+                    aria-label="运费分摊金额"
                     type="number"
                     min="0"
-                    max={Math.min(outstanding, allocatingTransfer ? transferAvailable(allocatingTransfer) : 0)}
+                    max={Math.min(currentOrderAllocationRows.shippingOutstanding, allocatingTransfer ? transferAvailable(allocatingTransfer) : 0)}
                     step="0.01"
                     placeholder="分摊金额"
-                    value={extraAllocationDraft[order.id] ?? ''}
-                    onChange={(event) => setExtraAllocationDraft((current) => ({ ...current, [order.id]: event.target.value }))}
+                    value={extraAllocationDraft[allocationKey(orderId, 'shipping')] ?? ''}
+                    onChange={(event) =>
+                      setExtraAllocationDraft((current) => ({
+                        ...current,
+                        [allocationKey(orderId, 'shipping')]: event.target.value,
+                      }))
+                    }
                   />
                 </div>
-              )
-            })}
+              </div>
+            )}
+            {otherAllocationOrders.map((order) => (
+              <div key={order.id} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center">
+                <div>
+                  <div className="font-medium">{order.order_number}</div>
+                  <div className="text-xs text-muted-foreground">未收 {formatCurrency(orderOutstandingAmount(order), currency)}</div>
+                </div>
+                <Input
+                  aria-label={`${order.order_number} 分摊金额`}
+                  type="number"
+                  min="0"
+                  max={Math.min(orderOutstandingAmount(order), allocatingTransfer ? transferAvailable(allocatingTransfer) : 0)}
+                  step="0.01"
+                  placeholder="分摊金额"
+                  value={extraAllocationDraft[allocationKey(order.id, 'order')] ?? ''}
+                  onChange={(event) =>
+                    setExtraAllocationDraft((current) => ({
+                      ...current,
+                      [allocationKey(order.id, 'order')]: event.target.value,
+                    }))
+                  }
+                />
+              </div>
+            ))}
           </div>
           {extraAllocationNeedsCorrection && (
             <div className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-3">

@@ -447,10 +447,21 @@ export const businessCustomProductStateInputSchema = z
 export const businessOrderPaymentAllocationInputSchema = z
   .object({
     order_id: z.string().uuid('请选择有效订单'),
+    order_item_id: z.string().uuid('请选择有效订单明细').nullable().default(null),
+    allocation_target: z.enum(['order', 'item', 'shipping']).default('order'),
     amount: positiveAmountSchema,
     payment_type: z.enum(businessPaymentTypes).optional(),
   })
   .strict()
+  .superRefine((allocation, ctx) => {
+    if ((allocation.allocation_target === 'item') !== (allocation.order_item_id !== null)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['allocation_target'],
+        message: '按产品明细分摊时必须选择对应明细行，整单或运费分摊不能关联明细行',
+      })
+    }
+  })
 
 const businessOrderPaymentAllocationsSchema = z
   .array(businessOrderPaymentAllocationInputSchema)
@@ -458,14 +469,15 @@ const businessOrderPaymentAllocationsSchema = z
   .superRefine((allocations, ctx) => {
     const seen = new Set<string>()
     allocations.forEach((allocation, index) => {
-      if (seen.has(allocation.order_id)) {
+      const key = `${allocation.order_id}|${allocation.allocation_target}|${allocation.order_item_id ?? ''}`
+      if (seen.has(key)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: [index, 'order_id'],
-          message: '同一订单不能重复分摊',
+          message: '同一订单的同一分摊对象不能重复分摊',
         })
       }
-      seen.add(allocation.order_id)
+      seen.add(key)
     })
   })
 
