@@ -371,6 +371,8 @@ export interface BusinessOrderItem {
   logistics_fee_amount: number | null
   sales_total_amount: number | null
   sales_total_overridden: boolean
+  /** 明细来源：original=首次下单（不可改删），append=追加加单（可改删） */
+  origin: 'original' | 'append'
   sort_order: number
   created_at: string
   updated_at: string

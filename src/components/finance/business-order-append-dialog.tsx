@@ -29,8 +29,25 @@ import {
   listBusinessOrderAppendCatalog,
 } from '@/lib/actions/business-orders'
 import { formatCurrency } from '@/lib/utils'
-import type { BusinessCustomProductListItem, CurrencyCode, Product, ProductGroup } from '@/types'
+import type {
+  BusinessCustomProductListItem,
+  CurrencyCode,
+  DailyOrderShippingCategory,
+  Product,
+  ProductGroup,
+} from '@/types'
 import { BusinessCustomProductPicker } from './business-custom-product-picker'
+
+const SHIPPING_OPTIONS: Array<{ value: DailyOrderShippingCategory; label: string }> = [
+  { value: 'stock', label: '现货' },
+  { value: 'sample', label: '样品' },
+  { value: 'custom', label: '定制' },
+  { value: 'purchase', label: '外采' },
+]
+
+function roundMoney(value: number) {
+  return Math.round(value * 100) / 100
+}
 
 // 生产通过 http 访问时属于非安全上下文，crypto.randomUUID 不可用。
 function newRowKey() {
@@ -47,6 +64,9 @@ interface AppendRow {
   customProduct: BusinessCustomProductListItem | null
   quantity: string
   unitPrice: string
+  dailyShippingCategory: DailyOrderShippingCategory
+  receivedAmount: string
+  logisticsFee: string
 }
 
 function emptyRow(): AppendRow {
@@ -57,6 +77,9 @@ function emptyRow(): AppendRow {
     customProduct: null,
     quantity: '',
     unitPrice: '',
+    dailyShippingCategory: 'stock',
+    receivedAmount: '',
+    logisticsFee: '',
   }
 }
 
@@ -64,6 +87,7 @@ interface BusinessOrderAppendDialogProps {
   orderId: string
   orderVersion: number
   currency: CurrencyCode
+  hasDailyFields: boolean
   needsReapproval?: boolean
 }
 
@@ -71,6 +95,7 @@ export function BusinessOrderAppendDialog({
   orderId,
   orderVersion,
   currency,
+  hasDailyFields,
   needsReapproval = false,
 }: BusinessOrderAppendDialogProps) {
   const router = useRouter()
@@ -206,6 +231,30 @@ export function BusinessOrderAppendDialog({
       if (!Number.isFinite(unitPrice) || unitPrice < 0) {
         toast.error('成交单价不能为负')
         return
+      }
+      if (hasDailyFields) {
+        const lineAmount = roundMoney(quantity * unitPrice)
+        const productReceived =
+          row.receivedAmount === '' ? lineAmount : roundMoney(Number(row.receivedAmount))
+        if (!Number.isFinite(productReceived) || productReceived < 0) {
+          toast.error('实收金额不能为负')
+          return
+        }
+        const logisticsFee = row.logisticsFee === '' ? 0 : roundMoney(Number(row.logisticsFee))
+        if (!Number.isFinite(logisticsFee) || logisticsFee < 0) {
+          toast.error('运费实收不能为负')
+          return
+        }
+        const last = items[items.length - 1]
+        Object.assign(last, {
+          daily_shipping_category: row.dailyShippingCategory,
+          product_received_amount: productReceived,
+          product_received_overridden:
+            Math.round(productReceived * 100) !== Math.round(lineAmount * 100),
+          logistics_fee_amount: logisticsFee,
+          sales_total_amount: roundMoney(productReceived + logisticsFee),
+          sales_total_overridden: false,
+        })
       }
     }
 
@@ -349,6 +398,80 @@ export function BusinessOrderAppendDialog({
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
+                {hasDailyFields && (
+                  <>
+                    <div className="space-y-1">
+                      <Label>实收金额（{currency}）</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.receivedAmount}
+                        onChange={(event) =>
+                          updateRow(row.key, { receivedAmount: event.target.value })
+                        }
+                        placeholder="默认=数量×单价"
+                        disabled={pending}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>运费实收（{currency}）</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={row.logisticsFee}
+                        onChange={(event) =>
+                          updateRow(row.key, { logisticsFee: event.target.value })
+                        }
+                        placeholder="默认 0"
+                        disabled={pending}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>明细实收合计（{currency}）</Label>
+                      <Input
+                        type="number"
+                        value={(() => {
+                          const received =
+                            row.receivedAmount === ''
+                              ? roundMoney(Number(row.quantity || 0) * Number(row.unitPrice || 0))
+                              : Number(row.receivedAmount)
+                          const fee = row.logisticsFee === '' ? 0 : Number(row.logisticsFee)
+                          return Number.isFinite(received) && Number.isFinite(fee)
+                            ? String(roundMoney(received + fee))
+                            : ''
+                        })()}
+                        readOnly
+                        tabIndex={-1}
+                        className="bg-muted/40"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>发货分类</Label>
+                      <Select
+                        value={row.dailyShippingCategory}
+                        onValueChange={(value) =>
+                          updateRow(row.key, {
+                            dailyShippingCategory: value as DailyOrderShippingCategory,
+                          })
+                        }
+                        disabled={pending}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {SHIPPING_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
               </div>
             ))}
 

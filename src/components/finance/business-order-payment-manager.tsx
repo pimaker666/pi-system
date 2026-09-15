@@ -58,6 +58,8 @@ interface BusinessOrderPaymentManagerProps {
   status: BusinessOrderStatus
   completionGateVersion: number
   profile: Pick<Profile, 'id' | 'role'>
+  /** 订单版本号：加单/改删明细会自增版本，组件据此重新拉取结算汇总，避免转账卡停留在旧金额。 */
+  orderVersion: number
   /** 详情页仍会传入旧只读数据；新组件不会读取或写入旧付款表。 */
   payments?: unknown[]
 }
@@ -112,6 +114,7 @@ export function BusinessOrderPaymentManager({
   status,
   completionGateVersion,
   profile,
+  orderVersion,
 }: BusinessOrderPaymentManagerProps) {
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -161,6 +164,7 @@ export function BusinessOrderPaymentManager({
   const isOrderScoped = customerId === null
 
   const loadData = useCallback(async () => {
+    void orderVersion
     setLoading(true)
     setLoadError('')
     try {
@@ -256,7 +260,7 @@ export function BusinessOrderPaymentManager({
     } finally {
       setLoading(false)
     }
-  }, [orderId])
+  }, [orderId, orderVersion])
 
   useEffect(() => {
     void loadData()

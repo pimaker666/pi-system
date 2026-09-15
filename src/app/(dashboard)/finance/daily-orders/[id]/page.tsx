@@ -5,7 +5,9 @@ import { ArrowLeft } from 'lucide-react'
 import {
   BusinessOrderActions,
   BusinessOrderFinancePanel,
+  canAdjustBusinessOrderItems,
 } from '@/components/finance/business-order-actions'
+import { BusinessOrderItemAdjustments } from '@/components/finance/business-order-item-adjustments'
 import { BusinessLifecycleStatus } from '@/components/finance/business-lifecycle-status'
 import { BusinessOrderPaymentManager } from '@/components/finance/business-order-payment-manager'
 import {
@@ -165,6 +167,9 @@ export default async function BusinessOrderDetailPage({
 
   // 0034 之后录入的每日订单会带齐三组总额；历史订单为 null，只展示原有金额区。
   const hasDailyFields = order.total_sales_amount !== null
+  const canAdjustItems = canAdjustBusinessOrderItems(order, profile)
+  const hasAppendedItems = order.business_order_items.some((item) => item.origin === 'append')
+  const showItemAdjustments = canAdjustItems && hasAppendedItems
   const actualReceived = hasDailyFields
     ? Number(order.total_sales_amount)
     : Number(order.total_amount)
@@ -279,6 +284,7 @@ export default async function BusinessOrderDetailPage({
           profile={profile}
           financeReady={financeReady}
           canEditOrder={canEditOrder}
+          hasDailyFields={hasDailyFields}
         />
       </div>
 
@@ -428,6 +434,7 @@ export default async function BusinessOrderDetailPage({
                         <TableHead className="text-right">明细实收合计</TableHead>
                       </>
                     )}
+                    {showItemAdjustments && <TableHead className="text-right">操作</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -482,6 +489,21 @@ export default async function BusinessOrderDetailPage({
                               : formatCurrency(Number(item.sales_total_amount), order.currency)}
                           </TableCell>
                         </>
+                      )}
+                      {showItemAdjustments && (
+                        <TableCell className="text-right">
+                          {item.origin === 'append' ? (
+                            <BusinessOrderItemAdjustments
+                              orderId={order.id}
+                              orderVersion={order.version}
+                              currency={order.currency}
+                              hasDailyFields={hasDailyFields}
+                              item={item}
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">首次下单</span>
+                          )}
+                        </TableCell>
                       )}
                     </TableRow>
                   ))}
@@ -556,6 +578,7 @@ export default async function BusinessOrderDetailPage({
               status={order.closed_at ? 'completed' : order.status}
               completionGateVersion={order.closed_at ? 2 : order.completion_gate_version}
               profile={profile}
+              orderVersion={order.version}
               payments={order.business_order_payments}
             />
           )}

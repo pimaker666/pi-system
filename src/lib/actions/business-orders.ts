@@ -12,6 +12,8 @@ import {
   businessCustomProductLibraryFilterSchema,
   businessCustomProductStateInputSchema,
   businessCustomProductVersionInputSchema,
+  businessOrderAppendItemDeleteInputSchema,
+  businessOrderAppendItemEditInputSchema,
   businessOrderAppendItemsInputSchema,
   businessOrderAttachmentInputSchema,
   businessOrderFinanceSchema,
@@ -23,6 +25,7 @@ import {
   businessOrderSpecialCloseInputSchema,
   businessOrderVoidReasonSchema,
 } from '@/schemas/business-order'
+import type { BusinessOrderAppendItemEditInput } from '@/schemas/business-order'
 import type {
   BusinessCustomerPrepayment,
   BusinessCustomerTransfer,
@@ -181,13 +184,21 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Completed or closed business order cannot be edited', '已完成或已关闭订单不可编辑'],
     ['Closed business order cannot be adjusted', '已特殊关闭的订单不能追加产品'],
     ['Completed business order is immutable', '已完成订单不可追加产品'],
-    ['Only approved orders can be adjusted', '仅业务员/主管本人已审核的订单支持直接追加，草稿请使用编辑订单'],
-    ['Sales user cannot adjust another owner business order', '不能为其他业务员的订单追加产品'],
-    ['Adjustment can only increase an existing order item quantity', '加单只能增加已有明细数量，不能减少'],
-    ['Order item unit price cannot be changed by an adjustment', '加单不能修改已有明细的成交单价'],
-    ['Order item product cannot be replaced by an adjustment', '加单不能更换已有明细的产品'],
+    ['Only approved orders can be adjusted by sales', '仅业务员/主管本人已审核的订单支持直接调整，草稿请使用编辑订单'],
+    ['Only approved orders can be adjusted', '仅已审核的订单支持直接调整'],
+    ['Sales user cannot adjust another owner business order', '不能调整其他业务员名下的订单'],
+    ['Order item product cannot be replaced by an adjustment', '不能更换已有明细的产品'],
     ['Order item id does not belong to order', '订单明细不属于该订单'],
-    ['Adjustment does not change the order amount', '本次加单没有改变订单金额'],
+    ['Only appended order items can be modified', '只有追加的产品明细支持修改，首次下单明细不可修改'],
+    ['Only appended order items can be deleted', '只有追加的产品明细支持删除，首次下单明细不可删除'],
+    ['Order item with shipment or return activity cannot be deleted', '该明细已有发货或退货记录，不能删除'],
+    ['Quantity cannot be below net shipped quantity', '数量不能低于净发货数量'],
+    ['Adjustment does not change the order', '本次调整没有改变订单内容'],
+    ['Invalid adjustment action', '不支持的明细操作'],
+    ['Daily shipping category is invalid', '发货分类不合法'],
+    ['Product received amount is invalid', '产品实收金额不合法'],
+    ['Logistics fee amount is invalid', '运费实收金额不合法'],
+    ['Sales total amount is invalid', '明细实收合计不合法'],
     ['Adjustment items count must be between', '加单明细条数必须在 1 到 500 之间'],
     ['Each adjustment order item id must be unique', '加单明细存在重复的明细 ID'],
     ['Adjustment reason type must be', '加单原因类型不合法'],
@@ -1124,4 +1135,71 @@ export async function appendBusinessOrderItems(rawInput: unknown): Promise<Actio
   if (error) return { ok: false, error: businessOrderError(error.message, '追加产品失败') }
   revalidateBusinessOrders(parsed.data.order_id)
   return { ok: true }
+}
+
+export async function editBusinessOrderAppendedItem(rawInput: unknown): Promise<ActionResult> {
+  await requireApproved()
+  const parsed = businessOrderAppendItemEditInputSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('adjust_business_order_items', {
+    p_order_id: parsed.data.order_id,
+    p_expected_version: parsed.data.expected_version,
+    p_items: [
+      {
+        id: parsed.data.item_id,
+        quantity: parsed.data.quantity,
+        unit_price: parsed.data.unit_price,
+        ...optionalDailyPayload(parsed.data),
+      },
+    ],
+    p_reason_type: 'quantity_fix',
+    p_reason: nullableText(parsed.data.reason),
+    p_idempotency_key: crypto.randomUUID(),
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '修改追加明细失败') }
+  revalidateBusinessOrders(parsed.data.order_id)
+  return { ok: true }
+}
+
+export async function deleteBusinessOrderAppendedItem(rawInput: unknown): Promise<ActionResult> {
+  await requireApproved()
+  const parsed = businessOrderAppendItemDeleteInputSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('adjust_business_order_items', {
+    p_order_id: parsed.data.order_id,
+    p_expected_version: parsed.data.expected_version,
+    p_items: [{ id: parsed.data.item_id, action: 'delete' }],
+    p_reason_type: 'quantity_fix',
+    p_reason: nullableText(parsed.data.reason),
+    p_idempotency_key: crypto.randomUUID(),
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '删除追加明细失败') }
+  revalidateBusinessOrders(parsed.data.order_id)
+  return { ok: true }
+}
+
+function optionalDailyPayload(
+  data: Pick<
+    BusinessOrderAppendItemEditInput,
+    | 'daily_shipping_category'
+    | 'product_received_amount'
+    | 'product_received_overridden'
+    | 'logistics_fee_amount'
+    | 'sales_total_amount'
+    | 'sales_total_overridden'
+  >,
+) {
+  if (data.daily_shipping_category === undefined) return {}
+  return {
+    daily_shipping_category: data.daily_shipping_category,
+    product_received_amount: data.product_received_amount,
+    product_received_overridden: data.product_received_overridden,
+    logistics_fee_amount: data.logistics_fee_amount,
+    sales_total_amount: data.sales_total_amount,
+    sales_total_overridden: data.sales_total_overridden,
+  }
 }

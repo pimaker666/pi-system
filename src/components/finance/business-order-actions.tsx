@@ -44,6 +44,26 @@ interface BusinessOrderActionsProps {
   profile: Pick<Profile, 'id' | 'role'>
   financeReady: boolean
   canEditOrder?: boolean
+  hasDailyFields: boolean
+}
+
+export function canAdjustBusinessOrderItems(
+  order: Pick<BusinessOrder, 'status' | 'salesperson_id' | 'approval_status'> & {
+    closed_at?: string | null
+  },
+  profile: Pick<Profile, 'id' | 'role'>,
+) {
+  const appendNeedsReapproval =
+    (profile.role === 'sales' || profile.role === 'supervisor') &&
+    order.status === 'approved' &&
+    order.approval_status === 'approved'
+  return (
+    !order.closed_at &&
+    order.status !== 'completed' &&
+    (profile.role === 'admin' ||
+      profile.role === 'finance' ||
+      (appendNeedsReapproval && order.salesperson_id === profile.id))
+  )
 }
 
 export function BusinessOrderActions({
@@ -51,6 +71,7 @@ export function BusinessOrderActions({
   profile,
   financeReady,
   canEditOrder,
+  hasDailyFields,
 }: BusinessOrderActionsProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -84,12 +105,7 @@ export function BusinessOrderActions({
     (profile.role === 'sales' || profile.role === 'supervisor') &&
     order.status === 'approved' &&
     order.approval_status === 'approved'
-  const canAppendItems =
-    !isClosed &&
-    order.status !== 'completed' &&
-    (profile.role === 'admin' ||
-      profile.role === 'finance' ||
-      (appendNeedsReapproval && order.salesperson_id === profile.id))
+  const canAppendItems = canAdjustBusinessOrderItems(order, profile)
 
   function runAction(
     action: () => Promise<{ ok: boolean; error?: string }>,
@@ -126,6 +142,7 @@ export function BusinessOrderActions({
               orderId={order.id}
               orderVersion={order.version}
               currency={order.currency}
+              hasDailyFields={hasDailyFields}
               needsReapproval={appendNeedsReapproval}
             />
           )}

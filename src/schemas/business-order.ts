@@ -105,6 +105,60 @@ const dailyOrderItemFields = {
   sales_total_overridden: z.boolean(),
 }
 
+// 追加/修订明细的日字段：整组可选。订单未启用实收口径时不传（保持全 NULL），
+// 传则必须六个键齐全且与建单同口径（未覆盖时实收=数量×单价，合计=实收+运费）。
+const optionalDailyOrderItemFields = {
+  daily_shipping_category: z.enum(businessOrderDailyShippingCategories).optional(),
+  product_received_amount: nonNegativeAmountSchema.optional(),
+  product_received_overridden: z.boolean().optional(),
+  logistics_fee_amount: nonNegativeAmountSchema.optional(),
+  sales_total_amount: nonNegativeAmountSchema.optional(),
+  sales_total_overridden: z.boolean().optional(),
+}
+
+const dailyFieldKeys = Object.keys(optionalDailyOrderItemFields) as Array<
+  keyof typeof optionalDailyOrderItemFields
+>
+
+function refineDailyItemFields(
+  item: { quantity: number; unit_price: number } & Record<string, unknown>,
+  ctx: z.RefinementCtx,
+  path: (string | number)[],
+) {
+  const present = dailyFieldKeys.filter((key) => item[key] !== undefined)
+  if (present.length === 0) return
+  if (present.length !== dailyFieldKeys.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...path, present[0]],
+      message: '实收字段必须整组填写或整组留空',
+    })
+    return
+  }
+  const automaticProductReceived = roundToScale(item.quantity * item.unit_price, 2)
+  if (
+    !item.product_received_overridden &&
+    item.product_received_amount !== automaticProductReceived
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...path, 'product_received_amount'],
+      message: '未手工覆盖时，产品实收金额必须等于单价乘数量',
+    })
+  }
+  const automaticSalesTotal = roundToScale(
+    Number(item.product_received_amount) + Number(item.logistics_fee_amount),
+    2,
+  )
+  if (!item.sales_total_overridden && item.sales_total_amount !== automaticSalesTotal) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...path, 'sales_total_amount'],
+      message: '未手工覆盖时，明细实收合计必须等于产品实收加运费实收',
+    })
+  }
+}
+
 const catalogOrderItemSchema = z
   .object({
     order_item_id: z.string().uuid('订单明细 ID 不合法').optional(),
@@ -146,6 +200,7 @@ const appendCatalogItemSchema = z
     product_id: z.string().uuid('请选择有效产品'),
     quantity: positiveQuantitySchema,
     unit_price: nonNegativeAmountSchema,
+    ...optionalDailyOrderItemFields,
   })
   .strict()
 
@@ -156,6 +211,7 @@ const appendCustomItemSchema = z
     custom_product_version_id: z.string().uuid('请选择有效定制产品版本'),
     quantity: positiveQuantitySchema,
     unit_price: nonNegativeAmountSchema,
+    ...optionalDailyOrderItemFields,
   })
   .strict()
 
@@ -168,6 +224,35 @@ export const businessOrderAppendItemsInputSchema = z
       .array(z.discriminatedUnion('source_type', [appendCatalogItemSchema, appendCustomItemSchema]))
       .min(1, '请至少添加一条加单明细')
       .max(MAX_BATCH_SIZE, '加单明细不能超过 500 条'),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    value.items.forEach((item, index) => {
+      refineDailyItemFields(item, ctx, ['items', index])
+    })
+  })
+
+export const businessOrderAppendItemEditInputSchema = z
+  .object({
+    order_id: z.string().uuid('订单 ID 不合法'),
+    expected_version: z.number().int('订单版本号不合法'),
+    item_id: z.string().uuid('订单明细 ID 不合法'),
+    quantity: positiveQuantitySchema,
+    unit_price: nonNegativeAmountSchema,
+    ...optionalDailyOrderItemFields,
+    reason: optionalText(1000, '修改原因不能超过 1000 字'),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    refineDailyItemFields(value, ctx, [])
+  })
+
+export const businessOrderAppendItemDeleteInputSchema = z
+  .object({
+    order_id: z.string().uuid('订单 ID 不合法'),
+    expected_version: z.number().int('订单版本号不合法'),
+    item_id: z.string().uuid('订单明细 ID 不合法'),
+    reason: optionalText(1000, '删除原因不能超过 1000 字'),
   })
   .strict()
 
@@ -581,6 +666,10 @@ export const businessOrderFinanceSchema = z.object({
 export type BusinessOrderInput = z.infer<typeof businessOrderInputSchema>
 export type BusinessOrderItemInput = z.infer<typeof businessOrderItemInputSchema>
 export type BusinessOrderAppendItemsInput = z.infer<typeof businessOrderAppendItemsInputSchema>
+export type BusinessOrderAppendItemEditInput = z.infer<typeof businessOrderAppendItemEditInputSchema>
+export type BusinessOrderAppendItemDeleteInput = z.infer<
+  typeof businessOrderAppendItemDeleteInputSchema
+>
 export type BusinessOrderAttachmentInput = z.infer<typeof businessOrderAttachmentInputSchema>
 export type BusinessCustomProductVersionInput = z.infer<
   typeof businessCustomProductVersionInputSchema
