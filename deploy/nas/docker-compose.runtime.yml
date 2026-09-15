@@ -1,0 +1,79 @@
+services:
+  pi-app:
+    build:
+      context: /home/Jessie/deploy-adf9480
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    image: pi-system:latest
+    container_name: pi-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - supabase_network
+
+  pi-cron:
+    build:
+      context: /home/Jessie/pi-cron
+      dockerfile: Dockerfile
+    image: pi-cron:latest
+    container_name: pi-cron
+    restart: unless-stopped
+    environment:
+      PI_LOG_DIR: /host/logs
+      PI_BACKUP_DIR: /host/backups
+      PI_MOUNT_POINTS: "/host-root|系统盘 /host-volume2|数据卷"
+    volumes:
+      - /home/Jessie/scripts:/host/scripts:ro
+      - /home/Jessie/logs:/host/logs
+      - /home/Jessie/backups:/host/backups
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /:/host-root:ro
+      - /volume2:/host-volume2:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: pi-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - pi-app
+    networks:
+      - supabase_network
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy_data:
+  caddy_config:
+
+networks:
+  supabase_network:
+    external: true
+    name: supabase_default

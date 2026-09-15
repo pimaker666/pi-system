@@ -1,0 +1,21 @@
+:80 {
+    encode gzip zstd
+
+    # 静态资源长期缓存（Next.js 构建产物，文件名带 hash，安全缓存）
+    @_next_static path_regexp ^/_next/static/.*$
+    @_next_image path_regexp ^/_next/image$
+    @static_files path_regexp \.(ico|png|jpg|jpeg|gif|svg|webp|woff2?|ttf|eot)$
+
+    header @_next_static Cache-Control "public, max-age=31536000, immutable"
+    header @_next_image Cache-Control "public, max-age=31536000, immutable"
+    header @static_files Cache-Control "public, max-age=31536000, immutable"
+
+    # 反向代理到 pi-app
+    reverse_proxy pi-app:3000 {
+        # 传递真实客户端信息
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+}
