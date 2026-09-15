@@ -26,7 +26,9 @@ import {
   saveBusinessOrderFinance,
   submitBusinessOrder,
 } from '@/lib/actions/business-orders'
+import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
 import type { BusinessOrder, BusinessOrderFinanceDetail, Profile } from '@/types'
+import { BusinessOrderAppendDialog } from './business-order-append-dialog'
 
 interface BusinessOrderActionsProps {
   order: Pick<
@@ -38,15 +40,20 @@ interface BusinessOrderActionsProps {
     | 'approval_status'
     | 'payment_status'
     | 'fulfillment_status'
+    | 'currency'
   > & { closed_at?: string | null }
   profile: Pick<Profile, 'id' | 'role'>
   financeReady: boolean
+  canEditOrder?: boolean
+  hasDailyFields: boolean
 }
 
 export function BusinessOrderActions({
   order,
   profile,
   financeReady,
+  canEditOrder,
+  hasDailyFields,
 }: BusinessOrderActionsProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -75,6 +82,12 @@ export function BusinessOrderActions({
     completionMissing.length === 0
   const canSpecialClose =
     !isClosed && profile.role === 'admin' && order.status !== 'completed'
+  const showEditOrder = canEditOrder ?? canOwnerEdit
+  const appendNeedsReapproval =
+    (profile.role === 'sales' || profile.role === 'supervisor') &&
+    order.status === 'approved' &&
+    order.approval_status === 'approved'
+  const canAppendItems = canAdjustBusinessOrderItems(order, profile)
 
   function runAction(
     action: () => Promise<{ ok: boolean; error?: string }>,
@@ -99,12 +112,21 @@ export function BusinessOrderActions({
     <div className="flex flex-wrap justify-end gap-2">
       {!isClosed && (
         <>
-          {canOwnerEdit && (
+          {showEditOrder && (
             <Button asChild variant="outline">
               <Link href={`/finance/daily-orders/${order.id}/edit`}>
                 <Pencil className="h-4 w-4" />编辑订单
               </Link>
             </Button>
+          )}
+          {canAppendItems && (
+            <BusinessOrderAppendDialog
+              orderId={order.id}
+              orderVersion={order.version}
+              currency={order.currency}
+              hasDailyFields={hasDailyFields}
+              needsReapproval={appendNeedsReapproval}
+            />
           )}
           {canOwnerEdit && (
             <Button

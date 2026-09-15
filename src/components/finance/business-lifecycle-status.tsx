@@ -52,7 +52,7 @@ export function BusinessLifecycleStatus({ order, summary }: BusinessLifecycleSta
       icon: CircleDollarSign,
       label: BUSINESS_PAYMENT_STATUS_LABELS[summary.payment_status],
       variant: BUSINESS_PAYMENT_STATUS_VARIANTS[summary.payment_status],
-      detail: `未收金额 ${formatCurrency(Number(summary.outstanding_amount), summary.currency)}`,
+      detail: `总实收 ${formatCurrency(Number(summary.allocated_amount), summary.currency)} · 未收尾款 ${formatCurrency(Number(summary.outstanding_amount), summary.currency)}`,
     },
     {
       key: 'fulfillment',
@@ -100,13 +100,17 @@ export function BusinessLifecycleStatus({ order, summary }: BusinessLifecycleSta
           }`}
         >
           <div>
-            <span className="text-muted-foreground">订单金额：</span>
+            <span className="text-muted-foreground">订单应收：</span>
             <span className="font-medium tabular-nums">
               {formatCurrency(Number(summary.total_amount), summary.currency)}
             </span>
-            <span className="ml-3 text-muted-foreground">已收：</span>
+            <span className="ml-3 text-muted-foreground">总实收金额：</span>
             <span className="font-medium tabular-nums">
               {formatCurrency(Number(summary.allocated_amount), summary.currency)}
+            </span>
+            <span className="ml-3 text-muted-foreground">未收尾款：</span>
+            <span className="font-medium tabular-nums">
+              {formatCurrency(Number(summary.outstanding_amount), summary.currency)}
             </span>
           </div>
           <div

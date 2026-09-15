@@ -20,9 +20,11 @@ import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
 
 const TOTAL_CARDS: Array<[string, BusinessDailyTotalField]> = [
+  ['订单应收', 'receivable'],
   ['产品实收', 'productReceived'],
-  ['运费实收金额', 'shippingReceived'],
-  ['销售总额', 'salesTotal'],
+  ['运费实收', 'shippingReceived'],
+  ['实际实收总额', 'salesTotal'],
+  ['应收 − 实收差额', 'difference'],
 ]
 
 export default async function DailyOrdersPage({
@@ -74,7 +76,7 @@ export default async function DailyOrdersPage({
       </div>
 
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-8">
-        <Input name="q" defaultValue={filters.q} placeholder="订单号/平台单号/发货单号/产品/SKU" className="xl:col-span-2" />
+        <Input name="q" defaultValue={filters.q} placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU" className="xl:col-span-2" />
         <Input name="dateFrom" type="date" defaultValue={filters.dateFrom} />
         <Input name="dateTo" type="date" defaultValue={filters.dateTo} />
         <select name="shop" defaultValue={filters.shop ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
@@ -118,7 +120,7 @@ export default async function DailyOrdersPage({
         </div>
       </form>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {TOTAL_CARDS.map(([label, field]) => {
           const totals = sumBusinessDailyByCurrency(orders, field)
           return (

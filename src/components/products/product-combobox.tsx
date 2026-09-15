@@ -14,8 +14,17 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { toImageSrc } from '@/lib/supabase/image'
-import type { CurrencyCode } from '@/types'
+import type { CurrencyCode, ProductGroup } from '@/types'
+
+const ALL = '__all__'
 
 export interface ProductComboboxOption {
   id: string
@@ -25,10 +34,13 @@ export interface ProductComboboxOption {
   unit_price?: number | null
   currency?: CurrencyCode | null
   unit?: string | null
+  group_id?: string | null
+  financial_number?: string | null
 }
 
 interface ProductComboboxProps {
   products: ProductComboboxOption[]
+  productGroups: ProductGroup[]
   value: string
   onChange: (id: string) => void
   placeholder?: string
@@ -36,13 +48,20 @@ interface ProductComboboxProps {
   className?: string
 }
 
-/** 32px product thumbnail used inside the dropdown list and trigger. */
-function Thumb({ src, alt }: { src: string | null | undefined; alt: string }) {
+function Thumb({
+  src,
+  alt,
+  className = 'h-8 w-8',
+}: {
+  src: string | null | undefined
+  alt: string
+  className?: string
+}) {
   const imgSrc = toImageSrc(src)
   return (
-    <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded border bg-muted">
+    <div className={cn('relative shrink-0 overflow-hidden rounded border bg-muted', className)}>
       {imgSrc ? (
-        <Image src={imgSrc} alt={alt} fill className="object-cover" sizes="32px" />
+        <Image src={imgSrc} alt={alt} fill className="object-cover" sizes="64px" />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-muted-foreground">
           <ImageIcon className="h-4 w-4" />
@@ -54,6 +73,7 @@ function Thumb({ src, alt }: { src: string | null | undefined; alt: string }) {
 
 export function ProductCombobox({
   products,
+  productGroups,
   value,
   onChange,
   placeholder = '选择产品…',
@@ -61,9 +81,14 @@ export function ProductCombobox({
   className,
 }: ProductComboboxProps) {
   const [open, setOpen] = useState(false)
+  const [groupFilter, setGroupFilter] = useState(ALL)
   const selected = useMemo(
     () => products.find((product) => product.id === value) ?? null,
     [products, value],
+  )
+  const filteredProducts = useMemo(
+    () => products.filter((product) => groupFilter === ALL || product.group_id === groupFilter),
+    [groupFilter, products],
   )
 
   return (
@@ -90,19 +115,33 @@ export function ProductCombobox({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] min-w-[24rem] p-0"
+        align="start"
+      >
+        <div className="border-b p-2">
+          <Select value={groupFilter} onValueChange={setGroupFilter}>
+            <SelectTrigger aria-label="按产品分组筛选"><SelectValue placeholder="全部产品分组" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>全部产品分组</SelectItem>
+              {productGroups.map((group) => (
+                <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <Command>
-          <CommandInput placeholder="搜索产品名称或 SKU…" />
-          <CommandList>
+          <CommandInput placeholder="搜索产品名称、SKU 或财务编号…" />
+          <CommandList className="max-h-[320px]">
             <CommandEmpty>未找到产品</CommandEmpty>
             <CommandGroup>
-              {products.map((product) => {
-                const hasPrice =
-                  product.unit_price != null && product.currency != null
+              {filteredProducts.map((product) => {
+                const hasPrice = product.unit_price != null && product.currency != null
+                const groupName = productGroups.find((g) => g.id === product.group_id)?.name
                 return (
                   <CommandItem
                     key={product.id}
-                    value={`${product.name} ${product.sku}`}
+                    value={`${product.name} ${product.sku} ${product.financial_number ?? ''}`}
                     onSelect={() => {
                       onChange(product.id)
                       setOpen(false)
@@ -115,15 +154,17 @@ export function ProductCombobox({
                         value === product.id ? 'opacity-100' : 'opacity-0',
                       )}
                     />
-                    <Thumb src={product.image_url} alt={product.name} />
+                    <Thumb src={product.image_url} alt={product.name} className="h-10 w-10" />
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{product.name}</div>
                       <div className="truncate text-xs text-muted-foreground">
                         {product.sku}
+                        {product.financial_number ? ` · 财编 ${product.financial_number}` : ''}
                         {hasPrice
                           ? ` · ${formatCurrency(Number(product.unit_price), product.currency as CurrencyCode)}`
                           : ''}
                         {product.unit ? ` / ${product.unit}` : ''}
+                        {groupName ? ` · ${groupName}` : ''}
                       </div>
                     </div>
                   </CommandItem>

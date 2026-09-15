@@ -58,6 +58,8 @@ interface BusinessOrderPaymentManagerProps {
   status: BusinessOrderStatus
   completionGateVersion: number
   profile: Pick<Profile, 'id' | 'role'>
+  /** 订单版本号：加单/改删明细会自增版本，组件据此重新拉取结算汇总，避免转账卡停留在旧金额。 */
+  orderVersion: number
   /** 详情页仍会传入旧只读数据；新组件不会读取或写入旧付款表。 */
   payments?: unknown[]
 }
@@ -78,7 +80,8 @@ type AllocationRow = BusinessOrderPaymentAllocation
 type AllocationDraft = Record<string, string>
 
 interface PendingTransferUpload {
-  customer_id: string
+  scope: 'customer' | 'order'
+  scope_id: string
   currency: CurrencyCode
   idempotency_key: string
   proof_path: string | null
@@ -111,6 +114,7 @@ export function BusinessOrderPaymentManager({
   status,
   completionGateVersion,
   profile,
+  orderVersion,
 }: BusinessOrderPaymentManagerProps) {
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -157,48 +161,73 @@ export function BusinessOrderPaymentManager({
     (profile.role === 'admin' || profile.role === 'finance')
   const canManage =
     hasRolePermission && (status !== 'completed' || canCorrectLegacyCompleted)
+  const isOrderScoped = customerId === null
 
   const loadData = useCallback(async () => {
+    void orderVersion
     setLoading(true)
     setLoadError('')
     try {
       const supabase = createClient()
       const { data: currentOrder, error: orderError } = await supabase
         .from('business_orders')
-        .select('id, customer_id, currency, exchange_rate_to_cny')
+        .select(
+          'id, customer_id, currency, exchange_rate_to_cny, order_number, salesperson_id, total_amount, payment_due_date, payment_status, status, completion_gate_version',
+        )
         .eq('id', orderId)
         .single()
-      if (orderError || !currentOrder?.customer_id) {
-        throw new Error(orderError?.message ?? '订单未关联客户，无法登记客户转账')
+      if (orderError || !currentOrder) {
+        throw new Error(orderError?.message ?? '订单不存在或无权访问')
       }
 
-      const currentCustomerId = currentOrder.customer_id as string
+      const currentCustomerId = currentOrder.customer_id as string | null
       const currentCurrency = currentOrder.currency as CurrencyCode
+      const customerScoped = Boolean(currentCustomerId)
       const [ordersResult, transfersResult, allocationsResult, settlementResult, prepaymentResult] = await Promise.all([
-        supabase
-          .from('business_orders')
-          .select(
-            'id, order_number, salesperson_id, total_amount, payment_due_date, payment_status, status, completion_gate_version',
-          )
-          .eq('customer_id', currentCustomerId)
-          .eq('currency', currentCurrency)
-          .order('order_date', { ascending: false }),
-        supabase
-          .from('business_customer_transfers')
-          .select('*')
-          .eq('customer_id', currentCustomerId)
-          .eq('currency', currentCurrency)
-          .order('received_at', { ascending: false }),
-        supabase
-          .from('business_order_payment_allocations')
-          .select(
-            '*, order:business_orders!business_order_payment_allocations_order_id_fkey!inner(customer_id, currency)',
-          )
-          .eq('order.customer_id', currentCustomerId)
-          .eq('order.currency', currentCurrency)
-          .order('created_at', { ascending: false }),
+        customerScoped
+          ? supabase
+              .from('business_orders')
+              .select(
+                'id, order_number, salesperson_id, total_amount, payment_due_date, payment_status, status, completion_gate_version',
+              )
+              .eq('customer_id', currentCustomerId)
+              .eq('currency', currentCurrency)
+              .order('order_date', { ascending: false })
+          : Promise.resolve({ data: [currentOrder] as OrderOption[], error: null }),
+        customerScoped
+          ? supabase
+              .from('business_customer_transfers')
+              .select('*')
+              .eq('customer_id', currentCustomerId)
+              .eq('currency', currentCurrency)
+              .order('received_at', { ascending: false })
+          : supabase
+              .from('business_customer_transfers')
+              .select('*')
+              .eq('order_id', orderId)
+              .eq('currency', currentCurrency)
+              .order('received_at', { ascending: false }),
+        customerScoped
+          ? supabase
+              .from('business_order_payment_allocations')
+              .select(
+                '*, order:business_orders!business_order_payment_allocations_order_id_fkey!inner(customer_id, currency)',
+              )
+              .eq('order.customer_id', currentCustomerId)
+              .eq('order.currency', currentCurrency)
+              .order('created_at', { ascending: false })
+          : supabase
+              .from('business_order_payment_allocations')
+              .select('*')
+              .eq('order_id', orderId)
+              .order('created_at', { ascending: false }),
         getBusinessOrderSettlementSummary(orderId),
-        getBusinessCustomerPrepayment(currentCustomerId),
+        currentCustomerId
+          ? getBusinessCustomerPrepayment(currentCustomerId)
+          : Promise.resolve<Awaited<ReturnType<typeof getBusinessCustomerPrepayment>>>({
+              ok: true,
+              data: [],
+            }),
       ])
       if (ordersResult.error) throw new Error(ordersResult.error.message)
       if (transfersResult.error) throw new Error(transfersResult.error.message)
@@ -231,7 +260,7 @@ export function BusinessOrderPaymentManager({
     } finally {
       setLoading(false)
     }
-  }, [orderId])
+  }, [orderId, orderVersion])
 
   useEffect(() => {
     void loadData()
@@ -300,8 +329,11 @@ export function BusinessOrderPaymentManager({
       const raw = sessionStorage.getItem(pendingUploadStorageKey)
       if (!raw) return null
       const draft = JSON.parse(raw) as PendingTransferUpload
+      const scope = isOrderScoped ? 'order' : 'customer'
+      const scopeId = customerId ?? orderId
       if (
-        draft.customer_id !== customerId ||
+        draft.scope !== scope ||
+        draft.scope_id !== scopeId ||
         draft.currency !== currency ||
         !draft.idempotency_key
       ) {
@@ -326,17 +358,20 @@ export function BusinessOrderPaymentManager({
   function openForm() {
     const pendingUpload = readPendingUpload()
     const nextIdempotencyKey = pendingUpload?.idempotency_key ?? newUuid()
+    const scope = isOrderScoped ? 'order' : 'customer'
+    const scopeId = customerId ?? orderId
     setPaymentType('full')
     setAmount('')
     setReceivedAt(getBusinessDateTimeLocal())
     setNotes('')
-    setAllocationDraft({})
+    setAllocationDraft(isOrderScoped ? { [orderId]: '' } : {})
     setCorrectionReason('')
     setIdempotencyKey(nextIdempotencyKey)
     setUploadedProofPath(pendingUpload?.proof_path ?? null)
-    if (!pendingUpload && customerId) {
+    if (!pendingUpload) {
       writePendingUpload({
-        customer_id: customerId,
+        scope,
+        scope_id: scopeId,
         currency,
         idempotency_key: nextIdempotencyKey,
         proof_path: null,
@@ -353,17 +388,22 @@ export function BusinessOrderPaymentManager({
     setFormOpen(false)
   }
 
-  async function uploadProof(file: File, targetCustomerId: string, objectId: string) {
+  async function uploadProof(
+    file: File,
+    scope: 'customer' | 'order',
+    scopeId: string,
+    objectId: string,
+  ) {
     const extension = file.name.split('.').pop()?.toLowerCase()
     const allowedExtensions = ['jpg', 'jpeg', 'png', 'webp']
     const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
     if (!extension || !allowedExtensions.includes(extension) || !allowedTypes.includes(file.type)) {
       throw new Error('凭证仅支持 JPG、JPEG、PNG 或 WebP 图片')
     }
-    if (file.size > 5 * 1024 * 1024) throw new Error('凭证图片不能超过 5MB')
+    if (file.size > 20 * 1024 * 1024) throw new Error('凭证图片不能超过 20MB')
 
     const fileName = `${objectId}.${extension}`
-    const folder = `${profile.id}/customer/${targetCustomerId}`
+    const folder = `${profile.id}/${scope}/${scopeId}`
     const path = `${folder}/${fileName}`
     const supabase = createClient()
     const bucket = supabase.storage.from('business-payment-proofs')
@@ -396,8 +436,8 @@ export function BusinessOrderPaymentManager({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const file = fileRef.current?.files?.[0]
-    if (!customerId || (!file && !uploadedProofPath)) {
-      toast.error(!customerId ? '订单未关联客户' : '请上传收款截图凭证')
+    if (!file && !uploadedProofPath) {
+      toast.error('请上传收款截图凭证')
       return
     }
 
@@ -415,6 +455,15 @@ export function BusinessOrderPaymentManager({
     }
     if (allocatedAmount > transferAmount + 0.005) {
       toast.error('分摊合计不能超过转账金额')
+      return
+    }
+    if (
+      isOrderScoped &&
+      (nextAllocations.length !== 1 ||
+        nextAllocations[0].order_id !== orderId ||
+        Math.abs(allocatedAmount - transferAmount) > 0.005)
+    ) {
+      toast.error('无客户订单的转账必须全额分摊到当前订单')
       return
     }
     const needsCorrection = allocationsNeedCorrection(allocationDraft)
@@ -437,13 +486,16 @@ export function BusinessOrderPaymentManager({
 
     startTransition(async () => {
       try {
+        const scope = isOrderScoped ? 'order' : 'customer'
+        const scopeId = customerId ?? orderId
         let proofPath = uploadedProofPath
         if (!proofPath) {
           if (!file) throw new Error('请上传收款截图凭证')
-          proofPath = await uploadProof(file, customerId, idempotencyKey)
+          proofPath = await uploadProof(file, scope, scopeId, idempotencyKey)
           setUploadedProofPath(proofPath)
           writePendingUpload({
-            customer_id: customerId,
+            scope,
+            scope_id: scopeId,
             currency,
             idempotency_key: idempotencyKey,
             proof_path: proofPath,
@@ -451,6 +503,7 @@ export function BusinessOrderPaymentManager({
         }
         const result = await recordBusinessCustomerTransfer({
           customer_id: customerId,
+          order_id: isOrderScoped ? orderId : null,
           currency,
           amount: transferAmount,
           exchange_rate_to_cny: rate,
@@ -465,9 +518,11 @@ export function BusinessOrderPaymentManager({
         if (!result.ok) throw new Error(result.error ?? '登记客户转账失败')
 
         toast.success(
-          allocatedAmount < transferAmount
-            ? '客户转账已登记，未分摊余额已计入预收款'
-            : '客户转账及分摊已登记',
+          isOrderScoped
+            ? '订单转账及分摊已登记'
+            : allocatedAmount < transferAmount
+              ? '客户转账已登记，未分摊余额已计入预收款'
+              : '客户转账及分摊已登记',
         )
         clearPendingUpload()
         setFormOpen(false)
@@ -578,18 +633,22 @@ export function BusinessOrderPaymentManager({
       <CardHeader className="space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle className="text-base">客户转账与订单分摊</CardTitle>
+            <CardTitle className="text-base">
+              {isOrderScoped ? '订单转账与收款分摊' : '客户转账与订单分摊'}
+            </CardTitle>
             <p className="mt-1 text-sm text-muted-foreground">
-              转账可分摊至同客户、同币种的多个订单，剩余金额自动保留为客户预收款。
+              {isOrderScoped
+                ? '未关联客户的订单仅可登记并全额分摊至当前订单，不产生预收余额。'
+                : '转账可分摊至同客户、同币种的多个订单，剩余金额自动保留为客户预收款。'}
             </p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" disabled={loading || pending} onClick={() => void loadData()}>
               <RefreshCw className="h-4 w-4" />刷新
             </Button>
-            {canManage && customerId && (
+            {canManage && !loading && !loadError && (
               <Button size="sm" onClick={openForm}>
-                <Plus className="h-4 w-4" />登记客户转账
+                <Plus className="h-4 w-4" />登记{isOrderScoped ? '订单' : '客户'}转账
               </Button>
             )}
           </div>
@@ -616,12 +675,14 @@ export function BusinessOrderPaymentManager({
               </div>
               {isOverdue && <div className="mt-1 text-xs font-medium text-destructive">已逾期，请尽快催收</div>}
             </div>
-            <div className="rounded-md border p-3">
-              <div className="text-xs text-muted-foreground">客户预收余额</div>
-              <div className="mt-1 font-semibold tabular-nums text-blue-700">
-                {formatCurrency(prepayment, settlement.currency)}
+            {!isOrderScoped && (
+              <div className="rounded-md border p-3">
+                <div className="text-xs text-muted-foreground">客户预收余额</div>
+                <div className="mt-1 font-semibold tabular-nums text-blue-700">
+                  {formatCurrency(prepayment, settlement.currency)}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </CardHeader>
@@ -692,7 +753,9 @@ export function BusinessOrderPaymentManager({
 
         {!loading && !loadError && transfers.length > 0 && (
           <div className="border-t pt-4">
-            <h3 className="mb-3 text-sm font-medium">该客户的 {currency} 转账</h3>
+            <h3 className="mb-3 text-sm font-medium">
+              该{isOrderScoped ? '订单' : '客户'}的 {currency} 转账
+            </h3>
             <div className="space-y-2">
               {transfers.map((transfer) => {
                 const available = transferAvailable(transfer)
@@ -710,7 +773,7 @@ export function BusinessOrderPaymentManager({
                           <Badge variant={transfer.voided_at ? 'secondary' : 'success'}>
                             {transfer.voided_at ? '已作废' : '有效'}
                           </Badge>
-                          {!transfer.voided_at && available > 0.005 && (
+                          {!isOrderScoped && !transfer.voided_at && available > 0.005 && (
                             <Badge variant="outline">预收余额 {formatCurrency(available, transfer.currency)}</Badge>
                           )}
                         </div>
@@ -731,7 +794,7 @@ export function BusinessOrderPaymentManager({
                         <Button variant="outline" size="sm" disabled={pending} onClick={() => handleViewProof(transfer)}>
                           <Eye className="h-4 w-4" />凭证
                         </Button>
-                        {canManage && !transfer.voided_at && available > 0.005 && availableOrders.length > 0 && (
+                        {!isOrderScoped && canManage && !transfer.voided_at && available > 0.005 && availableOrders.length > 0 && (
                           <Button variant="outline" size="sm" disabled={pending} onClick={() => openAllocation(transfer)}>
                             <WalletCards className="h-4 w-4" />使用预收款
                           </Button>
@@ -768,8 +831,12 @@ export function BusinessOrderPaymentManager({
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>登记客户转账</DialogTitle>
-            <DialogDescription>分摊可以留空；未分摊金额将作为该客户的预收款。</DialogDescription>
+            <DialogTitle>登记{isOrderScoped ? '订单' : '客户'}转账</DialogTitle>
+            <DialogDescription>
+              {isOrderScoped
+                ? '该订单未关联客户；转账必须全额分摊至当前订单，不产生预收余额。'
+                : '分摊可以留空；未分摊金额将作为该客户的预收款。'}
+            </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -786,7 +853,19 @@ export function BusinessOrderPaymentManager({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="transfer_amount">转账金额（{currency}）</Label>
-                <Input id="transfer_amount" type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} required />
+                <Input
+                  id="transfer_amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={amount}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    setAmount(value)
+                    if (isOrderScoped) setAllocationDraft({ [orderId]: value })
+                  }}
+                  required
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="transfer_rate">兑人民币汇率</Label>
@@ -797,7 +876,7 @@ export function BusinessOrderPaymentManager({
                 <Input id="received_at" type="datetime-local" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)} required />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="proof">收款截图（最大 5MB）</Label>
+                <Label htmlFor="proof">收款截图（最大 20MB）</Label>
                 <Input
                   ref={fileRef}
                   id="proof"
@@ -820,12 +899,13 @@ export function BusinessOrderPaymentManager({
 
             <div className="space-y-2 border-t pt-4">
               <div className="flex items-center justify-between">
-                <Label>订单分摊（可选）</Label>
+                <Label>订单分摊（{isOrderScoped ? '全额必填' : '可选'}）</Label>
                 <span className="text-xs text-muted-foreground">
-                  分摊 {formatCurrency(allocatedDraftTotal, currency)} · 预收 {formatCurrency(unallocatedDraft, currency)}
+                  分摊 {formatCurrency(allocatedDraftTotal, currency)}
+                  {!isOrderScoped && ` · 预收 ${formatCurrency(unallocatedDraft, currency)}`}
                 </span>
               </div>
-              {availableOrders.map((order) => {
+              {(isOrderScoped ? orders.filter((order) => order.id === orderId) : availableOrders).map((order) => {
                 const outstanding = Math.max(Number(order.total_amount) - (activePaidByOrder.get(order.id) ?? 0), 0)
                 return (
                   <div key={order.id} className={`grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center ${order.id === orderId ? 'border-primary/50' : ''}`}>
@@ -842,11 +922,13 @@ export function BusinessOrderPaymentManager({
                       placeholder="分摊金额"
                       value={allocationDraft[order.id] ?? ''}
                       onChange={(event) => setAllocationDraft((current) => ({ ...current, [order.id]: event.target.value }))}
+                      readOnly={isOrderScoped}
+                      className={isOrderScoped ? 'bg-muted/40' : undefined}
                     />
                   </div>
                 )
               })}
-              {availableOrders.length === 0 && <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">暂无可分摊订单，本次转账将全部计入预收款</div>}
+              {!isOrderScoped && availableOrders.length === 0 && <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">暂无可分摊订单，本次转账将全部计入预收款</div>}
             </div>
 
             {transferAllocationNeedsCorrection && (

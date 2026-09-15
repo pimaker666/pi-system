@@ -12,6 +12,9 @@ import {
   businessCustomProductLibraryFilterSchema,
   businessCustomProductStateInputSchema,
   businessCustomProductVersionInputSchema,
+  businessOrderAppendItemDeleteInputSchema,
+  businessOrderAppendItemEditInputSchema,
+  businessOrderAppendItemsInputSchema,
   businessOrderAttachmentInputSchema,
   businessOrderFinanceSchema,
   businessOrderInputSchema,
@@ -22,6 +25,7 @@ import {
   businessOrderSpecialCloseInputSchema,
   businessOrderVoidReasonSchema,
 } from '@/schemas/business-order'
+import type { BusinessOrderAppendItemEditInput } from '@/schemas/business-order'
 import type {
   BusinessCustomerPrepayment,
   BusinessCustomerTransfer,
@@ -38,6 +42,9 @@ import type {
   BusinessOrderShipment,
   BusinessOrderShipmentItem,
   BusinessOrderStatus,
+  Product,
+  ProductFinancial,
+  ProductGroup,
 } from '@/types'
 import type { ActionResult } from './products'
 
@@ -148,6 +155,8 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Default unit price is invalid', '定制产品默认单价不合法'],
     ['Reason cannot exceed', '原因不能超过 1000 字'],
     ['Product does not exist or is inactive', '订单中包含不存在或已停用的产品'],
+    ['Quantity is invalid', '产品数量不合法'],
+    ['Unit price is invalid', '成交单价不合法'],
     ['Catalog item requires only product_id', '目录产品明细只能指定产品 ID'],
     ['Custom item requires only', '定制产品明细必须指定产品及版本，且不能指定目录产品'],
     ['Invalid order item source_type', '订单明细来源类型不合法'],
@@ -157,7 +166,9 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Daily order item amounts must be non-negative', '每日订单明细金额不能为负且最多保留两位小数'],
     ['Daily order totals are incomplete', '每日订单汇总字段不完整'],
     ['Daily order totals must be non-negative', '每日订单汇总金额不能为负且最多保留两位小数'],
-    ['Total sales amount must equal', '总销售金额必须等于总产品实收加总运费实收'],
+    ['Total sales amount must equal', '实际实收总额必须等于总产品实收加总运费实收'],
+    ['Receivable and received amount difference reason is required', '应收与实收存在差额时必须填写原因'],
+    ['Receivable and received amount difference reason cannot exceed', '应收实收差额原因不能超过 1000 字'],
     ['Daily order shop does not exist', '所选店铺不存在'],
     ['Daily order shop is inactive', '所选店铺已停用'],
     ['Salesperson is not actively assigned to this shop', '所选业务员未有效分配到该店铺'],
@@ -172,13 +183,35 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Business order version conflict', '订单已被其他人修改，请刷新后重试'],
     ['Business order cannot be edited in current status', '当前订单状态不可编辑'],
     ['Completed or closed business order cannot be edited', '已完成或已关闭订单不可编辑'],
+    ['Closed business order cannot be adjusted', '已特殊关闭的订单不能追加产品'],
+    ['Completed business order is immutable', '已完成订单不可追加产品'],
+    ['Only approved orders can be adjusted by sales', '仅业务员/主管本人已审核的订单支持直接调整，草稿请使用编辑订单'],
+    ['Only approved orders can be adjusted', '仅已审核的订单支持直接调整'],
+    ['Sales user cannot adjust another owner business order', '不能调整其他业务员名下的订单'],
+    ['Order item product cannot be replaced by an adjustment', '不能更换已有明细的产品'],
+    ['Order item id does not belong to order', '订单明细不属于该订单'],
+    ['Only appended order items can be modified', '只有追加的产品明细支持修改，首次下单明细不可修改'],
+    ['Only appended order items can be deleted', '只有追加的产品明细支持删除，首次下单明细不可删除'],
+    ['Order item with shipment or return activity cannot be deleted', '该明细已有发货或退货记录，不能删除'],
+    ['Quantity cannot be below net shipped quantity', '数量不能低于净发货数量'],
+    ['Adjustment does not change the order', '本次调整没有改变订单内容'],
+    ['Invalid adjustment action', '不支持的明细操作'],
+    ['Daily shipping category is invalid', '发货分类不合法'],
+    ['Product received amount is invalid', '产品实收金额不合法'],
+    ['Logistics fee amount is invalid', '运费实收金额不合法'],
+    ['Sales total amount is invalid', '明细实收合计不合法'],
+    ['Adjustment items count must be between', '加单明细条数必须在 1 到 500 之间'],
+    ['Each adjustment order item id must be unique', '加单明细存在重复的明细 ID'],
+    ['Adjustment reason type must be', '加单原因类型不合法'],
+    ['Adjustment reason cannot exceed', '加单原因不能超过 1000 字'],
+    ['Idempotency key is invalid', '加单请求标识不合法，请关闭弹窗后重试'],
     ['Business order daily fields cannot be changed after payment or shipment', '订单已有收款或发货记录，不能修改每日订单字段'],
     ['Business order item daily fields cannot be changed after payment or shipment', '订单明细已有收款或发货记录，不能修改每日订单字段'],
     ['Business order attachments cannot be changed in current status', '当前订单状态不能增删附件'],
     ['Business order attachment does not exist', '业务订单附件不存在'],
     ['Business order attachment is already removed', '业务订单附件已移除'],
     ['Business order cannot have more than 10 attachments', '每条订单最多 10 张附件'],
-    ['Invalid attachment type or size', '附件必须为 JPEG/PNG，且单张不能超过 5MB'],
+    ['Invalid attachment type or size', '附件必须为 JPEG/PNG，且单张不能超过 20MB'],
     ['Invalid attachment path', '附件路径不合法'],
     ['Attachment object does not exist', '附件尚未成功上传，请重新上传'],
     ['Attachment object metadata does not match', '附件类型或大小与已上传文件不一致'],
@@ -323,14 +356,17 @@ function customVersionPayload(
   input: ReturnType<typeof businessCustomProductVersionInputSchema.parse>,
 ) {
   return {
+    product_group_id: input.product_group_id,
     code: input.code,
     name: input.name,
     description: nullableText(input.description),
     specification: nullableText(input.specification),
     unit: input.unit,
     image_url: nullableText(input.image_url),
+    quantity: input.quantity,
     default_unit_price: input.default_unit_price,
     default_currency: input.default_currency,
+    received_amount: input.received_amount ?? null,
   }
 }
 
@@ -354,32 +390,33 @@ function orderItemsPayload(
 
 export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOrderActionResult> {
   const profile = await requireApproved()
-  if (profile.role === 'finance') {
-    return { ok: false, error: '财务不能创建业务订单' }
-  }
-  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
-    return { ok: false, error: '仅业务员、业务主管或管理员可以创建业务订单' }
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管、管理员或财务可以创建业务订单' }
   }
 
   const parsed = businessOrderInputSchema.safeParse(rawInput)
   if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
 
   const input = parsed.data
+  if (!input.customer_id && !['admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '业务员和业务主管建单时必须选择客户' }
+  }
+
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('create_business_order_v3', {
+  const { data, error } = await supabase.rpc('create_business_order_v4', {
     p_customer_id: input.customer_id,
     p_order_date: input.order_date,
     p_fulfillment_type: input.fulfillment_type,
     p_currency: input.currency,
     p_exchange_rate_to_cny: input.exchange_rate_to_cny,
     p_shipping_fee: input.shipping_fee,
-    p_tracking_number: nullableText(input.tracking_number),
+    p_tracking_number: null,
     p_sales_notes: nullableText(input.sales_notes),
     p_items: orderItemsPayload(input.items),
     p_payment_due_date: nullableText(input.payment_due_date),
     p_shop_id: input.shop_id,
     p_salesperson_id: input.salesperson_id,
-    p_external_order_number: input.external_order_number,
+    p_external_order_number: nullableText(input.external_order_number),
     p_daily_shipping_date: input.daily_shipping_date,
     p_daily_shipping_number: nullableText(input.daily_shipping_number),
     p_daily_payment_category: input.daily_payment_category,
@@ -389,6 +426,10 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
     p_total_shipping_received_overridden: input.total_shipping_received_overridden,
     p_total_sales_amount: input.total_sales_amount,
     p_total_sales_overridden: input.total_sales_overridden,
+    p_receivable_received_difference_reason: nullableText(
+      input.receivable_received_difference_reason,
+    ),
+    p_payment_account: nullableText(input.payment_account),
   })
 
   if (error) return { ok: false, error: businessOrderError(error.message, '创建业务订单失败') }
@@ -406,10 +447,7 @@ export async function updateBusinessOrder(
   reason = '',
 ): Promise<BusinessOrderActionResult> {
   const profile = await requireApproved()
-  if (profile.role === 'finance') {
-    return { ok: false, error: '财务不能编辑业务订单' }
-  }
-  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
     return { ok: false, error: '当前角色不能编辑业务订单' }
   }
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
@@ -423,7 +461,7 @@ export async function updateBusinessOrder(
 
   const input = parsed.data
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('update_business_order_v3', {
+  const { data, error } = await supabase.rpc('update_business_order_v4', {
     p_order_id: id,
     p_expected_version: expectedVersion,
     p_customer_id: input.customer_id,
@@ -432,14 +470,16 @@ export async function updateBusinessOrder(
     p_currency: input.currency,
     p_exchange_rate_to_cny: input.exchange_rate_to_cny,
     p_shipping_fee: input.shipping_fee,
-    p_tracking_number: nullableText(input.tracking_number),
+    p_tracking_number: null,
     p_sales_notes: nullableText(input.sales_notes),
     p_items: orderItemsPayload(input.items),
     p_payment_due_date: nullableText(input.payment_due_date),
-    p_reason: nullableText(parsedReason.data),
+    p_reason: nullableText(
+      parsedReason.data || input.receivable_received_difference_reason,
+    ),
     p_shop_id: input.shop_id,
     p_salesperson_id: input.salesperson_id,
-    p_external_order_number: input.external_order_number,
+    p_external_order_number: nullableText(input.external_order_number),
     p_daily_shipping_date: input.daily_shipping_date,
     p_daily_shipping_number: nullableText(input.daily_shipping_number),
     p_daily_payment_category: input.daily_payment_category,
@@ -449,6 +489,10 @@ export async function updateBusinessOrder(
     p_total_shipping_received_overridden: input.total_shipping_received_overridden,
     p_total_sales_amount: input.total_sales_amount,
     p_total_sales_overridden: input.total_sales_overridden,
+    p_receivable_received_difference_reason: nullableText(
+      input.receivable_received_difference_reason,
+    ),
+    p_payment_account: nullableText(input.payment_account),
   })
 
   if (error) return { ok: false, error: businessOrderError(error.message, '更新业务订单失败') }
@@ -463,8 +507,8 @@ export async function bindBusinessOrderAttachment(
   rawInput: unknown,
 ): Promise<BusinessOrderAttachmentActionResult> {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
-    return { ok: false, error: '仅业务员、业务主管或管理员可以绑定订单附件' }
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管、管理员或财务可以绑定订单附件' }
   }
 
   const parsed = businessOrderAttachmentInputSchema.safeParse(rawInput)
@@ -515,8 +559,8 @@ export async function removeBusinessOrderAttachment(
   attachmentId: string,
 ): Promise<BusinessOrderAttachmentActionResult> {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
-    return { ok: false, error: '仅业务员、业务主管或管理员可以移除订单附件' }
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管、管理员或财务可以移除订单附件' }
   }
   const parsedId = z.string().uuid('附件 ID 不合法').safeParse(attachmentId)
   if (!parsedId.success) return { ok: false, error: firstValidationError(parsedId.error) }
@@ -546,11 +590,9 @@ export async function createBusinessCustomProduct(
 
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('create_business_custom_product', {
-    p_customer_id: parsed.data.customer_id,
     p_initial_version: parsed.data.initial_version
       ? customVersionPayload(parsed.data.initial_version)
       : null,
-    p_is_shared: parsed.data.is_shared,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '创建定制产品失败') }
 
@@ -580,6 +622,7 @@ export async function addBusinessCustomProductVersion(
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('add_business_custom_product_version', {
     p_custom_product_id: customProductId,
+    p_product_group_id: input.product_group_id,
     p_code: input.code,
     p_name: input.name,
     p_description: nullableText(input.description),
@@ -588,6 +631,8 @@ export async function addBusinessCustomProductVersion(
     p_image_url: nullableText(input.image_url),
     p_default_unit_price: input.default_unit_price,
     p_default_currency: input.default_currency,
+    p_quantity: input.quantity,
+    p_received_amount: input.received_amount ?? null,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '新增定制产品版本失败') }
 
@@ -609,7 +654,6 @@ export async function setBusinessCustomProductState(
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('set_business_custom_product_state', {
     p_custom_product_id: customProductId,
-    p_is_shared: parsed.data.is_shared,
     p_is_archived: parsed.data.is_archived,
     p_reason: nullableText(parsed.data.reason),
   })
@@ -622,14 +666,10 @@ export async function setBusinessCustomProductState(
   return { ok: true, product }
 }
 
-export async function listBusinessCustomProductsForCustomer(
-  customerId: string,
-): Promise<BusinessCustomProductListResult> {
+export async function listBusinessCustomProducts(): Promise<BusinessCustomProductListResult> {
   await requireApproved()
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('list_business_custom_products_for_customer', {
-    p_customer_id: customerId,
-  })
+  const { data, error } = await supabase.rpc('list_business_custom_products')
   if (error) return { ok: false, error: businessOrderError(error.message, '读取定制产品失败') }
 
   return { ok: true, data: (data ?? []) as BusinessCustomProductListItem[] }
@@ -645,8 +685,7 @@ export async function listBusinessCustomProductsLibrary(
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('list_business_custom_products_library', {
     p_search: nullableText(parsed.data.search),
-    p_customer_id: parsed.data.customer_id ?? null,
-    p_scope: parsed.data.scope,
+    p_product_group_id: parsed.data.product_group_id ?? null,
     p_status: parsed.data.status,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '读取定制产品库失败') }
@@ -667,8 +706,9 @@ export async function recordBusinessCustomerTransfer(
   const input = parsed.data
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('record_business_customer_transfer', {
+  const { data, error } = await supabase.rpc('record_business_customer_transfer_v2', {
     p_customer_id: input.customer_id,
+    p_order_id: input.order_id,
     p_currency: input.currency,
     p_amount: input.amount,
     p_exchange_rate_to_cny: input.exchange_rate_to_cny,
@@ -1053,4 +1093,123 @@ export async function completeBusinessOrder(id: string, note = ''): Promise<Acti
   const profile = await requireFinanceAccess()
   if (profile.role !== 'finance') return { ok: false, error: '仅财务可以完成订单' }
   return transitionBusinessOrder(id, 'completed', note)
+}
+
+export interface BusinessOrderAppendCatalogResult extends ActionResult {
+  data?: { products: Product[]; productGroups: ProductGroup[] }
+}
+
+export async function listBusinessOrderAppendCatalog(): Promise<BusinessOrderAppendCatalogResult> {
+  await requireApproved()
+  const supabase = await createClient()
+  const [productsResult, groupsResult, financialsResult] = await Promise.all([
+    supabase.from('products').select('*').eq('is_active', true).order('name'),
+    supabase.from('product_groups').select('*').order('sort_order'),
+    supabase.from('product_financials').select('*'),
+  ])
+  if (productsResult.error) {
+    return { ok: false, error: `读取产品列表失败：${productsResult.error.message}` }
+  }
+  if (groupsResult.error) {
+    return { ok: false, error: `读取产品分组失败：${groupsResult.error.message}` }
+  }
+  const financials = (financialsResult.data ?? []) as ProductFinancial[]
+  const financialByProductId = new Map(financials.map((item) => [item.product_id, item]))
+  const products = ((productsResult.data ?? []) as Product[]).map((product) => ({
+    ...product,
+    financial_number: financialByProductId.get(product.id)?.financial_number ?? null,
+  }))
+  return {
+    ok: true,
+    data: {
+      products,
+      productGroups: (groupsResult.data ?? []) as ProductGroup[],
+    },
+  }
+}
+
+export async function appendBusinessOrderItems(rawInput: unknown): Promise<ActionResult> {
+  await requireApproved()
+  const parsed = businessOrderAppendItemsInputSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('adjust_business_order_items', {
+    p_order_id: parsed.data.order_id,
+    p_expected_version: parsed.data.expected_version,
+    p_items: parsed.data.items,
+    p_reason_type: 'add_on',
+    p_reason: nullableText(parsed.data.reason),
+    p_idempotency_key: crypto.randomUUID(),
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '追加产品失败') }
+  revalidateBusinessOrders(parsed.data.order_id)
+  return { ok: true }
+}
+
+export async function editBusinessOrderAppendedItem(rawInput: unknown): Promise<ActionResult> {
+  await requireApproved()
+  const parsed = businessOrderAppendItemEditInputSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('adjust_business_order_items', {
+    p_order_id: parsed.data.order_id,
+    p_expected_version: parsed.data.expected_version,
+    p_items: [
+      {
+        id: parsed.data.item_id,
+        quantity: parsed.data.quantity,
+        unit_price: parsed.data.unit_price,
+        ...optionalDailyPayload(parsed.data),
+      },
+    ],
+    p_reason_type: 'quantity_fix',
+    p_reason: nullableText(parsed.data.reason),
+    p_idempotency_key: crypto.randomUUID(),
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '修改追加明细失败') }
+  revalidateBusinessOrders(parsed.data.order_id)
+  return { ok: true }
+}
+
+export async function deleteBusinessOrderAppendedItem(rawInput: unknown): Promise<ActionResult> {
+  await requireApproved()
+  const parsed = businessOrderAppendItemDeleteInputSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('adjust_business_order_items', {
+    p_order_id: parsed.data.order_id,
+    p_expected_version: parsed.data.expected_version,
+    p_items: [{ id: parsed.data.item_id, action: 'delete' }],
+    p_reason_type: 'quantity_fix',
+    p_reason: nullableText(parsed.data.reason),
+    p_idempotency_key: crypto.randomUUID(),
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '删除追加明细失败') }
+  revalidateBusinessOrders(parsed.data.order_id)
+  return { ok: true }
+}
+
+function optionalDailyPayload(
+  data: Pick<
+    BusinessOrderAppendItemEditInput,
+    | 'daily_shipping_category'
+    | 'product_received_amount'
+    | 'product_received_overridden'
+    | 'logistics_fee_amount'
+    | 'sales_total_amount'
+    | 'sales_total_overridden'
+  >,
+) {
+  if (data.daily_shipping_category === undefined) return {}
+  return {
+    daily_shipping_category: data.daily_shipping_category,
+    product_received_amount: data.product_received_amount,
+    product_received_overridden: data.product_received_overridden,
+    logistics_fee_amount: data.logistics_fee_amount,
+    sales_total_amount: data.sales_total_amount,
+    sales_total_overridden: data.sales_total_overridden,
+  }
 }

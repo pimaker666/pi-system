@@ -59,6 +59,7 @@ const fields: ReadonlyArray<readonly [BusinessDailyImportField, string, FieldKin
   ['product_received_amount', '产品实收金额', 'money'],
   ['logistics_fee_amount', '运费实收金额', 'money'],
   ['sales_total_amount', '销售总金额', 'money'],
+  ['receivable_received_difference_reason', '应收实收差额原因', 'text'],
   ['daily_payment_category', '收款分类', 'payment'],
   ['sales_notes', '备注', 'text'],
   ['currency', '币种', 'currency'],
@@ -78,7 +79,7 @@ const selectClass = 'h-9 rounded-md border bg-background px-2'
  * 每日订单批量导入（恢复版）。
  *
  * 与冻结前的旧导入不同：解析后的行会按「订单号 + 店铺 + 业务员 + 客户」合并成一张
- * business_orders 订单的多条明细，再逐张调用 create_business_order_v3 写入，
+ * business_orders 订单的多条明细，再逐张调用 create_business_order_v4 写入，
  * 因此不再触碰已冻结的 finance_daily_* 写链路。
  */
 export function BusinessDailyOrderImporter({ shops, salespeople, products, customers }: Props) {
@@ -311,7 +312,8 @@ export function BusinessDailyOrderImporter({ shops, salespeople, products, custo
         <p className="mt-1 break-all">{BUSINESS_DAILY_IMPORT_COLUMNS.join(' / ')}</p>
         <p className="mt-2">
           同一「订单号 + 店铺 + 业务员 + 客户」的多行会合并成一张订单的多条明细，
-          下单日期、发货日期、发货单号、收款分类、备注、币种与汇率必须在这些行里保持一致。
+          下单日期、发货日期、发货单号、收款分类、应收实收差额原因、备注、币种与汇率必须在这些行里保持一致。
+          应收与实际实收不一致时，必须填写差额原因。
         </p>
       </div>
 
@@ -369,7 +371,8 @@ export function BusinessDailyOrderImporter({ shops, salespeople, products, custo
       )}
 
       <p className="text-sm text-muted-foreground">
-        金额可写成“CNY 1,234.56”或“USD 1,234.56”；产品实收留空按单价乘数量计算，销售总金额留空按产品实收加运费实收计算。
+        金额可写成“CNY 1,234.56”或“USD 1,234.56”；产品实收留空按单价乘数量计算，销售总金额（即该行实际实收）留空按产品实收加运费实收计算。
+        订单应收按“数量 × 销售单价 + 运费”计算，与实际实收不一致属正常情况，但必须填写差额原因。
         Excel 内嵌截图不会自动导入，请保存后进入订单编辑页补传。
       </p>
     </div>

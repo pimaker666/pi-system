@@ -10,6 +10,7 @@ import {
   dailyOrderShopGroupSchema,
   dailyOrderShopSchema,
   dailyOrderTotalsSchema,
+  paymentAccountSchema,
   type DailyOrderInput,
 } from '@/schemas/daily-order'
 import type { ActionResult } from './products'
@@ -193,6 +194,32 @@ export async function deleteDailyOrderShopGroup(id: string): Promise<ActionResul
   if (!parsed.success || !parsed.data) return { ok: false, error: '分组无效' }
   const supabase = await createClient()
   const { error } = await supabase.rpc('delete_finance_daily_order_shop_group', { p_group_id: parsed.data })
+  if (error) return { ok: false, error: mapError(error.message) }
+  revalidateDailyOrders()
+  return { ok: true }
+}
+
+export async function savePaymentAccount(raw: unknown): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const parsed = paymentAccountSchema.safeParse(raw)
+  if (!parsed.success) return { ok: false, error: firstError(parsed.error) }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('save_payment_account', {
+    p_account_id: parsed.data.id ?? null,
+    p_name: parsed.data.name,
+    p_is_active: parsed.data.is_active,
+  })
+  if (error) return { ok: false, error: mapError(error.message) }
+  revalidateDailyOrders()
+  return { ok: true }
+}
+
+export async function deletePaymentAccount(id: string): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const parsed = paymentAccountSchema.shape.id.safeParse(id)
+  if (!parsed.success || !parsed.data) return { ok: false, error: '账户无效' }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('delete_payment_account', { p_account_id: parsed.data })
   if (error) return { ok: false, error: mapError(error.message) }
   revalidateDailyOrders()
   return { ok: true }

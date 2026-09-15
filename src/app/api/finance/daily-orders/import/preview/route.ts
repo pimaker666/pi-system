@@ -24,7 +24,7 @@ function cellValue(value: ExcelJS.CellValue) {
 }
 
 export async function POST(request: Request) {
-  // 导入最终走 create_business_order_v3，写权限由该 RPC 与 RLS 判定；
+  // 导入最终走 create_business_order_v4，写权限由该 RPC 与 RLS 判定；
   // 预览只做解析与基础数据匹配，因此这里按建单角色放行即可。
   const profile = await requireApproved()
   if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {

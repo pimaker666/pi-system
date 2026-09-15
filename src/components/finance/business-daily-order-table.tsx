@@ -23,7 +23,9 @@ import {
 import {
   activeBusinessOrderAttachments,
   businessDailyItemAmounts,
+  businessDailyOrderTotals,
   canEditBusinessDailyOrder,
+  formatBusinessDailyShippingProgress,
   sortedBusinessDailyItems,
   type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
@@ -40,7 +42,7 @@ export interface BusinessDailyOrderTableProps {
 
 /**
  * 恢复后的每日订单台账：表头字段跨明细行合并，产品字段逐行展示，
- * 列顺序与旧版 17 列完全一致，数据来自 business_orders 单一事实源。
+ * 列顺序与每日订单导出完全一致，数据来自 business_orders 单一事实源。
  */
 export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTableProps) {
   const [pending, startTransition] = useTransition()
@@ -64,7 +66,7 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
 
   return (
     <div className="overflow-x-auto rounded-md border">
-      <Table className="min-w-[2450px]">
+      <Table className="min-w-[2750px]">
         <TableHeader>
           <TableRow>
             {DAILY_ORDER_COLUMNS.map((label) => (
@@ -78,7 +80,11 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
             const rows = items.length > 0 ? items : [null]
             const rowSpan = rows.length
             const canEdit = canEditBusinessDailyOrder(order, actor)
-            const salesperson = displayProfileName(order.salesperson, order.salesperson_name_snapshot)
+            const salesperson = displayProfileName(
+              order.salesperson,
+              order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
+            )
+            const totals = businessDailyOrderTotals(order)
 
             return rows.map((item, rowIndex) => {
               const isFirstRow = rowIndex === 0
@@ -148,6 +154,18 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
                         <div className="text-xs font-normal text-muted-foreground">
                           {getBusinessOrderCustomerName(order.customer_snapshot)}
                         </div>
+                        <div className="mt-1 space-y-0.5 text-xs font-normal tabular-nums">
+                          <div>应收 {formatDailyMoney(totals.receivable, order.currency)}</div>
+                          <div>实收 {formatDailyMoney(totals.salesTotal, order.currency)}</div>
+                          <div className={totals.difference === 0 ? 'text-muted-foreground' : 'text-amber-700'}>
+                            差额 {formatDailyMoney(totals.difference, order.currency)}
+                          </div>
+                          {totals.difference !== 0 && order.receivable_received_difference_reason && (
+                            <div className="max-w-48 whitespace-normal text-muted-foreground">
+                              原因：{order.receivable_received_difference_reason}
+                            </div>
+                          )}
+                        </div>
                         <div className="mt-1 flex flex-wrap items-center gap-1">
                           {order.closed_at ? (
                             <Badge variant="secondary">特殊关闭</Badge>
@@ -167,7 +185,7 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
                         {order.daily_shipping_date ?? '—'}
                       </TableCell>
                       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
-                        {order.daily_shipping_number || order.tracking_number || '—'}
+                        {order.daily_shipping_number || order.payment_account || '—'}
                       </TableCell>
                     </>
                   )}
@@ -184,6 +202,9 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
                   <TableCell className="tabular-nums">
                     {item ? Number(item.quantity).toLocaleString() : '—'}
                   </TableCell>
+                  <TableCell className="whitespace-nowrap tabular-nums">
+                    {item ? formatBusinessDailyShippingProgress(order, item) : '—'}
+                  </TableCell>
                   <TableCell>
                     {amounts ? formatDailyMoney(amounts.unitPrice, order.currency) : '—'}
                   </TableCell>
@@ -195,12 +216,15 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
                       ? formatDailyMoney(amounts.logisticsFee, order.currency)
                       : '—'}
                   </TableCell>
-                  <TableCell className="font-medium">
-                    {amounts ? formatDailyMoney(amounts.salesTotal, order.currency) : '—'}
-                  </TableCell>
 
                   {isFirstRow && (
                     <>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                        {formatDailyMoney(Number(order.total_amount), order.currency)}
+                      </TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                        {formatDailyMoney(order.outstanding_amount, order.currency)}
+                      </TableCell>
                       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
                         {order.daily_payment_category
                           ? PAYMENT_LABELS[order.daily_payment_category]

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, ChevronsUpDown, Plus } from 'lucide-react'
+import { Check, ChevronsUpDown, Plus, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,8 +27,9 @@ interface CustomerComboboxProps {
   customers: Customer[]
   groups: CustomerGroup[]
   value: Customer | null
-  onChange: (customer: Customer) => void
+  onChange: (customer: Customer | null) => void
   allowCreate?: boolean
+  allowClear?: boolean
 }
 
 export function CustomerCombobox({
@@ -37,6 +38,7 @@ export function CustomerCombobox({
   value,
   onChange,
   allowCreate = true,
+  allowClear = false,
 }: CustomerComboboxProps) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -104,6 +106,18 @@ export function CustomerCombobox({
           </Command>
         </PopoverContent>
       </Popover>
+
+      {allowClear && value && (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="清除客户"
+          onClick={() => onChange(null)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      )}
 
       {allowCreate && (
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>

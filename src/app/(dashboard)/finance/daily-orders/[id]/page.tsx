@@ -2,10 +2,9 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import {
-  BusinessOrderActions,
-  BusinessOrderFinancePanel,
-} from '@/components/finance/business-order-actions'
+import { BusinessOrderActions, BusinessOrderFinancePanel } from '@/components/finance/business-order-actions'
+import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
+import { BusinessOrderItemAdjustments } from '@/components/finance/business-order-item-adjustments'
 import { BusinessLifecycleStatus } from '@/components/finance/business-lifecycle-status'
 import { BusinessOrderPaymentManager } from '@/components/finance/business-order-payment-manager'
 import {
@@ -26,6 +25,7 @@ import {
 } from '@/components/ui/table'
 import {
   getBusinessOrderAttachmentUrl,
+  getBusinessOrderEditConstraints,
   getBusinessOrderSettlementSummary,
 } from '@/lib/actions/business-orders'
 import { requireApproved } from '@/lib/auth'
@@ -110,6 +110,35 @@ export default async function BusinessOrderDetailPage({
     business_order_returns?: BusinessOrderReturnView[]
   }
   order.business_order_items.sort((a, b) => a.sort_order - b.sort_order)
+  // 同一产品多次加单各自独立成行，此处把同一产品的历次下单合并出累计数量与金额。
+  const itemProductSummaries = (() => {
+    const groups = new Map<
+      string,
+      { name: string; sku: string; unit: string; times: number; quantity: number; amount: number }
+    >()
+    for (const item of order.business_order_items) {
+      const key =
+        item.source_type === 'custom'
+          ? `custom:${item.custom_product_id ?? item.id}`
+          : `catalog:${item.product_id ?? item.id}`
+      const current = groups.get(key)
+      if (current) {
+        current.times += 1
+        current.quantity += Number(item.quantity)
+        current.amount += Number(item.line_amount)
+      } else {
+        groups.set(key, {
+          name: item.name_snapshot,
+          sku: item.sku_snapshot,
+          unit: item.unit_snapshot,
+          times: 1,
+          quantity: Number(item.quantity),
+          amount: Number(item.line_amount),
+        })
+      }
+    }
+    return [...groups.values()].filter((group) => group.times > 1)
+  })()
   order.business_order_payments.sort(
     (a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime(),
   )
@@ -128,9 +157,21 @@ export default async function BusinessOrderDetailPage({
     throw new Error(settlementResult.error ?? '订单结算汇总读取失败')
   }
   const settlement = settlementResult.data
+  const editConstraintsResult = await getBusinessOrderEditConstraints(order.id)
+  const canEditOrder = editConstraintsResult.ok
+    ? editConstraintsResult.data?.can_edit_order
+    : undefined
 
   // 0034 之后录入的每日订单会带齐三组总额；历史订单为 null，只展示原有金额区。
   const hasDailyFields = order.total_sales_amount !== null
+  const canAdjustItems = canAdjustBusinessOrderItems(order, profile)
+  const hasAppendedItems = order.business_order_items.some((item) => item.origin === 'append')
+  const showItemAdjustments = canAdjustItems && hasAppendedItems
+  const actualReceived = hasDailyFields
+    ? Number(order.total_sales_amount)
+    : Number(order.total_amount)
+  const receivableReceivedDifference =
+    Math.round((Number(order.total_amount) - actualReceived) * 100) / 100
   const attachments = (order.business_order_attachments ?? []).filter(
     (attachment) => attachment.status === 'active',
   )
@@ -235,7 +276,13 @@ export default async function BusinessOrderDetailPage({
             </p>
           </div>
         </div>
-        <BusinessOrderActions order={order} profile={profile} financeReady={financeReady} />
+        <BusinessOrderActions
+          order={order}
+          profile={profile}
+          financeReady={financeReady}
+          canEditOrder={canEditOrder}
+          hasDailyFields={hasDailyFields}
+        />
       </div>
 
       {order.review_note && (
@@ -271,7 +318,10 @@ export default async function BusinessOrderDetailPage({
               {customer.address && <div className="text-muted-foreground">{customer.address}</div>}
               <div className="border-t pt-2">
                 <span className="text-muted-foreground">业务员：</span>
-                {displayProfileName(order.salesperson, order.salesperson_name_snapshot)}
+                {displayProfileName(
+                  order.salesperson,
+                  order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
+                )}
               </div>
               <div>
                 <span className="text-muted-foreground">店铺：</span>
@@ -298,8 +348,8 @@ export default async function BusinessOrderDetailPage({
                 {order.daily_payment_category ? PAYMENT_LABELS[order.daily_payment_category] : '—'}
               </div>
               <div>
-                <span className="text-muted-foreground">货运单号：</span>
-                {order.tracking_number || '—'}
+                <span className="text-muted-foreground">收款账户：</span>
+                {order.payment_account || '—'}
               </div>
               <div>
                 <span className="text-muted-foreground">业务备注：</span>
@@ -313,9 +363,9 @@ export default async function BusinessOrderDetailPage({
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-muted-foreground">产品小计</span><span>{formatCurrency(Number(order.items_subtotal), order.currency)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">运费</span><span>{formatCurrency(Number(order.shipping_fee), order.currency)}</span></div>
-              <div className="flex justify-between border-t pt-2 text-base font-semibold"><span>订单总额</span><span>{formatCurrency(Number(order.total_amount), order.currency)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">兑人民币汇率</span><span>{Number(order.exchange_rate_to_cny).toLocaleString('zh-CN', { maximumFractionDigits: 8 })}</span></div>
-              <div className="flex justify-between font-medium"><span>折合人民币</span><span>{formatCny(Number(order.total_cny))}</span></div>
+              <div className="flex justify-between border-t pt-2 text-base font-semibold"><span>订单应收</span><span>{formatCurrency(Number(order.total_amount), order.currency)}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">兑人民币汇率</span><span>{order.exchange_rate_to_cny === null ? '—' : Number(order.exchange_rate_to_cny).toLocaleString('zh-CN', { maximumFractionDigits: 8 })}</span></div>
+              <div className="flex justify-between font-medium"><span>折合人民币</span><span>{order.total_cny === null ? '—' : formatCny(Number(order.total_cny))}</span></div>
               {hasDailyFields && (
                 <div className="space-y-2 border-t pt-2">
                   <div className="flex justify-between">
@@ -332,10 +382,22 @@ export default async function BusinessOrderDetailPage({
                   </div>
                   <div className="flex justify-between font-medium">
                     <span>
-                      总销售金额{order.total_sales_overridden ? '（已手工覆盖）' : ''}
+                      实际实收总额{order.total_sales_overridden ? '（已手工覆盖）' : ''}
                     </span>
-                    <span>{formatCurrency(Number(order.total_sales_amount), order.currency)}</span>
+                    <span>{formatCurrency(actualReceived, order.currency)}</span>
                   </div>
+                  <div className="flex justify-between border-t pt-2 font-semibold">
+                    <span>应收 − 实收差额</span>
+                    <span className={receivableReceivedDifference === 0 ? undefined : 'text-amber-700'}>
+                      {formatCurrency(receivableReceivedDifference, order.currency)}
+                    </span>
+                  </div>
+                  {receivableReceivedDifference !== 0 && (
+                    <div className="rounded-md bg-muted p-2 text-xs">
+                      <span className="font-medium">差额原因：</span>
+                      {order.receivable_received_difference_reason || '未填写'}
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
@@ -366,9 +428,10 @@ export default async function BusinessOrderDetailPage({
                         <TableHead>发货分类</TableHead>
                         <TableHead className="text-right">产品实收</TableHead>
                         <TableHead className="text-right">运费实收</TableHead>
-                        <TableHead className="text-right">销售金额</TableHead>
+                        <TableHead className="text-right">明细实收合计</TableHead>
                       </>
                     )}
+                    {showItemAdjustments && <TableHead className="text-right">操作</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -424,10 +487,50 @@ export default async function BusinessOrderDetailPage({
                           </TableCell>
                         </>
                       )}
+                      {showItemAdjustments && (
+                        <TableCell className="text-right">
+                          {item.origin === 'append' ? (
+                            <BusinessOrderItemAdjustments
+                              orderId={order.id}
+                              orderVersion={order.version}
+                              currency={order.currency}
+                              hasDailyFields={hasDailyFields}
+                              item={item}
+                            />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">首次下单</span>
+                          )}
+                        </TableCell>
+                      )}
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              {itemProductSummaries.length > 0 && (
+                <div className="mt-4 border-t pt-3">
+                  <div className="mb-2 text-sm font-medium">按产品累计（含历次追加）</div>
+                  <div className="space-y-1">
+                    {itemProductSummaries.map((group) => (
+                      <div
+                        key={`${group.sku}-${group.name}`}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted px-3 py-2 text-sm"
+                      >
+                        <div className="min-w-0">
+                          <span className="font-medium">{group.name}</span>
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            {group.sku} · 共下单 {group.times} 次
+                          </span>
+                        </div>
+                        <div className="tabular-nums">
+                          累计数量 {group.quantity.toLocaleString('zh-CN')} {group.unit}
+                          <span className="mx-2 text-muted-foreground">·</span>
+                          累计金额 {formatCurrency(group.amount, order.currency)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -472,6 +575,7 @@ export default async function BusinessOrderDetailPage({
               status={order.closed_at ? 'completed' : order.status}
               completionGateVersion={order.closed_at ? 2 : order.completion_gate_version}
               profile={profile}
+              orderVersion={order.version}
               payments={order.business_order_payments}
             />
           )}
@@ -514,7 +618,13 @@ export default async function BusinessOrderDetailPage({
                         : `${lifecycleEntityLabels[log.entity_type] ?? log.entity_type} · ${lifecycleActionLabels[log.action] ?? log.action}`}
                     </div>
                     <div className="text-muted-foreground">
-                      {displayProfileName(log.actor, log.actor_snapshot.full_name || log.actor_snapshot.email)} · {formatDate(log.created_at, true)}
+                      {displayProfileName(
+                        log.actor,
+                        log.actor_display_name_snapshot ||
+                          log.actor_snapshot.full_name ||
+                          log.actor_snapshot.email,
+                      )}{' '}
+                      · {formatDate(log.created_at, true)}
                     </div>
                     {log.reason && <div className="mt-1">说明：{log.reason}</div>}
                   </div>

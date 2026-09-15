@@ -10,7 +10,7 @@ import type { Customer } from '@/types'
 
 export default async function ImportDailyOrdersPage() {
   const profile = await requireApproved()
-  // 导入最终走 create_business_order_v3，可建单角色与新建订单页保持一致。
+  // 导入最终走 create_business_order_v4，可建单角色与新建订单页保持一致。
   if (!['sales', 'supervisor', 'admin'].includes(profile.role)) {
     redirect('/finance/daily-orders')
   }

@@ -32,7 +32,7 @@ interface RecentOrder {
   reference: string
   customer: string
   salesperson: string
-  amountCny: number
+  amountCny: number | null
   href?: string
   status?: BusinessOrderStatus
 }
@@ -45,13 +45,13 @@ export default async function FinanceOverviewPage() {
     supabase.rpc('get_finance_summary').single(),
     supabase
       .from('finance_orders')
-      .select('id, order_date, pi_number_snapshot, customer_name_snapshot, salesperson_name_snapshot, amount_cny, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)')
+      .select('id, order_date, pi_number_snapshot, customer_name_snapshot, salesperson_name_snapshot, salesperson_display_name_snapshot, amount_cny, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)')
       .eq('status', 'active')
       .order('order_date', { ascending: false })
       .limit(8),
     supabase
       .from('business_orders')
-      .select('id, order_number, status, order_date, customer_snapshot, salesperson_name_snapshot, total_cny, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)')
+      .select('id, order_number, status, order_date, customer_snapshot, salesperson_name_snapshot, salesperson_display_name_snapshot, total_cny, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)')
       .order('order_date', { ascending: false })
       .limit(8),
   ])
@@ -77,6 +77,7 @@ export default async function FinanceOverviewPage() {
       | 'pi_number_snapshot'
       | 'customer_name_snapshot'
       | 'salesperson_name_snapshot'
+      | 'salesperson_display_name_snapshot'
       | 'amount_cny'
       | 'salesperson'
     >
@@ -85,7 +86,10 @@ export default async function FinanceOverviewPage() {
     orderDate: order.order_date,
     reference: order.pi_number_snapshot,
     customer: order.customer_name_snapshot || '—',
-    salesperson: displayProfileName(order.salesperson, order.salesperson_name_snapshot),
+    salesperson: displayProfileName(
+      order.salesperson,
+      order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
+    ),
     amountCny: Number(order.amount_cny),
   }))
   const businessOrders: RecentOrder[] = ((businessOrdersResult.data ?? []) as unknown as Array<
@@ -97,6 +101,7 @@ export default async function FinanceOverviewPage() {
       | 'order_date'
       | 'customer_snapshot'
       | 'salesperson_name_snapshot'
+      | 'salesperson_display_name_snapshot'
       | 'total_cny'
       | 'salesperson'
     >
@@ -107,8 +112,11 @@ export default async function FinanceOverviewPage() {
       orderDate: order.order_date,
       reference: order.order_number,
       customer: customer.company || customer.name || '—',
-      salesperson: displayProfileName(order.salesperson, order.salesperson_name_snapshot),
-      amountCny: Number(order.total_cny),
+      salesperson: displayProfileName(
+        order.salesperson,
+        order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
+      ),
+      amountCny: order.total_cny === null ? null : Number(order.total_cny),
       href: `/finance/performance/${order.id}`,
       status: order.status as BusinessOrderStatus,
     }
@@ -187,7 +195,7 @@ export default async function FinanceOverviewPage() {
                       <Badge variant="secondary">历史记录</Badge>
                     )}
                   </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">{formatCny(order.amountCny)}</TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">{order.amountCny === null ? '—' : formatCny(order.amountCny)}</TableCell>
                 </TableRow>
               ))}
               {orders.length === 0 && (

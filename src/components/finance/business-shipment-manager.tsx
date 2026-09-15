@@ -79,6 +79,7 @@ export function BusinessShipmentManager({
   const [trackingNumber, setTrackingNumber] = useState('')
   const [notes, setNotes] = useState('')
   const [quantities, setQuantities] = useState<Record<string, string>>({})
+  const [wholeOrderShipment, setWholeOrderShipment] = useState(false)
   const [idempotencyKey, setIdempotencyKey] = useState('')
   const [voiding, setVoiding] = useState<BusinessOrderShipment | null>(null)
   const [voidReason, setVoidReason] = useState('')
@@ -125,11 +126,20 @@ export function BusinessShipmentManager({
   const isLegacyCompletedOrder = order.status === 'completed' && order.completion_gate_version < 2
   const canVoid = canManage && !isLockedCompletedOrder
 
-  function openCreateForm() {
+  function openCreateForm(wholeOrder = false) {
     setShippedAt(getBusinessDateTimeLocal())
     setTrackingNumber('')
     setNotes('')
-    setQuantities({})
+    setWholeOrderShipment(wholeOrder)
+    setQuantities(
+      wholeOrder
+        ? Object.fromEntries(
+            itemRows
+              .filter((row) => row.remaining > 0)
+              .map((row) => [row.item.id, String(row.remaining)]),
+          )
+        : {},
+    )
     setIdempotencyKey(newUuid())
     setFormOpen(true)
   }
@@ -184,6 +194,7 @@ export function BusinessShipmentManager({
       toast.success('发货批次已创建')
       setFormOpen(false)
       setQuantities({})
+      setWholeOrderShipment(false)
       setIdempotencyKey('')
       router.refresh()
     })
@@ -232,9 +243,14 @@ export function BusinessShipmentManager({
           <p className="mt-1 text-sm text-muted-foreground">按产品记录分批发货；剩余数量按累计发货减有效退货后的净已发计算。</p>
         </div>
         {canManage && hasRemaining && (
-          <Button size="sm" onClick={openCreateForm}>
-            <PackagePlus className="h-4 w-4" />新增发货
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => openCreateForm(true)}>
+              <Truck className="h-4 w-4" />整单发货
+            </Button>
+            <Button size="sm" onClick={() => openCreateForm()}>
+              <PackagePlus className="h-4 w-4" />新增发货
+            </Button>
+          </div>
         )}
       </CardHeader>
       <CardContent className="space-y-5">
@@ -344,8 +360,12 @@ export function BusinessShipmentManager({
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>新增发货批次</DialogTitle>
-            <DialogDescription>只会提交数量大于 0 的产品，且本次数量不能超过剩余数量。</DialogDescription>
+            <DialogTitle>{wholeOrderShipment ? '整单发货' : '新增发货批次'}</DialogTitle>
+            <DialogDescription>
+              {wholeOrderShipment
+                ? '已按每个产品的剩余数量预填，可在提交前调整；本次数量不能超过剩余数量。'
+                : '只会提交数量大于 0 的产品，且本次数量不能超过剩余数量。'}
+            </DialogDescription>
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleCreate}>
             <div className="grid gap-4 sm:grid-cols-2">
