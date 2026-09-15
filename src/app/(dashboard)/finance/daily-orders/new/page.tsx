@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { requireApproved } from '@/lib/auth'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
-import type { Customer, CustomerGroup, Product, ProductGroup } from '@/types'
+import type { Customer, CustomerGroup, Product, ProductFinancial, ProductGroup } from '@/types'
 
 export default async function NewBusinessOrderPage() {
   const profile = await requireApproved()
@@ -16,7 +16,7 @@ export default async function NewBusinessOrderPage() {
 
   const supabase = await createClient()
   const customersQuery = supabase.from('customers').select('*')
-  const [customersResult, customerGroupsResult, productsResult, productGroupsResult, dailyOptions] =
+  const [customersResult, customerGroupsResult, productsResult, productGroupsResult, financialsResult, dailyOptions] =
     await Promise.all([
       ['admin', 'finance'].includes(profile.role)
         ? customersQuery.order('name')
@@ -24,6 +24,7 @@ export default async function NewBusinessOrderPage() {
       supabase.from('customer_groups').select('*').order('name'),
       supabase.from('products').select('*').eq('is_active', true).order('name'),
       supabase.from('product_groups').select('*').order('sort_order'),
+      supabase.from('product_financials').select('*'),
       fetchDailyOrderOptions(supabase),
     ])
 
@@ -33,6 +34,13 @@ export default async function NewBusinessOrderPage() {
     productsResult.error ||
     productGroupsResult.error
   if (error) throw new Error(`订单基础数据读取失败：${error.message}`)
+
+  const financials = (financialsResult.data ?? []) as ProductFinancial[]
+  const financialByProductId = new Map(financials.map((item) => [item.product_id, item]))
+  const products = ((productsResult.data ?? []) as Product[]).map((product) => ({
+    ...product,
+    financial_number: financialByProductId.get(product.id)?.financial_number ?? null,
+  }))
 
   return (
     <div className="space-y-6">
@@ -52,7 +60,7 @@ export default async function NewBusinessOrderPage() {
         customers={(customersResult.data ?? []) as Customer[]}
         customerGroups={(customerGroupsResult.data ?? []) as CustomerGroup[]}
         productGroups={(productGroupsResult.data ?? []) as ProductGroup[]}
-        products={(productsResult.data ?? []) as Product[]}
+        products={products}
         shops={dailyOptions.shops}
         salespeople={dailyOptions.salespeople}
         paymentAccounts={dailyOptions.paymentAccounts}

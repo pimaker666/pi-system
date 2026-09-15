@@ -12,6 +12,7 @@ import type {
   Customer,
   CustomerGroup,
   Product,
+  ProductFinancial,
   ProductGroup,
 } from '@/types'
 
@@ -55,6 +56,7 @@ export default async function EditBusinessOrderPage({
     customerGroupsResult,
     productsResult,
     productGroupsResult,
+    financialsResult,
     dailyOptions,
   ] = await Promise.all([
     profile.role === 'finance'
@@ -67,6 +69,7 @@ export default async function EditBusinessOrderPage({
       : supabase.from('customer_groups').select('*').order('name'),
     supabase.from('products').select('*').eq('is_active', true).order('name'),
     supabase.from('product_groups').select('*').order('sort_order'),
+    supabase.from('product_financials').select('*'),
     fetchDailyOrderOptions(supabase),
   ])
 
@@ -76,6 +79,13 @@ export default async function EditBusinessOrderPage({
     productsResult.error ||
     productGroupsResult.error
   if (loadError) throw new Error(`订单基础数据读取失败：${loadError.message}`)
+
+  const financials = (financialsResult.data ?? []) as ProductFinancial[]
+  const financialByProductId = new Map(financials.map((item) => [item.product_id, item]))
+  const products = ((productsResult.data ?? []) as Product[]).map((product) => ({
+    ...product,
+    financial_number: financialByProductId.get(product.id)?.financial_number ?? null,
+  }))
 
   const customers = [...((customersResult.data ?? []) as Customer[])]
   if (order.customer_id && !customers.some((customer) => customer.id === order.customer_id)) {
@@ -139,7 +149,7 @@ export default async function EditBusinessOrderPage({
         customers={customers}
         customerGroups={(customerGroupsResult.data ?? []) as CustomerGroup[]}
         productGroups={(productGroupsResult.data ?? []) as ProductGroup[]}
-        products={(productsResult.data ?? []) as Product[]}
+        products={products}
         shops={shops}
         salespeople={salespeople}
         paymentAccounts={dailyOptions.paymentAccounts}

@@ -818,6 +818,8 @@ export interface Product {
   category: string | null
   group_id: string | null
   is_active: boolean
+  /** Joined from product_financials for search/display; null when not fetched or no access. */
+  financial_number?: string | null
   created_at: string
   updated_at: string
 }

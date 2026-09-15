@@ -49,6 +49,19 @@ function roundMoney(value: number) {
   return Math.round(value * 100) / 100
 }
 
+function numericValue(value: unknown) {
+  const number = Number(value ?? 0)
+  return Number.isFinite(number) ? number : 0
+}
+
+function derivedOrderAmount(quantity: string, unitPrice: string) {
+  return roundMoney(numericValue(quantity) * numericValue(unitPrice))
+}
+
+function derivedOutstanding(quantity: string, unitPrice: string, received: string) {
+  return String(roundMoney(derivedOrderAmount(quantity, unitPrice) - numericValue(received)))
+}
+
 // 生产通过 http 访问时属于非安全上下文，crypto.randomUUID 不可用。
 function newRowKey() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -66,7 +79,7 @@ interface AppendRow {
   unitPrice: string
   dailyShippingCategory: DailyOrderShippingCategory
   receivedAmount: string
-  logisticsFee: string
+  outstandingAmount: string
 }
 
 function emptyRow(): AppendRow {
@@ -79,7 +92,7 @@ function emptyRow(): AppendRow {
     unitPrice: '',
     dailyShippingCategory: 'stock',
     receivedAmount: '',
-    logisticsFee: '',
+    outstandingAmount: '0',
   }
 }
 
@@ -139,6 +152,7 @@ export function BusinessOrderAppendDialog({
         currency: product.currency,
         unit: product.unit,
         group_id: product.group_id,
+        financial_number: product.financial_number,
       })),
     [catalog],
   )
@@ -161,23 +175,84 @@ export function BusinessOrderAppendDialog({
     )
   }
 
+  function updateQuantity(key: string, value: string) {
+    setRows((current) =>
+      current.map((row) => {
+        if (row.key !== key) return row
+        return {
+          ...row,
+          quantity: value,
+          outstandingAmount: derivedOutstanding(value, row.unitPrice, row.receivedAmount),
+        }
+      }),
+    )
+  }
+
+  function updateUnitPrice(key: string, value: string) {
+    setRows((current) =>
+      current.map((row) => {
+        if (row.key !== key) return row
+        return {
+          ...row,
+          unitPrice: value,
+          outstandingAmount: derivedOutstanding(row.quantity, value, row.receivedAmount),
+        }
+      }),
+    )
+  }
+
+  function updateReceivedAmount(key: string, value: string) {
+    setRows((current) =>
+      current.map((row) => {
+        if (row.key !== key) return row
+        return {
+          ...row,
+          receivedAmount: value,
+          outstandingAmount: derivedOutstanding(row.quantity, row.unitPrice, value),
+        }
+      }),
+    )
+  }
+
+  function updateOutstandingAmount(key: string, value: string) {
+    setRows((current) =>
+      current.map((row) => {
+        if (row.key !== key) return row
+        const orderAmount = derivedOrderAmount(row.quantity, row.unitPrice)
+        return {
+          ...row,
+          receivedAmount: String(Math.max(0, roundMoney(orderAmount - numericValue(value)))),
+          outstandingAmount: value,
+        }
+      }),
+    )
+  }
+
   function handleCatalogSelect(row: AppendRow, productId: string) {
     const product = catalog?.products.find((item) => item.id === productId)
+    const nextUnitPrice =
+      product && product.currency === currency ? String(product.unit_price) : row.unitPrice
     updateRow(row.key, {
       productId,
-      unitPrice:
-        product && product.currency === currency ? String(product.unit_price) : row.unitPrice,
+      unitPrice: nextUnitPrice,
+      outstandingAmount: derivedOutstanding(row.quantity, nextUnitPrice, row.receivedAmount),
     })
   }
 
   function handleCustomSelect(row: AppendRow, product: BusinessCustomProductListItem | null) {
+    const quantity = product ? (product.quantity == null ? '' : String(product.quantity)) : ''
+    const unitPrice =
+      product && product.default_currency === currency
+        ? String(product.default_unit_price)
+        : ''
+    const received =
+      product && product.received_amount != null ? String(product.received_amount) : ''
     updateRow(row.key, {
       customProduct: product,
-      quantity: product ? (product.quantity == null ? '' : String(product.quantity)) : '',
-      unitPrice:
-        product && product.default_currency === currency
-          ? String(product.default_unit_price)
-          : '',
+      quantity,
+      unitPrice,
+      receivedAmount: received,
+      outstandingAmount: derivedOutstanding(quantity, unitPrice, received),
     })
   }
 
@@ -235,14 +310,9 @@ export function BusinessOrderAppendDialog({
       if (hasDailyFields) {
         const lineAmount = roundMoney(quantity * unitPrice)
         const productReceived =
-          row.receivedAmount === '' ? lineAmount : roundMoney(Number(row.receivedAmount))
+          row.receivedAmount === '' ? 0 : roundMoney(Number(row.receivedAmount))
         if (!Number.isFinite(productReceived) || productReceived < 0) {
           toast.error('实收金额不能为负')
-          return
-        }
-        const logisticsFee = row.logisticsFee === '' ? 0 : roundMoney(Number(row.logisticsFee))
-        if (!Number.isFinite(logisticsFee) || logisticsFee < 0) {
-          toast.error('运费实收不能为负')
           return
         }
         const last = items[items.length - 1]
@@ -251,8 +321,8 @@ export function BusinessOrderAppendDialog({
           product_received_amount: productReceived,
           product_received_overridden:
             Math.round(productReceived * 100) !== Math.round(lineAmount * 100),
-          logistics_fee_amount: logisticsFee,
-          sales_total_amount: roundMoney(productReceived + logisticsFee),
+          logistics_fee_amount: 0,
+          sales_total_amount: roundMoney(productReceived + 0),
           sales_total_overridden: false,
         })
       }
@@ -295,7 +365,7 @@ export function BusinessOrderAppendDialog({
           }
         }}
       >
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-5xl">
           <DialogHeader>
             <DialogTitle>追加产品（加单）</DialogTitle>
             <DialogDescription>
@@ -309,7 +379,7 @@ export function BusinessOrderAppendDialog({
             {rows.map((row) => (
               <div
                 key={row.key}
-                className="grid grid-cols-1 items-end gap-2 rounded-md border p-3 sm:grid-cols-[130px_1fr_110px_130px_36px]"
+                className="grid grid-cols-1 items-end gap-3 rounded-md border p-3 xl:grid-cols-[130px_minmax(0,1.5fr)_110px_130px_130px_130px_130px_120px_40px]"
               >
                 <div className="space-y-1">
                   <Label>类型</Label>
@@ -362,44 +432,36 @@ export function BusinessOrderAppendDialog({
                     min="0"
                     step="any"
                     value={row.quantity}
-                    onChange={(event) =>
-                      updateRow(row.key, { quantity: event.target.value })
-                    }
+                    onChange={(event) => updateQuantity(row.key, event.target.value)}
                     disabled={pending}
                   />
                 </div>
                 <div className="space-y-1">
-                  <Label>成交单价</Label>
+                  <Label>成交单价（{currency}）</Label>
                   <Input
                     type="number"
                     min="0"
                     step="0.01"
                     value={row.unitPrice}
-                    onChange={(event) =>
-                      updateRow(row.key, { unitPrice: event.target.value })
-                    }
+                    onChange={(event) => updateUnitPrice(row.key, event.target.value)}
                     disabled={pending}
                   />
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="text-muted-foreground hover:text-destructive"
-                  onClick={() =>
-                    setRows((current) =>
-                      current.length > 1
-                        ? current.filter((item) => item.key !== row.key)
-                        : current,
-                    )
-                  }
-                  disabled={pending || rows.length <= 1}
-                  aria-label="删除该行"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
                 {hasDailyFields && (
                   <>
+                    <div className="space-y-1">
+                      <Label>订单金额（{currency}）</Label>
+                      <Input
+                        type="number"
+                        value={(() => {
+                          const amount = derivedOrderAmount(row.quantity, row.unitPrice)
+                          return amount > 0 ? String(amount) : ''
+                        })()}
+                        readOnly
+                        tabIndex={-1}
+                        className="bg-muted/40"
+                      />
+                    </div>
                     <div className="space-y-1">
                       <Label>实收金额（{currency}）</Label>
                       <Input
@@ -407,44 +469,19 @@ export function BusinessOrderAppendDialog({
                         min="0"
                         step="0.01"
                         value={row.receivedAmount}
-                        onChange={(event) =>
-                          updateRow(row.key, { receivedAmount: event.target.value })
-                        }
-                        placeholder="默认=数量×单价"
+                        onChange={(event) => updateReceivedAmount(row.key, event.target.value)}
+                        placeholder="可留空"
                         disabled={pending}
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label>运费实收（{currency}）</Label>
+                      <Label>未收尾款（{currency}）</Label>
                       <Input
                         type="number"
-                        min="0"
                         step="0.01"
-                        value={row.logisticsFee}
-                        onChange={(event) =>
-                          updateRow(row.key, { logisticsFee: event.target.value })
-                        }
-                        placeholder="默认 0"
+                        value={row.outstandingAmount}
+                        onChange={(event) => updateOutstandingAmount(row.key, event.target.value)}
                         disabled={pending}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>明细实收合计（{currency}）</Label>
-                      <Input
-                        type="number"
-                        value={(() => {
-                          const received =
-                            row.receivedAmount === ''
-                              ? roundMoney(Number(row.quantity || 0) * Number(row.unitPrice || 0))
-                              : Number(row.receivedAmount)
-                          const fee = row.logisticsFee === '' ? 0 : Number(row.logisticsFee)
-                          return Number.isFinite(received) && Number.isFinite(fee)
-                            ? String(roundMoney(received + fee))
-                            : ''
-                        })()}
-                        readOnly
-                        tabIndex={-1}
-                        className="bg-muted/40"
                       />
                     </div>
                     <div className="space-y-1">
@@ -472,6 +509,23 @@ export function BusinessOrderAppendDialog({
                     </div>
                   </>
                 )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="text-muted-foreground hover:text-destructive"
+                  onClick={() =>
+                    setRows((current) =>
+                      current.length > 1
+                        ? current.filter((item) => item.key !== row.key)
+                        : current,
+                    )
+                  }
+                  disabled={pending || rows.length <= 1}
+                  aria-label="删除该行"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
               </div>
             ))}
 
