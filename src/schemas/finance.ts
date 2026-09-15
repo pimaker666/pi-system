@@ -74,5 +74,18 @@ export const dailyOrderCostOverrideSchema = z.object({
   ),
 })
 
+export const businessOrderItemCostOverrideSchema = z.object({
+  business_order_item_id: z.string().uuid('订单明细行 ID 无效'),
+  cost: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? null : Number(value)),
+    z.number({ invalid_type_error: '成本必须是数字' })
+      .min(0, '成本不能为负')
+      .max(999999999999, '成本超出允许范围')
+      .refine((value) => value === Math.round(value * 10000) / 10000, '成本最多保留 4 位小数')
+      .nullable(),
+  ),
+})
+
 export type FinanceTransactionInput = z.infer<typeof financeTransactionSchema>
 export type FinanceCostInput = z.infer<typeof financeCostSchema>
+export type BusinessOrderItemCostOverrideInput = z.infer<typeof businessOrderItemCostOverrideSchema>

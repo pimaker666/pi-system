@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Archive, Download, FileText, Plus, Settings, Upload } from 'lucide-react'
+import { Archive, CreditCard, Download, FileText, Plus, Settings, Upload } from 'lucide-react'
 import { BusinessDailyOrderTable } from '@/components/finance/business-daily-order-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -7,8 +7,8 @@ import { Input } from '@/components/ui/input'
 import { requireApproved } from '@/lib/auth'
 import {
   businessDailyCurrencyOrder,
-  sumBusinessDailyByCurrency,
-  type BusinessDailyTotalField,
+  businessDailyOrderTotals,
+  type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
 import {
   BUSINESS_DAILY_LEDGER_LIMIT,
@@ -18,13 +18,64 @@ import { dailyOrderFilterQuery, formatDailyMoney, parseDailyOrderFilters } from 
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
+import type { CurrencyCode } from '@/types'
 
-const TOTAL_CARDS: Array<[string, BusinessDailyTotalField]> = [
-  ['订单应收', 'receivable'],
-  ['产品实收', 'productReceived'],
-  ['运费实收', 'shippingReceived'],
-  ['实际实收总额', 'salesTotal'],
-  ['应收 − 实收差额', 'difference'],
+type CurrencyTotals = Partial<Record<CurrencyCode, number>>
+
+function sumOrdersByCurrency(
+  orders: BusinessDailyLedgerOrder[],
+  getAmount: (order: BusinessDailyLedgerOrder) => number,
+): CurrencyTotals {
+  return orders.reduce<CurrencyTotals>((totals, order) => {
+    totals[order.currency] = (totals[order.currency] ?? 0) + getAmount(order)
+    return totals
+  }, {})
+}
+
+const TOTAL_CARDS: Array<{
+  label: string
+  totals: (orders: BusinessDailyLedgerOrder[]) => CurrencyTotals
+}> = [
+  {
+    label: '订单总金额',
+    totals: (orders) => sumOrdersByCurrency(orders, (order) => Number(order.total_amount)),
+  },
+  {
+    label: '产品实收',
+    totals: (orders) =>
+      sumOrdersByCurrency(orders, (order) => businessDailyOrderTotals(order).productReceived),
+  },
+  {
+    label: '运费实收',
+    totals: (orders) =>
+      sumOrdersByCurrency(orders, (order) => businessDailyOrderTotals(order).shippingReceived),
+  },
+  {
+    label: '实际实收总额',
+    totals: (orders) => {
+      const product = sumOrdersByCurrency(
+        orders,
+        (order) => businessDailyOrderTotals(order).productReceived,
+      )
+      const shipping = sumOrdersByCurrency(
+        orders,
+        (order) => businessDailyOrderTotals(order).shippingReceived,
+      )
+      const currencies = new Set<CurrencyCode>([
+        ...(Object.keys(product) as CurrencyCode[]),
+        ...(Object.keys(shipping) as CurrencyCode[]),
+      ])
+      const totals: CurrencyTotals = {}
+      for (const currency of currencies) {
+        totals[currency] = (product[currency] ?? 0) + (shipping[currency] ?? 0)
+      }
+      return totals
+    },
+  },
+  {
+    label: '未收尾款',
+    totals: (orders) => sumOrdersByCurrency(orders, (order) => order.outstanding_amount),
+  },
 ]
 
 export default async function DailyOrdersPage({
@@ -58,9 +109,14 @@ export default async function DailyOrdersPage({
             <Link href="/finance/daily-orders/legacy"><Archive className="h-4 w-4" />历史台账</Link>
           </Button>
           {canManageShops && (
-            <Button asChild variant="outline">
-              <Link href="/finance/daily-orders/settings"><Settings className="h-4 w-4" />店铺设置</Link>
-            </Button>
+            <>
+              <Button asChild variant="outline">
+                <Link href="/finance/daily-orders/settings"><Settings className="h-4 w-4" />店铺设置</Link>
+              </Button>
+              <Button asChild variant="outline">
+                <Link href="/finance/daily-orders/settings"><CreditCard className="h-4 w-4" />收款账户</Link>
+              </Button>
+            </>
           )}
           {canCreate && (
             <>
@@ -82,6 +138,10 @@ export default async function DailyOrdersPage({
         <select name="shop" defaultValue={filters.shop ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="">全部店铺</option>
           {options.shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}
+        </select>
+        <select name="shopGroup" defaultValue={filters.shopGroup ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
+          <option value="">全部店铺分组</option>
+          {options.groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
         </select>
         <select name="salesperson" defaultValue={filters.salesperson ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="">全部业务员</option>
@@ -121,16 +181,16 @@ export default async function DailyOrdersPage({
       </form>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {TOTAL_CARDS.map(([label, field]) => {
-          const totals = sumBusinessDailyByCurrency(orders, field)
+        {TOTAL_CARDS.map(({ label, totals }) => {
+          const totalsByCurrency = totals(orders)
           return (
-            <Card key={field}>
+            <Card key={label}>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm text-muted-foreground">{label}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-1 font-semibold tabular-nums">
-                {businessDailyCurrencyOrder(totals).map((currency) => (
-                  <div key={currency}>{formatDailyMoney(totals[currency] ?? 0, currency)}</div>
+                {businessDailyCurrencyOrder(totalsByCurrency).map((currency) => (
+                  <div key={currency}>{formatDailyMoney(totalsByCurrency[currency] ?? 0, currency)}</div>
                 ))}
               </CardContent>
             </Card>

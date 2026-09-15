@@ -121,6 +121,46 @@ export interface DailyOrderProductCost {
   cost_overridden: boolean
 }
 
+export interface BusinessOrderProductCost {
+  order_id: string
+  item_id: string
+  order_date: string
+  shipping_date: string | null
+  shop_name: string | null
+  shop_group_name: string | null
+  salesperson_name: string
+  order_number: string
+  external_order_number: string | null
+  customer_name: string | null
+  payment_account: string | null
+  shipping_number: string | null
+  shipping_category: DailyOrderShippingCategory | null
+  product_name: string
+  product_sku: string
+  quantity: number
+  shipping_progress: string
+  unit_price: number
+  product_received_amount: number
+  logistics_fee_amount: number | null
+  sales_total_amount: number
+  currency: CurrencyCode
+  order_total_amount: number
+  order_sales_total_amount: number
+  outstanding_amount: number
+  order_status: BusinessOrderStatus
+  order_closed_at: string | null
+  payment_category: DailyOrderPaymentCategory | null
+  sales_notes: string | null
+  attachments: BusinessOrderAttachment[]
+  financial_number: string | null
+  financial_product_name: string | null
+  catalog_cost: number | null
+  cost: number | null
+  cost_overridden: boolean
+  total_cost: number | null
+  fully_shipped: boolean
+}
+
 export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'
 export type DailyOrderPaymentCategory = 'full' | 'deposit' | 'balance'
 

@@ -73,6 +73,7 @@ export function parseDailyOrderFilters(raw: Record<string, string | string[] | u
     dateFrom: scalar('dateFrom') || undefined,
     dateTo: scalar('dateTo') || undefined,
     shop: scalar('shop') || undefined,
+    shopGroup: scalar('shopGroup') || undefined,
     salesperson: scalar('salesperson') || undefined,
     category: scalar('category') || undefined,
     payment: scalar('payment') || undefined,

@@ -90,6 +90,7 @@ function buildLedgerQuery(
   if (filters.dateFrom) query = query.gte('order_date', filters.dateFrom)
   if (filters.dateTo) query = query.lte('order_date', filters.dateTo)
   if (filters.shop) query = query.eq('shop_id', filters.shop)
+  if (filters.shopGroup) query = query.eq('shop_group_id', filters.shopGroup)
   if (filters.salesperson) query = query.eq('salesperson_id', filters.salesperson)
   if (filters.payment) query = query.eq('daily_payment_category', filters.payment)
   if (filters.category) {

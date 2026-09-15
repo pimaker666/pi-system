@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireFinanceAccess } from '@/lib/auth'
 import { chinaToday } from '@/lib/daily-order-costs-server'
-import { dailyOrderCostOverrideSchema, financeCostSchema, financeTransactionSchema } from '@/schemas/finance'
+import { businessOrderItemCostOverrideSchema, dailyOrderCostOverrideSchema, financeCostSchema, financeTransactionSchema } from '@/schemas/finance'
 import type { ActionResult } from './products'
 import type { CurrencyCode } from '@/types'
 
@@ -181,6 +181,62 @@ export async function updateDailyOrderCostOverride(input: {
         updated_by: profile.id,
       },
       { onConflict: 'daily_order_id' },
+    )
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/finance/costs')
+  return { ok: true }
+}
+
+export async function updateBusinessOrderItemCostOverride(input: {
+  business_order_item_id: string
+  cost: number | null
+}): Promise<ActionResult> {
+  const profile = await requireFinanceAccess()
+  const parsed = businessOrderItemCostOverrideSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  if (parsed.data.cost === null) {
+    const { error } = await supabase
+      .from('finance_business_order_item_cost_overrides')
+      .delete()
+      .eq('business_order_item_id', parsed.data.business_order_item_id)
+    if (error) return { ok: false, error: error.message }
+    revalidatePath('/finance/costs')
+    return { ok: true }
+  }
+
+  const { data: item, error: itemError } = await supabase
+    .from('business_order_items')
+    .select('id, order_id')
+    .eq('id', parsed.data.business_order_item_id)
+    .maybeSingle()
+  if (itemError) return { ok: false, error: itemError.message }
+  if (!item) return { ok: false, error: '订单明细行不存在' }
+
+  const { data: order, error: orderError } = await supabase
+    .from('business_orders')
+    .select('fulfillment_status, status')
+    .eq('id', item.order_id)
+    .maybeSingle()
+  if (orderError) return { ok: false, error: orderError.message }
+  if (!order) return { ok: false, error: '订单不存在' }
+  if (order.fulfillment_status !== 'fully_shipped' || !['approved', 'completed'].includes(order.status)) {
+    return { ok: false, error: '只有全部发货完成且已审核的订单才能修改成本' }
+  }
+
+  const { error } = await supabase
+    .from('finance_business_order_item_cost_overrides')
+    .upsert(
+      {
+        business_order_item_id: parsed.data.business_order_item_id,
+        cost: parsed.data.cost,
+        updated_by: profile.id,
+      },
+      { onConflict: 'business_order_item_id' },
     )
   if (error) return { ok: false, error: error.message }
 

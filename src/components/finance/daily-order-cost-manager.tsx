@@ -1,21 +1,49 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import Link from 'next/link'
+import { useMemo, useState, useTransition } from 'react'
+import { Download, Eye, Save } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { Download, Save } from 'lucide-react'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { updateDailyOrderCostOverride } from '@/lib/actions/finance'
-import { SHIPPING_LABELS } from '@/lib/daily-orders'
-import type { DailyOrderProductCost } from '@/types'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import { getBusinessOrderAttachmentUrl } from '@/lib/actions/business-orders'
+import { updateBusinessOrderItemCostOverride } from '@/lib/actions/finance'
+import {
+  BUSINESS_ORDER_COST_COLUMNS,
+  businessOrderCostFilterQuery,
+  formatCostValue,
+} from '@/lib/business-order-cost'
+import {
+  BUSINESS_ORDER_STATUS_LABELS,
+  BUSINESS_ORDER_STATUS_VARIANTS,
+} from '@/lib/business-orders'
+import { formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
+import { displayProfileName } from '@/lib/utils'
+import type { BusinessOrderCostFilters } from '@/schemas/business-order-cost'
+import type {
+  BusinessOrderProductCost,
+  DailyOrderShop,
+  DailyOrderShopGroup,
+  Profile,
+} from '@/types'
 
-function costText(value: number) {
+const mergedCellClassName = 'bg-muted/20 align-top'
+
+function quantityText(value: number) {
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 }).format(value)
 }
 
-function CostEditor({ row }: { row: DailyOrderProductCost }) {
+function CostEditor({ row }: { row: BusinessOrderProductCost }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const initialValue = row.cost == null ? '' : String(row.cost)
@@ -23,9 +51,9 @@ function CostEditor({ row }: { row: DailyOrderProductCost }) {
   const normalized = draft.trim()
   const unchanged = normalized === initialValue
 
-  useEffect(() => {
-    setDraft(initialValue)
-  }, [initialValue])
+  if (!row.fully_shipped || row.product_name === '—') {
+    return <span className="text-muted-foreground">—</span>
+  }
 
   function save() {
     const cost = normalized === '' ? null : Number(normalized)
@@ -35,8 +63,8 @@ function CostEditor({ row }: { row: DailyOrderProductCost }) {
     }
 
     startTransition(async () => {
-      const result = await updateDailyOrderCostOverride({
-        daily_order_id: row.daily_order_id,
+      const result = await updateBusinessOrderItemCostOverride({
+        business_order_item_id: row.item_id,
         cost,
       })
       if (!result.ok) {
@@ -85,65 +113,291 @@ function CostEditor({ row }: { row: DailyOrderProductCost }) {
   )
 }
 
-export function DailyOrderCostManager({ rows }: { rows: DailyOrderProductCost[] }) {
+interface Option {
+  id: string
+  name: string
+}
+
+function MultiSelect({
+  name,
+  label,
+  options,
+  selected,
+}: {
+  name: string
+  label: string
+  options: Option[]
+  selected: string[]
+}) {
+  const selectedSet = new Set(selected)
+  const count = options.filter((o) => selectedSet.has(o.id)).length
+  return (
+    <details className="group relative">
+      <summary className="flex h-10 cursor-pointer items-center justify-between gap-2 rounded-md border bg-background px-3 text-sm [&::-webkit-details-marker]:hidden">
+        <span className="truncate">{count ? `${label} (${count})` : `全部${label}`}</span>
+        <span aria-hidden className="text-xs text-muted-foreground">▼</span>
+      </summary>
+      <div className="absolute z-50 mt-1 max-h-64 w-56 overflow-auto rounded-md border bg-background p-2 shadow-md">
+        {options.map((option) => (
+          <label
+            key={option.id}
+            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
+          >
+            <input
+              type="checkbox"
+              name={name}
+              value={option.id}
+              defaultChecked={selectedSet.has(option.id)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <span className="truncate">{option.name}</span>
+          </label>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+export interface DailyOrderCostManagerProps {
+  rows: BusinessOrderProductCost[]
+  filters: BusinessOrderCostFilters
+  options: {
+    shops: DailyOrderShop[]
+    groups: DailyOrderShopGroup[]
+    salespeople: Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
+  }
+}
+
+export function DailyOrderCostManager({ rows, filters, options }: DailyOrderCostManagerProps) {
+  const [pending, startTransition] = useTransition()
+  const query = businessOrderCostFilterQuery(filters)
+
+  const groups = useMemo(() => {
+    const map = new Map<string, BusinessOrderProductCost[]>()
+    for (const row of rows) {
+      const list = map.get(row.order_id) ?? []
+      list.push(row)
+      map.set(row.order_id, list)
+    }
+    return [...map.values()]
+  }, [rows])
+
+  function viewAttachment(attachmentId: string) {
+    startTransition(async () => {
+      const result = await getBusinessOrderAttachmentUrl(attachmentId)
+      if (result.url) window.open(result.url, '_blank', 'noopener,noreferrer')
+      else toast.error(result.error ?? '无法查看截图')
+    })
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">已发货每日订单产品成本</h2>
+          <h2 className="text-lg font-semibold">已发货业务订单产品成本</h2>
           <p className="text-sm text-muted-foreground">
-            自动显示发货日期不晚于今天的订单。普通产品匹配产品库财务资料；定制或未匹配产品留空。
+            只有全部发货完成的订单才会计算并允许编辑成本；其余订单成本列显示“—”。
+            修改成本仅覆盖当前订单行，不反写产品库。
           </p>
         </div>
         <Button asChild variant="outline">
-          <a download href="/api/finance/costs/export/xlsx">
+          <a download href={`/api/finance/costs/export/xlsx${query ? `?${query}` : ''}`}>
             <Download className="h-4 w-4" />
-            导出全部成本
+            导出成本表
           </a>
         </Button>
       </div>
 
+      <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
+        <Input
+          name="q"
+          defaultValue={filters.q}
+          placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU"
+          className="xl:col-span-2"
+        />
+        <Input name="dateFrom" type="date" defaultValue={filters.dateFrom} />
+        <Input name="dateTo" type="date" defaultValue={filters.dateTo} />
+        <Input name="month" type="month" defaultValue={filters.month} placeholder="月份" />
+        <MultiSelect
+          name="shops"
+          label="店铺"
+          options={options.shops.map((shop) => ({ id: shop.id, name: shop.name }))}
+          selected={filters.shops}
+        />
+        <MultiSelect
+          name="salespeople"
+          label="业务员"
+          options={options.salespeople.map((person) => ({
+            id: person.id,
+            name: displayProfileName(person),
+          }))}
+          selected={filters.salespeople}
+        />
+        <MultiSelect
+          name="shopGroups"
+          label="店铺分组"
+          options={options.groups.map((group) => ({ id: group.id, name: group.name }))}
+          selected={filters.shopGroups}
+        />
+        <div className="flex flex-wrap gap-2 xl:col-span-9">
+          <Button type="submit">筛选</Button>
+          <Button asChild type="button" variant="outline">
+            <Link href="/finance/costs">清空</Link>
+          </Button>
+        </div>
+      </form>
+
       <div className="overflow-x-auto rounded-md border">
-        <Table className="min-w-[1800px]">
+        <Table className="min-w-[3000px]">
           <TableHeader>
             <TableRow>
-              <TableHead>发货日期</TableHead>
-              <TableHead>订单号</TableHead>
-              <TableHead>店铺</TableHead>
-              <TableHead>业务员</TableHead>
-              <TableHead>销售产品/SKU</TableHead>
-              <TableHead>发货分类</TableHead>
-              <TableHead className="text-right">数量</TableHead>
-              <TableHead>财务编号</TableHead>
-              <TableHead>产品名称</TableHead>
-              <TableHead>成本</TableHead>
+              {BUSINESS_ORDER_COST_COLUMNS.map((label) => (
+                <TableHead key={label}>{label}</TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.daily_order_id}>
-                <TableCell>{row.shipping_date}</TableCell>
-                <TableCell>
-                  <div className="font-medium">{row.order_number}</div>
-                  <div className="text-xs text-muted-foreground">下单 {row.order_date}</div>
-                </TableCell>
-                <TableCell>{row.shop_name}</TableCell>
-                <TableCell>{row.salesperson_name}</TableCell>
-                <TableCell>
-                  <div>{row.sales_product_name}</div>
-                  <div className="text-xs text-muted-foreground">{row.sales_product_sku}</div>
-                </TableCell>
-                <TableCell>{SHIPPING_LABELS[row.shipping_category]}</TableCell>
-                <TableCell className="text-right tabular-nums">{costText(row.quantity)}</TableCell>
-                <TableCell>{row.financial_number || '—'}</TableCell>
-                <TableCell>{row.financial_product_name || '—'}</TableCell>
-                <TableCell><CostEditor row={row} /></TableCell>
-              </TableRow>
-            ))}
+            {groups.map((group, groupIndex) => {
+              const rowSpan = group.length
+              return group.map((row, rowIndex) => {
+                const isFirstRow = rowIndex === 0
+                const displayOrderNumber = row.external_order_number || row.order_number
+                const difference = Math.round((row.order_total_amount - row.order_sales_total_amount) * 100) / 100
+
+                return (
+                  <TableRow
+                    key={row.item_id}
+                    className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
+                  >
+                    <TableCell>
+                      <div className="font-medium">
+                        {groupIndex + 1}
+                        {rowSpan > 1 && (
+                          <span className="ml-1 text-xs text-muted-foreground">-{rowIndex + 1}</span>
+                        )}
+                      </div>
+                    </TableCell>
+
+                    {isFirstRow && (
+                      <>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          {row.order_date}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          <div>{row.shop_name ?? '—'}</div>
+                          {row.shop_group_name && (
+                            <div className="text-xs text-muted-foreground">{row.shop_group_name}</div>
+                          )}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          {row.salesperson_name}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                          <Link href={`/finance/daily-orders/${row.order_id}`} className="hover:underline">
+                            {displayOrderNumber}
+                          </Link>
+                          {row.external_order_number && (
+                            <div className="text-xs font-normal text-muted-foreground">{row.order_number}</div>
+                          )}
+                          <div className="text-xs font-normal text-muted-foreground">
+                            {row.customer_name || '—'}
+                          </div>
+                          <div className="mt-1 space-y-0.5 text-xs font-normal tabular-nums">
+                            <div>应收 {formatDailyMoney(row.order_total_amount, row.currency)}</div>
+                            <div>实收 {formatDailyMoney(row.order_sales_total_amount, row.currency)}</div>
+                            <div className={difference === 0 ? 'text-muted-foreground' : 'text-amber-700'}>
+                              差额 {formatDailyMoney(difference, row.currency)}
+                            </div>
+                          </div>
+                          <div className="mt-1">
+                            {row.order_closed_at ? (
+                              <Badge variant="secondary">特殊关闭</Badge>
+                            ) : (
+                              <Badge variant={BUSINESS_ORDER_STATUS_VARIANTS[row.order_status]}>
+                                {BUSINESS_ORDER_STATUS_LABELS[row.order_status]}
+                              </Badge>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          {row.shipping_date ?? '—'}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          {row.payment_account || row.shipping_number || '—'}
+                        </TableCell>
+                      </>
+                    )}
+
+                    <TableCell>
+                      {row.shipping_category ? SHIPPING_LABELS[row.shipping_category] : '—'}
+                    </TableCell>
+                    <TableCell>
+                      <div>{row.product_name}</div>
+                      {row.product_sku && (
+                        <div className="text-xs text-muted-foreground">{row.product_sku}</div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{quantityText(row.quantity)}</TableCell>
+                    <TableCell>
+                      <CostEditor row={row} />
+                    </TableCell>
+                    <TableCell className="tabular-nums">{formatCostValue(row.total_cost)}</TableCell>
+                    <TableCell className="whitespace-nowrap tabular-nums">{row.shipping_progress}</TableCell>
+                    <TableCell>{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
+                    <TableCell>{formatDailyMoney(row.product_received_amount, row.currency)}</TableCell>
+                    <TableCell>
+                      {row.logistics_fee_amount !== null
+                        ? formatDailyMoney(row.logistics_fee_amount, row.currency)
+                        : '—'}
+                    </TableCell>
+
+                    {isFirstRow && (
+                      <>
+                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                          {formatDailyMoney(row.order_total_amount, row.currency)}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                          {formatDailyMoney(row.outstanding_amount, row.currency)}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          {row.payment_category ? PAYMENT_LABELS[row.payment_category] : '—'}
+                        </TableCell>
+                        <TableCell
+                          rowSpan={rowSpan}
+                          className={`${mergedCellClassName} max-w-64 whitespace-normal`}
+                        >
+                          {row.sales_notes || '—'}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          {row.attachments.length === 0
+                            ? '—'
+                            : row.attachments.map((attachment, attachmentIndex) => (
+                                <Button
+                                  key={attachment.id}
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  disabled={pending}
+                                  onClick={() => viewAttachment(attachment.id)}
+                                >
+                                  {attachmentIndex + 1}
+                                  <Eye className="ml-1 h-3 w-3" />
+                                </Button>
+                              ))}
+                        </TableCell>
+                      </>
+                    )}
+                  </TableRow>
+                )
+              })
+            })}
             {rows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={10} className="py-12 text-center text-muted-foreground">
-                  暂无已发货的每日订单
+                <TableCell
+                  colSpan={BUSINESS_ORDER_COST_COLUMNS.length}
+                  className="py-12 text-center text-muted-foreground"
+                >
+                  没有符合筛选条件的订单
                 </TableCell>
               </TableRow>
             )}

@@ -1,10 +1,13 @@
 import ExcelJS from 'exceljs'
 import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 import { requireFinanceAccess } from '@/lib/auth'
-import { chinaToday, fetchDailyOrderProductCosts } from '@/lib/daily-order-costs-server'
-import { SHIPPING_LABELS } from '@/lib/daily-orders'
+import { fetchBusinessOrderProductCosts } from '@/lib/business-order-costs-server'
+import { chinaToday } from '@/lib/daily-order-costs-server'
+import { formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { FINANCE_COST_LABELS } from '@/lib/finance'
 import { createClient } from '@/lib/supabase/server'
+import { parseBusinessOrderCostFilters } from '@/lib/business-order-cost'
 import type { FinanceOrderCost } from '@/types'
 
 export const runtime = 'nodejs'
@@ -27,6 +30,19 @@ function styleBody(row: ExcelJS.Row) {
 }
 
 const PAGE_SIZE = 1000
+
+function searchParamsToRecord(searchParams: URLSearchParams): Record<string, string | string[]> {
+  const raw: Record<string, string | string[]> = {}
+  searchParams.forEach((value, key) => {
+    const existing = raw[key]
+    if (existing === undefined) {
+      raw[key] = value
+    } else {
+      raw[key] = Array.isArray(existing) ? [...existing, value] : [existing, value]
+    }
+  })
+  return raw
+}
 
 async function fetchAllFinanceCosts(supabase: Awaited<ReturnType<typeof createClient>>) {
   const rows: FinanceOrderCost[] = []
@@ -74,11 +90,13 @@ async function fetchAllBusinessReferences(supabase: Awaited<ReturnType<typeof cr
   }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   await requireFinanceAccess()
   const supabase = await createClient()
+  const filters = parseBusinessOrderCostFilters(searchParamsToRecord(request.nextUrl.searchParams))
+
   const [dailyCosts, costs, legacyOrders, businessOrders] = await Promise.all([
-    fetchDailyOrderProductCosts(supabase),
+    fetchBusinessOrderProductCosts(supabase, filters),
     fetchAllFinanceCosts(supabase),
     fetchAllLegacyReferences(supabase),
     fetchAllBusinessReferences(supabase),
@@ -87,35 +105,53 @@ export async function GET() {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'PI System'
 
-  const dailySheet = workbook.addWorksheet('已发货每日订单成本', {
+  const dailySheet = workbook.addWorksheet('业务订单产品成本', {
     views: [{ state: 'frozen', ySplit: 1 }],
   })
-  dailySheet.columns = [13, 13, 20, 16, 16, 26, 18, 12, 16, 22, 22, 16].map((width) => ({ width }))
+  dailySheet.columns = [
+    10, 13, 20, 16, 24, 13, 20, 12, 26, 14, 16, 16, 18, 16, 18, 16, 18, 16, 12, 32, 14,
+  ].map((width) => ({ width }))
   styleHeader(dailySheet.addRow([
-    '发货日期', '下单日期', '订单号', '店铺', '业务员', '销售产品', '销售 SKU',
-    '发货分类', '数量', '财务编号', '财务产品名称', '成本',
+    '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '收款账户', '发货分类',
+    '产品名称', '数量', '成本', '总成本', '发货进度', '销售单价', '产品实收金额', '运费实收金额',
+    '订单总金额', '未收尾款', '收款分类', '备注', '截图数',
   ]))
 
-  dailyCosts.forEach((item) => {
+  dailyCosts.forEach((item, index) => {
     const row = dailySheet.addRow([
-      item.shipping_date,
+      item.product_name === '—' ? `${index + 1}-无明细` : index + 1,
       item.order_date,
-      item.order_number,
-      item.shop_name,
+      item.shop_name ?? '',
       item.salesperson_name,
-      item.sales_product_name,
-      item.sales_product_sku,
-      SHIPPING_LABELS[item.shipping_category],
+      item.external_order_number || item.order_number,
+      item.shipping_date ?? '',
+      item.payment_account || item.shipping_number || '',
+      item.shipping_category ? SHIPPING_LABELS[item.shipping_category] : '',
+      `${item.product_name}${item.product_sku ? `\n${item.product_sku}` : ''}`,
       item.quantity,
-      item.financial_number ?? '',
-      item.financial_product_name ?? '',
       item.cost,
+      item.total_cost,
+      item.shipping_progress,
+      item.unit_price,
+      item.product_received_amount,
+      item.logistics_fee_amount,
+      item.order_total_amount,
+      item.outstanding_amount,
+      item.payment_category ? PAYMENT_LABELS[item.payment_category] : '',
+      item.sales_notes ?? '',
+      item.attachments.length,
     ])
-    row.getCell(9).numFmt = '0.####'
-    row.getCell(12).numFmt = '¥#,##0.0000'
+    row.getCell(10).numFmt = '0.####'
+    row.getCell(11).numFmt = '0.0000'
+    row.getCell(12).numFmt = '0.0000'
+    row.getCell(14).numFmt = '#,##0.00'
+    row.getCell(15).numFmt = '#,##0.00'
+    row.getCell(16).numFmt = '#,##0.00'
+    row.getCell(17).numFmt = '#,##0.00'
+    row.getCell(18).numFmt = '#,##0.00'
     styleBody(row)
   })
-  dailySheet.autoFilter = { from: 'A1', to: 'L1' }
+  dailySheet.autoFilter = { from: 'A1', to: 'U1' }
 
   const legacyReferences = new Map(
     legacyOrders.map((order) => [order.id, order.pi_number_snapshot]),

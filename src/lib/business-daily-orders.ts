@@ -115,8 +115,8 @@ export function sortedBusinessDailyItems(order: BusinessDailyLedgerOrder) {
   })
 }
 
-export function formatBusinessDailyShippingProgress(
-  order: BusinessDailyLedgerOrder,
+export function getBusinessOrderItemNetShipped(
+  order: Pick<BusinessDailyLedgerOrder, 'business_order_shipments' | 'business_order_returns'>,
   item: BusinessOrderItem,
 ) {
   const activeShipmentIds = new Set(
@@ -141,7 +141,21 @@ export function formatBusinessDailyShippingProgress(
       .filter((returnItem) => returnItem.order_item_id === item.id)
       .reduce((sum, returnItem) => sum + Number(returnItem.quantity), 0)
   }, 0)
-  const netShipped = Math.max(0, shipped - returned)
+  return Math.max(0, shipped - returned)
+}
+
+export function getBusinessOrderItemRemainingQuantity(
+  order: BusinessDailyLedgerOrder,
+  item: BusinessOrderItem,
+) {
+  return Math.max(0, Number(item.quantity) - getBusinessOrderItemNetShipped(order, item))
+}
+
+export function formatBusinessDailyShippingProgress(
+  order: BusinessDailyLedgerOrder,
+  item: BusinessOrderItem,
+) {
+  const netShipped = getBusinessOrderItemNetShipped(order, item)
   const formatQuantity = (value: number) =>
     value.toLocaleString('zh-CN', { maximumFractionDigits: 4 })
   return `已发 ${formatQuantity(netShipped)} / ${formatQuantity(Number(item.quantity))}`

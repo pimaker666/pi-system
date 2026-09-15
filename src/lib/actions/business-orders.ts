@@ -25,6 +25,8 @@ import {
   businessOrderSpecialCloseInputSchema,
   businessOrderVoidReasonSchema,
 } from '@/schemas/business-order'
+import { getBusinessOrderItemRemainingQuantity } from '@/lib/business-daily-orders'
+import type { BusinessDailyLedgerOrder } from '@/lib/business-daily-orders'
 import type { BusinessOrderAppendItemEditInput } from '@/schemas/business-order'
 import type {
   BusinessCustomerPrepayment,
@@ -35,6 +37,7 @@ import type {
   BusinessCustomProductVersion,
   BusinessOrderAttachment,
   BusinessOrderEditConstraints,
+  BusinessOrderItem,
   BusinessOrderPaymentAllocation,
   BusinessOrderReturn,
   BusinessOrderReturnItem,
@@ -845,6 +848,89 @@ export async function createBusinessOrderShipment(
 
   revalidateBusinessOrders(orderId)
   return { ok: true, shipment: result.shipment, items: result.items ?? [] }
+}
+
+export interface BulkShipBusinessOrdersResult extends ActionResult {
+  shippedCount?: number
+  skippedCount?: number
+}
+
+export async function bulkShipBusinessOrders(
+  orderIds: string[],
+  shippedAt: string,
+): Promise<BulkShipBusinessOrdersResult> {
+  const profile = await requireApproved()
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '当前角色不能执行整单发货' }
+  }
+
+  const validIds = orderIds.filter((id) => z.string().uuid().safeParse(id).success)
+  if (validIds.length === 0) return { ok: false, error: '请选择有效订单' }
+
+  const parsedShippedAt = new Date(shippedAt)
+  if (Number.isNaN(parsedShippedAt.getTime())) return { ok: false, error: '请选择有效发货时间' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('business_orders')
+    .select(
+      `*, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*))`,
+    )
+    .in('id', validIds)
+    .eq('status', 'approved')
+    .is('closed_at', null)
+
+  if (error) return { ok: false, error: `读取订单失败：${error.message}` }
+
+  const orderMap = new Map(
+    ((data ?? []) as unknown as BusinessDailyLedgerOrder[]).map((order) => [order.id, order]),
+  )
+  const orders = validIds
+    .map((id) => orderMap.get(id))
+    .filter((order): order is BusinessDailyLedgerOrder => Boolean(order))
+
+  let shippedCount = 0
+  let skippedCount = 0
+  const errors: string[] = []
+
+  for (const order of orders) {
+    if (profile.role === 'sales' && order.salesperson_id !== profile.id) {
+      errors.push(`订单 ${order.order_number} 不属于当前业务员`)
+      continue
+    }
+
+    const items = order.business_order_items ?? []
+    const shipmentItems = items
+      .map((item): { order_item_id: string; quantity: number } => ({
+        order_item_id: item.id,
+        quantity: getBusinessOrderItemRemainingQuantity(order, item),
+      }))
+      .filter((item) => item.quantity > 0)
+
+    if (shipmentItems.length === 0) {
+      skippedCount += 1
+      continue
+    }
+
+    const { error: shipError } = await supabase.rpc('create_business_order_shipment', {
+      p_order_id: order.id,
+      p_shipped_at: parsedShippedAt.toISOString(),
+      p_tracking_number: null,
+      p_notes: null,
+      p_items: shipmentItems,
+      p_idempotency_key: crypto.randomUUID(),
+    })
+
+    if (shipError) {
+      errors.push(`${order.order_number}: ${businessOrderError(shipError.message, '发货失败')}`)
+      continue
+    }
+    shippedCount += 1
+  }
+
+  revalidateBusinessOrderIds(orders.map((order) => order.id))
+  if (errors.length > 0) return { ok: false, error: errors.join('；') }
+  return { ok: true, shippedCount, skippedCount }
 }
 
 export async function voidBusinessOrderShipment(

@@ -4,28 +4,37 @@ import {
   type CostOrderOption,
 } from '@/components/finance/pi-cost-manager'
 import { requireFinanceAccess } from '@/lib/auth'
-import { fetchDailyOrderProductCosts } from '@/lib/daily-order-costs-server'
+import { fetchBusinessOrderProductCosts } from '@/lib/business-order-costs-server'
+import { parseBusinessOrderCostFilters } from '@/lib/business-order-cost'
+import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
 import type { FinanceOrderCost } from '@/types'
 
-export default async function FinanceCostsPage() {
+export default async function FinanceCostsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   await requireFinanceAccess()
+  const filters = parseBusinessOrderCostFilters(await searchParams)
   const supabase = await createClient()
 
-  const [legacyOrdersResult, businessOrdersResult, costsResult, dailyOrderCosts] = await Promise.all([
-    supabase
-      .from('finance_orders')
-      .select('id, pi_number_snapshot, customer_name_snapshot')
-      .eq('status', 'active')
-      .order('order_date', { ascending: false }),
-    supabase
-      .from('business_orders')
-      .select('id, order_number, customer_snapshot')
-      .in('status', ['approved', 'completed'])
-      .order('order_date', { ascending: false }),
-    supabase.from('finance_order_costs').select('*').order('incurred_date', { ascending: false }),
-    fetchDailyOrderProductCosts(supabase),
-  ])
+  const [legacyOrdersResult, businessOrdersResult, costsResult, options, dailyOrderCosts] =
+    await Promise.all([
+      supabase
+        .from('finance_orders')
+        .select('id, pi_number_snapshot, customer_name_snapshot')
+        .eq('status', 'active')
+        .order('order_date', { ascending: false }),
+      supabase
+        .from('business_orders')
+        .select('id, order_number, customer_snapshot')
+        .in('status', ['approved', 'completed'])
+        .order('order_date', { ascending: false }),
+      supabase.from('finance_order_costs').select('*').order('incurred_date', { ascending: false }),
+      fetchDailyOrderOptions(supabase),
+      fetchBusinessOrderProductCosts(supabase, filters),
+    ])
 
   const loadError = legacyOrdersResult.error || businessOrdersResult.error || costsResult.error
   if (loadError) throw new Error(`订单成本数据读取失败：${loadError.message}`)
@@ -53,10 +62,10 @@ export default async function FinanceCostsPage() {
       <div>
         <h1 className="text-2xl font-semibold">订单成本</h1>
         <p className="text-sm text-muted-foreground">
-          已发货每日订单自动匹配产品库财务资料；修改成本仅覆盖当前订单产品行，不反写产品库。
+          已发货业务订单自动匹配产品库财务资料；修改成本仅覆盖当前订单产品行，不反写产品库。
         </p>
       </div>
-      <DailyOrderCostManager rows={dailyOrderCosts} />
+      <DailyOrderCostManager rows={dailyOrderCosts} filters={filters} options={options} />
       <div className="border-t pt-8">
         <h2 className="mb-1 text-lg font-semibold">其他订单费用</h2>
         <p className="mb-4 text-sm text-muted-foreground">

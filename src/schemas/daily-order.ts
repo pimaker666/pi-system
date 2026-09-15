@@ -51,6 +51,7 @@ export const dailyOrderFilterSchema = z.object({
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   shop: z.string().uuid().optional(),
+  shopGroup: z.string().uuid().optional(),
   salesperson: z.string().uuid().optional(),
   category: z.enum(dailyOrderShippingCategories).optional(),
   payment: z.enum(dailyOrderPaymentCategories).optional(),
