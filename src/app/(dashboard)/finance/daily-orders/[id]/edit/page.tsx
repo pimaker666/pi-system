@@ -142,6 +142,7 @@ export default async function EditBusinessOrderPage({
         products={(productsResult.data ?? []) as Product[]}
         shops={shops}
         salespeople={salespeople}
+        paymentAccounts={dailyOptions.paymentAccounts}
         initialOrder={order}
         editConstraints={constraintsResult.data}
       />

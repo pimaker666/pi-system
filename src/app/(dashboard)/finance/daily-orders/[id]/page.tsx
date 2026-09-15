@@ -351,8 +351,8 @@ export default async function BusinessOrderDetailPage({
                 {order.daily_payment_category ? PAYMENT_LABELS[order.daily_payment_category] : '—'}
               </div>
               <div>
-                <span className="text-muted-foreground">货运单号：</span>
-                {order.tracking_number || '—'}
+                <span className="text-muted-foreground">收款账户：</span>
+                {order.payment_account || '—'}
               </div>
               <div>
                 <span className="text-muted-foreground">业务备注：</span>

@@ -76,7 +76,7 @@ export default async function DailyOrdersPage({
       </div>
 
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-8">
-        <Input name="q" defaultValue={filters.q} placeholder="订单号/平台单号/发货单号/产品/SKU" className="xl:col-span-2" />
+        <Input name="q" defaultValue={filters.q} placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU" className="xl:col-span-2" />
         <Input name="dateFrom" type="date" defaultValue={filters.dateFrom} />
         <Input name="dateTo" type="date" defaultValue={filters.dateTo} />
         <select name="shop" defaultValue={filters.shop ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">

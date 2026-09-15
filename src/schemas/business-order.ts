@@ -268,7 +268,7 @@ export const businessOrderInputSchema = z
     currency: z.enum(CURRENCIES),
     exchange_rate_to_cny: optionalExchangeRateSchema,
     shipping_fee: nonNegativeAmountSchema,
-    tracking_number: optionalText(200, '物流单号不能超过 200 字'),
+    payment_account: optionalText(200, '收款账户不能超过 200 字'),
     sales_notes: optionalText(2000, '业务备注不能超过 2000 字'),
     daily_shipping_date: dateSchema,
     daily_shipping_number: optionalText(200, '每日订单发货单号不能超过 200 字'),

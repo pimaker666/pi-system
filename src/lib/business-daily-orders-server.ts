@@ -84,6 +84,7 @@ function buildLedgerQuery(
           `order_number.ilike.%${keyword}%`,
           `external_order_number.ilike.%${keyword}%`,
           `daily_shipping_number.ilike.%${keyword}%`,
+          `payment_account.ilike.%${keyword}%`,
           `tracking_number.ilike.%${keyword}%`,
         ].join(','),
       )
@@ -101,7 +102,7 @@ function compareLedgerOrders(left: BusinessDailyLedgerOrder, right: BusinessDail
 
 /**
  * 读取每日订单台账。PostgREST 不支持跨表 or()，所以关键字搜索拆成两次查询：
- * 一次匹配订单号 / 平台订单号 / 发货单号，一次匹配产品名称与 SKU，再按同一排序合并去重。
+ * 一次匹配订单号 / 平台订单号 / 发货单号 / 收款账户，一次匹配产品名称与 SKU，再按同一排序合并去重。
  * 表头命中的结果保留完整明细，优先于产品命中的结果。
  */
 export async function fetchBusinessDailyLedger(

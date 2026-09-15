@@ -6,6 +6,7 @@ import type {
   DailyOrderShop,
   DailyOrderShopGroup,
   DailyOrderWorkflow,
+  PaymentAccount,
   Product,
   Profile,
 } from '@/types'
@@ -59,14 +60,15 @@ export async function fetchDailyOrders(
 }
 
 export async function fetchDailyOrderOptions(supabase: SupabaseClient) {
-  const [shopsResult, groupsResult, assignmentsResult, salesResult, productsResult] = await Promise.all([
+  const [shopsResult, groupsResult, assignmentsResult, salesResult, productsResult, paymentAccountsResult] = await Promise.all([
     supabase.from('finance_daily_order_shops').select('*').order('name'),
     supabase.from('finance_daily_order_shop_groups').select('*').order('name'),
     supabase.from('finance_daily_order_shop_salespeople').select('*').eq('is_active', true),
     supabase.from('profiles').select('id, full_name, email, chinese_name').in('role', ['sales', 'supervisor', 'admin']).eq('status', 'approved').order('full_name'),
     supabase.from('products').select('id, name, sku, image_url, unit_price, currency, unit').eq('is_active', true).order('name'),
+    supabase.from('payment_accounts').select('*').eq('is_active', true).order('name'),
   ])
-  const error = shopsResult.error || groupsResult.error || assignmentsResult.error || salesResult.error || productsResult.error
+  const error = shopsResult.error || groupsResult.error || assignmentsResult.error || salesResult.error || productsResult.error || paymentAccountsResult.error
   if (error) throw new Error(`每日订单基础数据读取失败：${error.message}`)
   const assignments = (assignmentsResult.data ?? []) as Array<{ shop_id: string; salesperson_id: string }>
   const groups = (groupsResult.data ?? []) as DailyOrderShopGroup[]
@@ -89,6 +91,7 @@ export async function fetchDailyOrderOptions(supabase: SupabaseClient) {
     groups,
     salespeople: (salesResult.data ?? []) as Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[],
     products: (productsResult.data ?? []) as Pick<Product, 'id' | 'name' | 'sku' | 'image_url' | 'unit_price' | 'currency' | 'unit'>[],
+    paymentAccounts: (paymentAccountsResult.data ?? []) as PaymentAccount[],
   }
 }
 

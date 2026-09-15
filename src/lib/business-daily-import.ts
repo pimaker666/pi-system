@@ -483,7 +483,7 @@ export function groupBusinessDailyImportRows(
       exchange_rate_to_cny: head.currency === 'CNY' ? 1 : Number(head.exchange_rate_to_cny),
       // 生命周期运费与每日运费实收保持同一口径，避免两套金额打架。
       shipping_fee: shippingTotal,
-      tracking_number: '',
+      payment_account: '',
       sales_notes: head.sales_notes,
       daily_shipping_date: head.daily_shipping_date,
       daily_shipping_number: head.daily_shipping_number,

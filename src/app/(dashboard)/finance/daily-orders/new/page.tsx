@@ -55,6 +55,7 @@ export default async function NewBusinessOrderPage() {
         products={(productsResult.data ?? []) as Product[]}
         shops={dailyOptions.shops}
         salespeople={dailyOptions.salespeople}
+        paymentAccounts={dailyOptions.paymentAccounts}
       />
     </div>
   )

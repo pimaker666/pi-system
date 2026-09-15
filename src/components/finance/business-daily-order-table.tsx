@@ -185,7 +185,7 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
                         {order.daily_shipping_date ?? '—'}
                       </TableCell>
                       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
-                        {order.daily_shipping_number || order.tracking_number || '—'}
+                        {order.daily_shipping_number || order.payment_account || '—'}
                       </TableCell>
                     </>
                   )}

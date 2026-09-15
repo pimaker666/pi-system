@@ -152,6 +152,14 @@ export interface DailyOrderShopSalesperson {
   updated_at: string
 }
 
+export interface PaymentAccount {
+  id: string
+  name: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface DailyOrderScreenshot {
   id: string
   order_id: string
@@ -331,6 +339,7 @@ export interface BusinessOrder {
   total_sales_overridden: boolean
   receivable_received_difference_reason: string | null
   tracking_number: string | null
+  payment_account: string | null
   sales_notes: string | null
   review_note: string | null
   submitted_by: string | null

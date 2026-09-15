@@ -14,6 +14,7 @@ import { AlertTriangle, Eye, LockKeyhole, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CustomerCombobox } from '@/components/customers/customer-combobox'
 import { BusinessCustomProductPicker } from '@/components/finance/business-custom-product-picker'
+import { PaymentAccountCombobox } from '@/components/finance/payment-account-combobox'
 import type { DailyOrderShopOption } from '@/lib/daily-orders'
 import { ProductCombobox } from '@/components/products/product-combobox'
 import { Badge } from '@/components/ui/badge'
@@ -50,6 +51,7 @@ import type {
   CustomerGroup,
   DailyOrderPaymentCategory,
   DailyOrderShippingCategory,
+  PaymentAccount,
   Product,
   ProductGroup,
   Profile,
@@ -89,6 +91,7 @@ interface BusinessOrderFormProps {
   products: Product[]
   shops: DailyOrderShopOption[]
   salespeople: Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
+  paymentAccounts: PaymentAccount[]
   initialOrder?: BusinessOrderWithDetails
   editConstraints?: BusinessOrderEditConstraints
 }
@@ -253,6 +256,7 @@ export function BusinessOrderForm({
   products,
   shops,
   salespeople,
+  paymentAccounts,
   initialOrder,
   editConstraints,
 }: BusinessOrderFormProps) {
@@ -289,7 +293,7 @@ export function BusinessOrderForm({
     String(initialOrder?.exchange_rate_to_cny ?? ''),
   )
   const [shippingFee, setShippingFee] = useState(String(initialOrder?.shipping_fee ?? 0))
-  const [trackingNumber, setTrackingNumber] = useState(initialOrder?.tracking_number ?? '')
+  const [paymentAccount, setPaymentAccount] = useState(initialOrder?.payment_account ?? '')
   const [salesNotes, setSalesNotes] = useState(initialOrder?.sales_notes ?? '')
   const [selectedProductId, setSelectedProductId] = useState('')
   const [selectedCustomProduct, setSelectedCustomProduct] =
@@ -704,7 +708,7 @@ export function BusinessOrderForm({
       currency,
       exchange_rate_to_cny: exchangeRate,
       shipping_fee: shippingFee,
-      tracking_number: trackingNumber,
+      payment_account: paymentAccount,
       sales_notes: salesNotes,
       daily_shipping_date: dailyShippingDate,
       daily_shipping_number: dailyShippingNumber,
@@ -964,12 +968,11 @@ export function BusinessOrderForm({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="tracking_number">生命周期货运单号</Label>
-              <Input
-                id="tracking_number"
-                value={trackingNumber}
-                onChange={(event) => setTrackingNumber(event.target.value)}
-                maxLength={200}
+              <Label htmlFor="payment_account">收款账户</Label>
+              <PaymentAccountCombobox
+                accounts={paymentAccounts}
+                value={paymentAccount}
+                onChange={setPaymentAccount}
               />
             </div>
             <div className="space-y-2 md:col-span-2 xl:col-span-3">

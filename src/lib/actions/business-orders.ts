@@ -409,7 +409,7 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
     p_currency: input.currency,
     p_exchange_rate_to_cny: input.exchange_rate_to_cny,
     p_shipping_fee: input.shipping_fee,
-    p_tracking_number: nullableText(input.tracking_number),
+    p_tracking_number: null,
     p_sales_notes: nullableText(input.sales_notes),
     p_items: orderItemsPayload(input.items),
     p_payment_due_date: nullableText(input.payment_due_date),
@@ -428,6 +428,7 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
     p_receivable_received_difference_reason: nullableText(
       input.receivable_received_difference_reason,
     ),
+    p_payment_account: nullableText(input.payment_account),
   })
 
   if (error) return { ok: false, error: businessOrderError(error.message, '创建业务订单失败') }
@@ -468,7 +469,7 @@ export async function updateBusinessOrder(
     p_currency: input.currency,
     p_exchange_rate_to_cny: input.exchange_rate_to_cny,
     p_shipping_fee: input.shipping_fee,
-    p_tracking_number: nullableText(input.tracking_number),
+    p_tracking_number: null,
     p_sales_notes: nullableText(input.sales_notes),
     p_items: orderItemsPayload(input.items),
     p_payment_due_date: nullableText(input.payment_due_date),
@@ -490,6 +491,7 @@ export async function updateBusinessOrder(
     p_receivable_received_difference_reason: nullableText(
       input.receivable_received_difference_reason,
     ),
+    p_payment_account: nullableText(input.payment_account),
   })
 
   if (error) return { ok: false, error: businessOrderError(error.message, '更新业务订单失败') }
