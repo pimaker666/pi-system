@@ -2,11 +2,32 @@ import type {
   BusinessApprovalStatus,
   BusinessFulfillmentStatus,
   BusinessFulfillmentType,
+  BusinessOrder,
   BusinessOrderStatus,
   BusinessPaymentStatus,
   BusinessPaymentType,
   CustomerSnapshot,
+  Profile,
 } from '@/types'
+
+export function canAdjustBusinessOrderItems(
+  order: Pick<BusinessOrder, 'status' | 'salesperson_id' | 'approval_status'> & {
+    closed_at?: string | null
+  },
+  profile: Pick<Profile, 'id' | 'role'>,
+) {
+  const appendNeedsReapproval =
+    (profile.role === 'sales' || profile.role === 'supervisor') &&
+    order.status === 'approved' &&
+    order.approval_status === 'approved'
+  return (
+    !order.closed_at &&
+    order.status !== 'completed' &&
+    (profile.role === 'admin' ||
+      profile.role === 'finance' ||
+      (appendNeedsReapproval && order.salesperson_id === profile.id))
+  )
+}
 
 export type BusinessStatusVariant =
   | 'default'

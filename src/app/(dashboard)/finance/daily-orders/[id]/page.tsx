@@ -2,11 +2,8 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
-import {
-  BusinessOrderActions,
-  BusinessOrderFinancePanel,
-  canAdjustBusinessOrderItems,
-} from '@/components/finance/business-order-actions'
+import { BusinessOrderActions, BusinessOrderFinancePanel } from '@/components/finance/business-order-actions'
+import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
 import { BusinessOrderItemAdjustments } from '@/components/finance/business-order-item-adjustments'
 import { BusinessLifecycleStatus } from '@/components/finance/business-lifecycle-status'
 import { BusinessOrderPaymentManager } from '@/components/finance/business-order-payment-manager'

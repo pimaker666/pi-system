@@ -26,6 +26,7 @@ import {
   saveBusinessOrderFinance,
   submitBusinessOrder,
 } from '@/lib/actions/business-orders'
+import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
 import type { BusinessOrder, BusinessOrderFinanceDetail, Profile } from '@/types'
 import { BusinessOrderAppendDialog } from './business-order-append-dialog'
 
@@ -45,25 +46,6 @@ interface BusinessOrderActionsProps {
   financeReady: boolean
   canEditOrder?: boolean
   hasDailyFields: boolean
-}
-
-export function canAdjustBusinessOrderItems(
-  order: Pick<BusinessOrder, 'status' | 'salesperson_id' | 'approval_status'> & {
-    closed_at?: string | null
-  },
-  profile: Pick<Profile, 'id' | 'role'>,
-) {
-  const appendNeedsReapproval =
-    (profile.role === 'sales' || profile.role === 'supervisor') &&
-    order.status === 'approved' &&
-    order.approval_status === 'approved'
-  return (
-    !order.closed_at &&
-    order.status !== 'completed' &&
-    (profile.role === 'admin' ||
-      profile.role === 'finance' ||
-      (appendNeedsReapproval && order.salesperson_id === profile.id))
-  )
 }
 
 export function BusinessOrderActions({
