@@ -26,6 +26,10 @@ import {
   businessDateTimeLocalToIso,
   getBusinessDateTimeLocal,
 } from '@/lib/business-orders'
+import {
+  businessOrderItemDisplayName,
+  businessOrderItemDisplaySku,
+} from '@/lib/business-order-financials'
 import { formatDate } from '@/lib/utils'
 import type {
   BusinessOrder,
@@ -263,9 +267,9 @@ export function BusinessShipmentManager({
                 className="grid gap-2 rounded-md border p-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] sm:items-center sm:gap-5"
               >
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{item.name_snapshot}</div>
+                  <div className="truncate font-medium">{businessOrderItemDisplayName(item)}</div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {item.sku_snapshot} · {item.specification_snapshot || item.unit_snapshot}
+                    {businessOrderItemDisplaySku(item)} · {item.specification_snapshot || item.unit_snapshot}
                   </div>
                 </div>
                 <div className="flex justify-between gap-3 sm:block sm:text-right">
@@ -336,7 +340,9 @@ export function BusinessShipmentManager({
                     return (
                       <div key={detail.id} className="flex items-start justify-between gap-4">
                         <span className="min-w-0 break-words text-muted-foreground">
-                          {item ? `${item.name_snapshot}（${item.sku_snapshot}）` : '订单产品'}
+                          {item
+                            ? `${businessOrderItemDisplayName(item)}（${businessOrderItemDisplaySku(item)}）`
+                            : '订单产品'}
                         </span>
                         <span className="shrink-0 font-medium tabular-nums">
                           {formatQuantity(Number(detail.quantity))} {item?.unit_snapshot ?? ''}
@@ -400,13 +406,13 @@ export function BusinessShipmentManager({
                     className="grid gap-2 rounded-md bg-muted/40 p-2 sm:grid-cols-[minmax(0,1fr)_140px] sm:items-center"
                   >
                     <div className="min-w-0 text-sm">
-                      <div className="truncate font-medium">{item.name_snapshot}</div>
+                      <div className="truncate font-medium">{businessOrderItemDisplayName(item)}</div>
                       <div className="text-xs text-muted-foreground">
                         剩余 {formatQuantity(remaining)} {item.unit_snapshot}
                       </div>
                     </div>
                     <Input
-                      aria-label={`${item.name_snapshot}本次发货数量`}
+                      aria-label={`${businessOrderItemDisplayName(item)}本次发货数量`}
                       type="number"
                       min="0.0001"
                       max={remaining}

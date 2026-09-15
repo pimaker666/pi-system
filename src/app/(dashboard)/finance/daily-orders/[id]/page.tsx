@@ -30,6 +30,11 @@ import {
 } from '@/lib/actions/business-orders'
 import { requireApproved } from '@/lib/auth'
 import {
+  attachBusinessOrderItemsDisplay,
+  businessOrderItemDisplayName,
+  businessOrderItemDisplaySku,
+} from '@/lib/business-order-financials'
+import {
   BUSINESS_FULFILLMENT_LABELS,
   BUSINESS_ORDER_STATUS_LABELS,
   BUSINESS_ORDER_STATUS_VARIANTS,
@@ -116,6 +121,10 @@ export default async function BusinessOrderDetailPage({
     closure_reason?: string | null
     business_order_returns?: BusinessOrderReturnView[]
   }
+  order.business_order_items = await attachBusinessOrderItemsDisplay(
+    supabase,
+    order.business_order_items,
+  )
   order.business_order_items.sort((a, b) => a.sort_order - b.sort_order)
   // 同一产品（含历次追加）合并为一组相邻展示：图片与名称只在首行出现，下单数据各自独立成行。
   const itemGroups = (() => {
@@ -144,8 +153,8 @@ export default async function BusinessOrderDetailPage({
     .map((group) => {
       const first = group.items[0]
       return {
-        name: first.name_snapshot,
-        sku: first.sku_snapshot,
+        name: businessOrderItemDisplayName(first),
+        sku: businessOrderItemDisplaySku(first),
         unit: first.unit_snapshot,
         times: group.items.length,
         quantity: group.items.reduce((sum, item) => sum + Number(item.quantity), 0),
@@ -456,7 +465,7 @@ export default async function BusinessOrderDetailPage({
                               <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md border bg-muted">
                                 <Image
                                   src={toImageSrc(item.image_url_snapshot)}
-                                  alt={item.name_snapshot}
+                                  alt={businessOrderItemDisplayName(item)}
                                   fill
                                   className="object-cover"
                                   sizes="48px"
@@ -468,9 +477,9 @@ export default async function BusinessOrderDetailPage({
                               </div>
                             )}
                             <div className="min-w-0">
-                              <div className="font-medium">{item.name_snapshot}</div>
+                              <div className="font-medium">{businessOrderItemDisplayName(item)}</div>
                               <div className="text-xs text-muted-foreground">
-                                {item.sku_snapshot} · {item.specification_snapshot || item.unit_snapshot}
+                                {businessOrderItemDisplaySku(item)} · {item.specification_snapshot || item.unit_snapshot}
                               </div>
                             </div>
                           </div>

@@ -29,6 +29,10 @@ import {
   sortedBusinessDailyItems,
   type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
+import {
+  businessOrderItemDisplayName,
+  businessOrderItemDisplaySku,
+} from '@/lib/business-order-financials'
 import { DAILY_ORDER_COLUMNS, formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { displayProfileName } from '@/lib/utils'
 import type { Profile } from '@/types'
@@ -194,9 +198,11 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
                     {item?.daily_shipping_category ? SHIPPING_LABELS[item.daily_shipping_category] : '—'}
                   </TableCell>
                   <TableCell>
-                    <div>{item?.name_snapshot ?? '—'}</div>
-                    {item?.sku_snapshot && (
-                      <div className="text-xs text-muted-foreground">{item.sku_snapshot}</div>
+                    <div>{item ? businessOrderItemDisplayName(item) : '—'}</div>
+                    {item && businessOrderItemDisplaySku(item) && (
+                      <div className="text-xs text-muted-foreground">
+                        {businessOrderItemDisplaySku(item)}
+                      </div>
                     )}
                   </TableCell>
                   <TableCell className="tabular-nums">

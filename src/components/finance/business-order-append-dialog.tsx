@@ -43,6 +43,10 @@ import {
   listBusinessOrderAppendCatalog,
 } from '@/lib/actions/business-orders'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import {
+  businessOrderItemDisplayName,
+  businessOrderItemDisplaySku,
+} from '@/lib/business-order-financials'
 import { createClient } from '@/lib/supabase/client'
 import { toImageSrc } from '@/lib/supabase/image'
 import { formatCurrency } from '@/lib/utils'
@@ -1250,14 +1254,14 @@ export function BusinessOrderAppendDialog({
                           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-accent focus-visible:bg-accent"
                           onClick={() => importOrderItem(item)}
                         >
-                          <ItemThumb src={item.image_url_snapshot} alt={item.name_snapshot} />
+                          <ItemThumb src={item.image_url_snapshot} alt={businessOrderItemDisplayName(item)} />
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5">
-                              <span className="truncate text-sm font-medium">{item.name_snapshot}</span>
+                              <span className="truncate text-sm font-medium">{businessOrderItemDisplayName(item)}</span>
                               {item.source_type === 'custom' && <Badge variant="outline">定制</Badge>}
                             </div>
                             <div className="truncate text-xs text-muted-foreground">
-                              {[item.sku_snapshot, item.specification_snapshot, item.unit_snapshot]
+                              {[businessOrderItemDisplaySku(item), item.specification_snapshot, item.unit_snapshot]
                                 .filter(Boolean)
                                 .join(' · ')}
                             </div>

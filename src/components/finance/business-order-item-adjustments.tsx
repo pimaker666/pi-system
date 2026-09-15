@@ -27,6 +27,7 @@ import {
   deleteBusinessOrderAppendedItem,
   editBusinessOrderAppendedItem,
 } from '@/lib/actions/business-orders'
+import { businessOrderItemDisplayName } from '@/lib/business-order-financials'
 import type { BusinessOrderItem, CurrencyCode, DailyOrderShippingCategory } from '@/types'
 
 const SHIPPING_OPTIONS: Array<{ value: DailyOrderShippingCategory; label: string }> = [
@@ -201,7 +202,7 @@ export function BusinessOrderItemAdjustments({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <Label>产品</Label>
-              <Input value={item.name_snapshot} readOnly tabIndex={-1} className="bg-muted/40" />
+              <Input value={businessOrderItemDisplayName(item)} readOnly tabIndex={-1} className="bg-muted/40" />
             </div>
             <div className="space-y-1">
               <Label>订单金额（{currency}）</Label>
@@ -338,7 +339,7 @@ export function BusinessOrderItemAdjustments({
           </DialogHeader>
           <div className="space-y-2">
             <Label>产品</Label>
-            <Input value={item.name_snapshot} readOnly tabIndex={-1} className="bg-muted/40" />
+            <Input value={businessOrderItemDisplayName(item)} readOnly tabIndex={-1} className="bg-muted/40" />
           </div>
           <div className="space-y-2">
             <Label htmlFor="append_delete_reason">删除原因（选填）</Label>

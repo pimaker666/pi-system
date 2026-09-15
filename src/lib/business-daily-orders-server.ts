@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { DailyOrderFilters } from '@/schemas/daily-order'
 import type { BusinessDailyLedgerOrder } from '@/lib/business-daily-orders'
+import {
+  applyBusinessOrderItemDisplay,
+  fetchProductFinancialLabels,
+} from '@/lib/business-order-financials'
 
 /** 台账与导出的统一上限，和旧版每日订单台账保持一致。 */
 export const BUSINESS_DAILY_LEDGER_LIMIT = 500
@@ -36,6 +40,25 @@ async function attachOutstandingAmounts(
 /** 关键字里 PostgREST 的保留字符会破坏 or() 语法，先清掉。 */
 function normalizeKeyword(raw: string) {
   return raw.replace(/[,()%*]/g, ' ').trim()
+}
+
+/** 给台账明细附加财务展示字段：产品名称/财务编号优先于销售快照。 */
+async function attachItemDisplayLabels(
+  supabase: SupabaseClient,
+  orders: BusinessDailyLedgerOrder[],
+): Promise<BusinessDailyLedgerOrder[]> {
+  const items = orders.flatMap((order) => order.business_order_items ?? [])
+  const hasLinkedProducts = items.some(
+    (item) => item.source_type !== 'custom' && item.product_id,
+  )
+  if (!hasLinkedProducts) return orders
+  const labels = await fetchProductFinancialLabels(supabase)
+  return orders.map((order) => ({
+    ...order,
+    business_order_items: (order.business_order_items ?? []).map((item) =>
+      applyBusinessOrderItemDisplay(item, labels),
+    ),
+  }))
 }
 
 /**
@@ -116,9 +139,12 @@ export async function fetchBusinessDailyLedger(
   if (!keyword) {
     const { data, error } = await buildLedgerQuery(supabase, filters, effectiveLimit, false)
     if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
-    return attachOutstandingAmounts(
+    return attachItemDisplayLabels(
       supabase,
-      (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+      await attachOutstandingAmounts(
+        supabase,
+        (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+      ),
     )
   }
 
@@ -137,8 +163,11 @@ export async function fetchBusinessDailyLedger(
     if (!merged.has(order.id)) merged.set(order.id, order)
   }
 
-  return attachOutstandingAmounts(
+  return attachItemDisplayLabels(
     supabase,
-    [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+    await attachOutstandingAmounts(
+      supabase,
+      [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+    ),
   )
 }

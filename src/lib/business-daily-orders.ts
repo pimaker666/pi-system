@@ -9,6 +9,10 @@ import type {
   CurrencyCode,
   Profile,
 } from '@/types'
+import {
+  businessOrderItemDisplayName,
+  businessOrderItemDisplaySku,
+} from '@/lib/business-order-financials'
 
 /**
  * 恢复后的每日订单台账行：业务订单（表头）+ 产品明细（每行一个产品）。
@@ -257,8 +261,8 @@ export function buildBusinessDailyExportRows(
         sequence:
           items.length > 1 ? `${orderIndex + 1}-${itemIndex + 1}` : String(orderIndex + 1),
         shippingCategory: format.shipping(item.daily_shipping_category),
-        productName: item.name_snapshot,
-        productSku: item.sku_snapshot,
+        productName: businessOrderItemDisplayName(item),
+        productSku: businessOrderItemDisplaySku(item),
         quantity: String(Number(item.quantity)),
         shippingProgress: formatBusinessDailyShippingProgress(order, item),
         unitPrice: format.money(amounts.unitPrice, order.currency),

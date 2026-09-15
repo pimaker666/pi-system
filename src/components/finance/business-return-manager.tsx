@@ -26,6 +26,10 @@ import {
   businessDateTimeLocalToIso,
   getBusinessDateTimeLocal,
 } from '@/lib/business-orders'
+import {
+  businessOrderItemDisplayName,
+  businessOrderItemDisplaySku,
+} from '@/lib/business-order-financials'
 import { formatDate } from '@/lib/utils'
 import type {
   BusinessOrder,
@@ -330,7 +334,9 @@ export function BusinessReturnManager({
                     return (
                       <div key={returnItem.id} className="flex items-start justify-between gap-4">
                         <span className="min-w-0 break-words text-muted-foreground">
-                          {item ? `${item.name_snapshot}（${item.sku_snapshot}）` : '订单产品'}
+                          {item
+                            ? `${businessOrderItemDisplayName(item)}（${businessOrderItemDisplaySku(item)}）`
+                            : '订单产品'}
                         </span>
                         <span className="shrink-0 font-medium tabular-nums">
                           {formatQuantity(Number(returnItem.quantity))} {item?.unit_snapshot ?? ''}
@@ -376,14 +382,14 @@ export function BusinessReturnManager({
                     className="grid gap-2 rounded-md bg-muted/40 p-2 sm:grid-cols-[minmax(0,1fr)_140px] sm:items-center"
                   >
                     <div className="min-w-0 text-sm">
-                      <div className="truncate font-medium">{item.name_snapshot}</div>
+                      <div className="truncate font-medium">{businessOrderItemDisplayName(item)}</div>
                       <div className="text-xs text-muted-foreground">
                         已发 {formatQuantity(shipped)} · 已退 {formatQuantity(returned)} · 可退{' '}
                         {formatQuantity(returnable)} {item.unit_snapshot}
                       </div>
                     </div>
                     <Input
-                      aria-label={`${item.name_snapshot}退货数量`}
+                      aria-label={`${businessOrderItemDisplayName(item)}退货数量`}
                       type="number"
                       min="0.0001"
                       max={returnable}
