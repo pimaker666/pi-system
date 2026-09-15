@@ -510,7 +510,7 @@ export interface BusinessCustomerTransfer {
   order_id: string | null
   currency: CurrencyCode
   amount: number
-  exchange_rate_to_cny: number
+  exchange_rate_to_cny: number | null
   received_at: string
   payment_type: BusinessPaymentType
   proof_path: string

@@ -115,7 +115,10 @@ const quote = (value) =>
   value === null || value === undefined ? 'null' : `'${String(value).replaceAll("'", "''")}'`
 const num = (value) => (value === null || value === undefined ? null : Number(value))
 
-assert(files.at(-1) === '0043_business_order_item_append_revision.sql', '0043 is the latest migration')
+assert(
+  files.includes('0043_business_order_item_append_revision.sql'),
+  '0043 is included in the replay chain',
+)
 assert(
   (await scalar(
     `select count(*)::int from pg_proc where proname = 'adjust_business_order_items'`,

@@ -42,7 +42,7 @@ interface AllocationListRow {
   voided_at: string | null
   transfer: {
     voided_at: string | null
-    exchange_rate_to_cny: number
+    exchange_rate_to_cny: number | null
   } | null
 }
 

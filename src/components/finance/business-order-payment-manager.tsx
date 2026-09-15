@@ -442,14 +442,14 @@ export function BusinessOrderPaymentManager({
     }
 
     const transferAmount = amountValue(amount)
-    const rate = Number(exchangeRate)
+    const rate = exchangeRate.trim() === '' ? null : Number(exchangeRate)
     const nextAllocations = buildAllocations(allocationDraft)
     const allocatedAmount = nextAllocations.reduce((sum, allocation) => sum + allocation.amount, 0)
     if (transferAmount <= 0) {
       toast.error('转账金额必须大于 0')
       return
     }
-    if (!Number.isFinite(rate) || rate <= 0) {
+    if (rate !== null && (!Number.isFinite(rate) || rate <= 0)) {
       toast.error('请输入有效汇率')
       return
     }
@@ -869,7 +869,8 @@ export function BusinessOrderPaymentManager({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="transfer_rate">兑人民币汇率</Label>
-                <Input id="transfer_rate" type="number" min="0.00000001" step="0.00000001" value={exchangeRate} onChange={(event) => setExchangeRate(event.target.value)} disabled={currency === 'CNY'} required />
+                <Input id="transfer_rate" type="number" min="0.00000001" step="0.00000001" value={exchangeRate} onChange={(event) => setExchangeRate(event.target.value)} disabled={currency === 'CNY'} />
+                <p className="text-xs text-muted-foreground">选填，留空则该笔转账暂不折算人民币</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="received_at">收款时间</Label>

@@ -115,7 +115,10 @@ const quote = (value) =>
   value === null || value === undefined ? 'null' : `'${String(value).replaceAll("'", "''")}'`
 const num = (value) => (value === null || value === undefined ? null : Number(value))
 
-assert(files.at(-1) === '0042_adjust_business_order_items_open_roles.sql', '0042 is the latest migration')
+assert(
+  files.includes('0042_adjust_business_order_items_open_roles.sql'),
+  '0042 is included in the replay chain',
+)
 assert(
   (await scalar(
     `select count(*)::int from pg_proc where proname = 'adjust_business_order_items'`,
@@ -206,7 +209,13 @@ async function append(actorId, orderId, items, key, { reason = '客户追单', v
   )
 }
 const catalogAppend = (productId, quantity, unitPrice = 100) => [
-  { source_type: 'catalog', product_id: productId, quantity, unit_price: unitPrice },
+  {
+    source_type: 'catalog',
+    product_id: productId,
+    quantity,
+    unit_price: unitPrice,
+    daily_shipping_category: 'stock',
+  },
 ]
 
 await expectReject(

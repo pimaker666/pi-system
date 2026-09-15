@@ -27,7 +27,12 @@ import {
   submitBusinessOrder,
 } from '@/lib/actions/business-orders'
 import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
-import type { BusinessOrder, BusinessOrderFinanceDetail, Profile } from '@/types'
+import type {
+  BusinessOrder,
+  BusinessOrderFinanceDetail,
+  BusinessOrderItem,
+  Profile,
+} from '@/types'
 import { BusinessOrderAppendDialog } from './business-order-append-dialog'
 
 interface BusinessOrderActionsProps {
@@ -41,7 +46,7 @@ interface BusinessOrderActionsProps {
     | 'payment_status'
     | 'fulfillment_status'
     | 'currency'
-  > & { closed_at?: string | null }
+  > & { closed_at?: string | null; business_order_items: BusinessOrderItem[] }
   profile: Pick<Profile, 'id' | 'role'>
   financeReady: boolean
   canEditOrder?: boolean
@@ -125,6 +130,7 @@ export function BusinessOrderActions({
               orderVersion={order.version}
               currency={order.currency}
               hasDailyFields={hasDailyFields}
+              orderItems={order.business_order_items}
               needsReapproval={appendNeedsReapproval}
             />
           )}

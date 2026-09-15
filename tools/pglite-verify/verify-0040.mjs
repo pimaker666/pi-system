@@ -115,8 +115,8 @@ const num = (value) => (value === null || value === undefined ? null : Number(va
 const quote = (value) => (value === null || value === undefined ? 'null' : `'${String(value).replaceAll("'", "''")}'`)
 
 assert(
-  files.at(-1) === '0040_business_order_optional_number_rate_auto_approval.sql',
-  '0040 is the latest migration in the empty-database replay',
+  files.includes('0040_business_order_optional_number_rate_auto_approval.sql'),
+  '0040 is included in the replay chain',
 )
 assert(
   (await scalar(

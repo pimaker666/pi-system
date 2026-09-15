@@ -474,7 +474,7 @@ const businessCustomerTransferBaseSchema = z.object({
   order_id: z.string().uuid('请选择有效订单').nullable().default(null),
   currency: z.enum(CURRENCIES),
   amount: positiveAmountSchema,
-  exchange_rate_to_cny: exchangeRateSchema,
+  exchange_rate_to_cny: optionalExchangeRateSchema,
   received_at: dateTimeSchema,
   payment_type: z.enum(businessPaymentTypes),
   proof_path: z
@@ -493,12 +493,16 @@ function validateCustomerTransfer(
     customer_id: string | null
     order_id: string | null
     currency: (typeof CURRENCIES)[number]
-    exchange_rate_to_cny: number
+    exchange_rate_to_cny: number | null
     proof_path: string
   },
   ctx: z.RefinementCtx,
 ) {
-  if (value.currency === 'CNY' && value.exchange_rate_to_cny !== 1) {
+  if (
+    value.currency === 'CNY' &&
+    value.exchange_rate_to_cny !== null &&
+    value.exchange_rate_to_cny !== 1
+  ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ['exchange_rate_to_cny'],

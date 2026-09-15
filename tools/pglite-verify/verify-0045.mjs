@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { readFile, readdir } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -111,98 +112,94 @@ async function asSuper() {
   await db.query("select set_config('request.jwt.claim.sub', '', false)")
 }
 
-const quote = (value) =>
-  value === null || value === undefined ? 'null' : `'${String(value).replaceAll("'", "''")}'`
 const num = (value) => (value === null || value === undefined ? null : Number(value))
 
 assert(
-  files.includes('0041_order_scoped_transfers_and_ledger_totals.sql'),
-  '0041 is included in the replay chain',
+  files.at(-1) === '0045_optional_transfer_exchange_rate.sql',
+  '0045 is the latest migration',
 )
 assert(
   (await scalar(
     `select count(*)::int from pg_proc where proname = 'record_business_customer_transfer_v2'`,
   )) === 1,
-  '0041 defines the order-scoped transfer RPC',
+  '0045 replaces the transfer RPC in place',
 )
 assert(
   (await scalar(
     `select is_nullable from information_schema.columns
      where table_schema='public' and table_name='business_customer_transfers'
-       and column_name='customer_id'`,
+       and column_name='exchange_rate_to_cny'`,
   )) === 'YES',
-  '0041 permits a null transfer customer for order scope',
+  '0045 makes the transfer exchange rate nullable',
 )
 
 const admin = '11111111-1111-4111-8111-111111111111'
 const finance = '22222222-2222-4222-8222-222222222222'
 const sales = '33333333-3333-4333-8333-333333333333'
-const otherSales = '44444444-4444-4444-8444-444444444444'
 const productId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-const proofId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
-const partialProofId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-const foreignProofId = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
-const badProofId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
 
 await db.exec(`
   alter table public.profiles disable trigger trg_profiles_protect_privileged;
   insert into auth.users (id, email) values
     ('${admin}', 'admin@example.com'),
     ('${finance}', 'finance@example.com'),
-    ('${sales}', 'sales@example.com'),
-    ('${otherSales}', 'other-sales@example.com');
+    ('${sales}', 'sales@example.com');
   update public.profiles set role='admin', status='approved', full_name='Admin' where id='${admin}';
   update public.profiles set role='finance', status='approved', full_name='Finance' where id='${finance}';
   update public.profiles set role='sales', status='approved', full_name='Sales' where id='${sales}';
-  update public.profiles set role='sales', status='approved', full_name='Other Sales' where id='${otherSales}';
   alter table public.profiles enable trigger trg_profiles_protect_privileged;
-  insert into public.products (id, sku, name) values ('${productId}', 'SKU-0041', '0041 Product');
+  insert into public.products (id, sku, name) values ('${productId}', 'SKU-0045', '0045 Product');
 `)
 
 await setUser(finance)
-const shopId = await scalar(`
+const shopUsd = await scalar(`
   select id from public.save_finance_daily_order_shop(
-    null, '0041 USD Shop', null, true,
-    array['${admin}','${sales}','${otherSales}']::uuid[], 'USD'::public.currency_code)
+    null, '0045 USD Shop', null, true,
+    array['${admin}','${sales}']::uuid[], 'USD'::public.currency_code)
 `)
-assert(!!shopId, 'finance seeds a shop for order-scoped transfer rehearsal')
+const shopCny = await scalar(`
+  select id from public.save_finance_daily_order_shop(
+    null, '0045 CNY Shop', null, true,
+    array['${admin}','${sales}']::uuid[], 'CNY'::public.currency_code)
+`)
+assert(!!shopUsd && !!shopCny, 'finance seeds USD and CNY shops for the rehearsal')
 
-function items(receivedProduct = 40) {
+function items() {
   return JSON.stringify([
     {
       product_id: productId,
-      quantity: 2,
+      quantity: 1,
       unit_price: 100,
       daily_shipping_category: 'stock',
-      product_received_amount: receivedProduct,
-      product_received_overridden: true,
+      product_received_amount: 0,
+      product_received_overridden: false,
       logistics_fee_amount: 0,
-      sales_total_amount: receivedProduct,
-      sales_total_overridden: true,
+      sales_total_amount: 0,
+      sales_total_overridden: false,
     },
   ])
 }
 
-async function createNoCustomerOrder({ salespersonId, label }) {
+async function createOrder({ shop, currency, rate, label }) {
   await setUser(admin)
   const result = await db.query(`
     select * from public.create_business_order_v4(
       null, current_date, 'stock'::public.business_fulfillment_type,
-      'USD'::public.currency_code, 7.2, 0, null, null,
-      '${items()}'::jsonb, null, '${shopId}', '${salespersonId}', '0041-${label}',
+      '${currency}'::public.currency_code, ${rate}, 0, null, null,
+      '${items()}'::jsonb, null, '${shop}', '${sales}', '0045-${label}',
       current_date, 'SHIP-${label}', 'full'::public.daily_order_payment_category,
-      40, true, 0, true, 40, true, null)
+      0, false, 0, false, 0, false, null)
   `)
   return result.rows[0].id
 }
 
-const targetOrderId = await createNoCustomerOrder({ salespersonId: sales, label: 'TARGET' })
-const otherOrderId = await createNoCustomerOrder({ salespersonId: otherSales, label: 'OTHER' })
-assert(!!targetOrderId && !!otherOrderId, 'admin creates customer-less orders for distinct salespeople')
+const usdOrderId = await createOrder({ shop: shopUsd, currency: 'USD', rate: 7.2, label: 'USD' })
+const cnyOrderId = await createOrder({ shop: shopCny, currency: 'CNY', rate: 'null', label: 'CNY' })
+assert(!!usdOrderId && !!cnyOrderId, 'admin creates USD and CNY orders without entry receipts')
 
-async function seedProof(fileId, orderId) {
+async function seedProof(orderId) {
   await asSuper()
-  const path = `${sales}/order/${orderId}/${fileId}.jpg`
+  const path = `${sales}/order/${orderId}/${randomUUID()}.jpg`
   await db.exec(`
     insert into storage.objects(bucket_id, name, owner, metadata)
     values (
@@ -213,106 +210,110 @@ async function seedProof(fileId, orderId) {
   return path
 }
 
-const proofPath = await seedProof(proofId, targetOrderId)
-await setUser(sales)
-await db.query(`
-  select public.record_business_customer_transfer_v2(
-    null, '${targetOrderId}', 'USD'::public.currency_code, 60, 7.2, now(),
-    'balance'::public.business_payment_type, '${proofPath}', null, null,
-    'IDEM-0041-OK', '[{"order_id":"${targetOrderId}","amount":60}]'::jsonb)
-`)
-
-await asSuper()
-const transfer = (
-  await rows(`
-    select customer_id, order_id, amount
-    from public.business_customer_transfers
-    where idempotency_key='IDEM-0041-OK'
+async function recordTransfer({ orderId, currency, amount, rate, key }) {
+  const proofPath = await seedProof(orderId)
+  await setUser(sales)
+  return db.query(`
+    select public.record_business_customer_transfer_v2(
+      null, '${orderId}', '${currency}'::public.currency_code, ${amount}, ${rate}, '2026-09-15 12:00:00+00'::timestamptz,
+      'balance'::public.business_payment_type, '${proofPath}', null, null,
+      '${key}', '[{"order_id":"${orderId}","amount":${amount}}]'::jsonb)
   `)
-)[0]
+}
+
+async function transferRow(key) {
+  return (
+    await rows(`
+      select order_id, amount, exchange_rate_to_cny
+      from public.business_customer_transfers where idempotency_key='${key}'
+    `)
+  )[0]
+}
+
+// A. 非人民币转账留空汇率：落 NULL，分摊正常生成。
+await recordTransfer({ orderId: usdOrderId, currency: 'USD', amount: 60, rate: 'null', key: 'IDEM-0045-NULL' })
+await asSuper()
+let transfer = await transferRow('IDEM-0045-NULL')
 assert(
-  transfer.customer_id === null && transfer.order_id === targetOrderId && num(transfer.amount) === 60,
-  'order-scoped transfer persists without a customer and retains its order scope',
+  transfer.order_id === usdOrderId &&
+    num(transfer.amount) === 60 &&
+    transfer.exchange_rate_to_cny === null,
+  'a USD transfer without a rate persists exchange_rate_to_cny as null',
 )
 assert(
   (await scalar(`
     select count(*)::int
     from public.business_order_payment_allocations a
     join public.business_customer_transfers t on t.id = a.transfer_id
-    where t.idempotency_key='IDEM-0041-OK'
-      and a.order_id='${targetOrderId}'
+    where t.idempotency_key='IDEM-0045-NULL'
+      and a.order_id='${usdOrderId}'
       and a.amount=60
       and a.voided_at is null
   `)) === 1,
-  'order-scoped transfer creates one full allocation to its own order',
+  'the null-rate transfer still creates its order allocation',
 )
 
-const partialProofPath = await seedProof(partialProofId, targetOrderId)
+// B. 幂等重放：同 key 同载荷（含空汇率）返回缓存结果，不产生第二条。
 await setUser(sales)
-await expectReject(
-  'an order-scoped transfer cannot leave an unallocated balance',
-  () =>
-    db.query(`
-      select public.record_business_customer_transfer_v2(
-        null, '${targetOrderId}', 'USD'::public.currency_code, 10, 7.2, now(),
-        'balance'::public.business_payment_type, '${partialProofPath}', null, null,
-        'IDEM-0041-PARTIAL', '[{"order_id":"${targetOrderId}","amount":9}]'::jsonb)
-    `),
-  'Order transfer must be fully allocated to its own order',
-)
-
-const foreignProofPath = await seedProof(foreignProofId, targetOrderId)
-await setUser(sales)
-await expectReject(
-  'an order-scoped transfer cannot allocate to another order',
-  () =>
-    db.query(`
-      select public.record_business_customer_transfer_v2(
-        null, '${targetOrderId}', 'USD'::public.currency_code, 10, 7.2, now(),
-        'balance'::public.business_payment_type, '${foreignProofPath}', null, null,
-        'IDEM-0041-FOREIGN', '[{"order_id":"${otherOrderId}","amount":10}]'::jsonb)
-    `),
-  'Order transfer can only be allocated to its own order',
-)
-
-await setUser(sales)
-await expectReject(
-  'an order-scoped transfer requires its order proof namespace',
-  () =>
-    db.query(`
-      select public.record_business_customer_transfer_v2(
-        null, '${targetOrderId}', 'USD'::public.currency_code, 10, 7.2, now(),
-        'balance'::public.business_payment_type,
-        '${sales}/order/${otherOrderId}/${badProofId}.jpg', null, null,
-        'IDEM-0041-BAD-PROOF', '[{"order_id":"${targetOrderId}","amount":10}]'::jsonb)
-    `),
-  'Invalid transfer proof path',
-)
-
-await setUser(sales)
-const visibleBalances = await rows(`
-  select * from public.get_business_orders_outstanding_amount(
-    array['${targetOrderId}', '${otherOrderId}']::uuid[]
-  )
-`)
+const replay = (
+  await rows(`select public.record_business_customer_transfer_v2(
+    null, '${usdOrderId}', 'USD'::public.currency_code, 60, null, '2026-09-15 12:00:00+00'::timestamptz,
+    'balance'::public.business_payment_type,
+    (select proof_path from public.business_customer_transfers where idempotency_key='IDEM-0045-NULL'),
+    null, null, 'IDEM-0045-NULL',
+    '[{"order_id":"${usdOrderId}","amount":60}]'::jsonb) as transfer`)
+)[0].transfer
 assert(
-  visibleBalances.length === 1 &&
-    visibleBalances[0].order_id === targetOrderId &&
-    num(visibleBalances[0].outstanding_amount) === 100,
-  'the outstanding-balance RPC combines entry receipts and transfers, then filters invisible orders',
+  (await scalar(`select count(*)::int from public.business_customer_transfers where idempotency_key='IDEM-0045-NULL'`)) === 1,
+  'replaying the same null-rate payload keeps a single transfer row',
 )
-
-await setUser(admin)
-const adminBalances = await rows(`
-  select * from public.get_business_orders_outstanding_amount(
-    array['${targetOrderId}', '${otherOrderId}']::uuid[]
-  ) order by order_id
-`)
-const balanceByOrder = new Map(adminBalances.map((row) => [row.order_id, num(row.outstanding_amount)]))
 assert(
-  balanceByOrder.get(targetOrderId) === 100 && balanceByOrder.get(otherOrderId) === 160,
-  'the outstanding-balance RPC uses total amount minus entry receipts and active allocations',
+  replay.transfer.idempotency_key === 'IDEM-0045-NULL',
+  'the idempotent replay returns the cached transfer result',
 )
 
-console.log('ALL 0041 CHECKS PASSED')
+// C. 人民币口径：留空汇率的转账不参与折算；带汇率照常折算。
+await asSuper()
+let summary = (await rows(`select * from public.get_finance_summary()`))[0]
+assert(
+  num(summary.income) === 0,
+  'get_finance_summary excludes the null-rate transfer from CNY income',
+)
+await recordTransfer({ orderId: usdOrderId, currency: 'USD', amount: 10, rate: 7.2, key: 'IDEM-0045-RATED' })
+await asSuper()
+summary = (await rows(`select * from public.get_finance_summary()`))[0]
+assert(
+  num(summary.income) === 72,
+  'get_finance_summary still converts rated transfers (10 × 7.2 = 72)',
+)
+
+// D. 人民币转账留空汇率：按 1 落库。
+await recordTransfer({ orderId: cnyOrderId, currency: 'CNY', amount: 30, rate: 'null', key: 'IDEM-0045-CNY' })
+await asSuper()
+transfer = await transferRow('IDEM-0045-CNY')
+assert(
+  transfer.order_id === cnyOrderId &&
+    num(transfer.amount) === 30 &&
+    num(transfer.exchange_rate_to_cny) === 1,
+  'a CNY transfer without a rate persists exchange_rate_to_cny as 1',
+)
+
+// E. 显式非法汇率照旧拒绝。
+await expectReject(
+  'a CNY transfer with a rate other than one is still rejected',
+  () => recordTransfer({ orderId: cnyOrderId, currency: 'CNY', amount: 5, rate: 2, key: 'IDEM-0045-CNY-BAD' }),
+  'CNY exchange rate must equal one',
+)
+await expectReject(
+  'a zero exchange rate is still rejected',
+  () => recordTransfer({ orderId: usdOrderId, currency: 'USD', amount: 5, rate: 0, key: 'IDEM-0045-ZERO' }),
+  'Exchange rate is invalid',
+)
+await expectReject(
+  'an out-of-range exchange rate is still rejected',
+  () => recordTransfer({ orderId: usdOrderId, currency: 'USD', amount: 5, rate: 1000001, key: 'IDEM-0045-HUGE' }),
+  'Exchange rate is invalid',
+)
+
+console.log('ALL 0045 CHECKS PASSED')
 await db.close()

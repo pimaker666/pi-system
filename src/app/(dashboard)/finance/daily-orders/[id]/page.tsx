@@ -44,8 +44,15 @@ import type {
   BusinessLifecycleAuditLog,
   BusinessOrderAuditLog,
   BusinessOrderFinanceDetail,
+  BusinessOrderItem,
   BusinessOrderWithDetails,
 } from '@/types'
+
+// 追加日期按东八区折算，容器时区可能不是本地时间。
+function appendDateLabel(createdAt: string) {
+  const shifted = new Date(new Date(createdAt).getTime() + 8 * 60 * 60 * 1000)
+  return `${shifted.getUTCMonth() + 1}月${shifted.getUTCDate()}日追加`
+}
 
 const auditLabels: Record<string, string> = {
   create: '创建订单',
@@ -110,35 +117,41 @@ export default async function BusinessOrderDetailPage({
     business_order_returns?: BusinessOrderReturnView[]
   }
   order.business_order_items.sort((a, b) => a.sort_order - b.sort_order)
-  // 同一产品多次加单各自独立成行，此处把同一产品的历次下单合并出累计数量与金额。
-  const itemProductSummaries = (() => {
-    const groups = new Map<
-      string,
-      { name: string; sku: string; unit: string; times: number; quantity: number; amount: number }
-    >()
+  // 同一产品（含历次追加）合并为一组相邻展示：图片与名称只在首行出现，下单数据各自独立成行。
+  const itemGroups = (() => {
+    const groups: Array<{ key: string; items: BusinessOrderItem[] }> = []
+    const groupIndex = new Map<string, number>()
     for (const item of order.business_order_items) {
       const key =
         item.source_type === 'custom'
           ? `custom:${item.custom_product_id ?? item.id}`
           : `catalog:${item.product_id ?? item.id}`
-      const current = groups.get(key)
-      if (current) {
-        current.times += 1
-        current.quantity += Number(item.quantity)
-        current.amount += Number(item.line_amount)
+      const existing = groupIndex.get(key)
+      if (existing === undefined) {
+        groupIndex.set(key, groups.length)
+        groups.push({ key, items: [item] })
       } else {
-        groups.set(key, {
-          name: item.name_snapshot,
-          sku: item.sku_snapshot,
-          unit: item.unit_snapshot,
-          times: 1,
-          quantity: Number(item.quantity),
-          amount: Number(item.line_amount),
-        })
+        groups[existing].items.push(item)
       }
     }
-    return [...groups.values()].filter((group) => group.times > 1)
+    return groups
   })()
+  const itemRows = itemGroups.flatMap((group) =>
+    group.items.map((item, index) => ({ item, showProduct: index === 0 })),
+  )
+  const itemProductSummaries = itemGroups
+    .filter((group) => group.items.length > 1)
+    .map((group) => {
+      const first = group.items[0]
+      return {
+        name: first.name_snapshot,
+        sku: first.sku_snapshot,
+        unit: first.unit_snapshot,
+        times: group.items.length,
+        quantity: group.items.reduce((sum, item) => sum + Number(item.quantity), 0),
+        amount: group.items.reduce((sum, item) => sum + Number(item.line_amount), 0),
+      }
+    })
   order.business_order_payments.sort(
     (a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime(),
   )
@@ -166,12 +179,13 @@ export default async function BusinessOrderDetailPage({
   const hasDailyFields = order.total_sales_amount !== null
   const canAdjustItems = canAdjustBusinessOrderItems(order, profile)
   const hasAppendedItems = order.business_order_items.some((item) => item.origin === 'append')
-  const showItemAdjustments = canAdjustItems && hasAppendedItems
+  // 与右侧收款区的“有效已收 / 未收尾款”保持同一结算口径，避免两处金额不一致。
   const actualReceived = hasDailyFields
-    ? Number(order.total_sales_amount)
+    ? Number(settlement.allocated_amount)
     : Number(order.total_amount)
-  const receivableReceivedDifference =
-    Math.round((Number(order.total_amount) - actualReceived) * 100) / 100
+  const receivableReceivedDifference = hasDailyFields
+    ? Number(settlement.outstanding_amount)
+    : Math.round((Number(order.total_amount) - actualReceived) * 100) / 100
   const attachments = (order.business_order_attachments ?? []).filter(
     (attachment) => attachment.status === 'active',
   )
@@ -381,9 +395,7 @@ export default async function BusinessOrderDetailPage({
                     <span>{formatCurrency(Number(order.total_shipping_received_amount), order.currency)}</span>
                   </div>
                   <div className="flex justify-between font-medium">
-                    <span>
-                      实际实收总额{order.total_sales_overridden ? '（已手工覆盖）' : ''}
-                    </span>
+                    <span>实际实收总额（有效已收）</span>
                     <span>{formatCurrency(actualReceived, order.currency)}</span>
                   </div>
                   <div className="flex justify-between border-t pt-2 font-semibold">
@@ -431,36 +443,40 @@ export default async function BusinessOrderDetailPage({
                         <TableHead className="text-right">明细实收合计</TableHead>
                       </>
                     )}
-                    {showItemAdjustments && <TableHead className="text-right">操作</TableHead>}
+                    {hasAppendedItems && <TableHead className="text-right">操作</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {order.business_order_items.map((item) => (
+                  {itemRows.map(({ item, showProduct }) => (
                     <TableRow key={item.id}>
                       <TableCell>
-                        <div className="flex items-center gap-3">
-                          {item.image_url_snapshot ? (
-                            <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md border bg-muted">
-                              <Image
-                                src={toImageSrc(item.image_url_snapshot)}
-                                alt={item.name_snapshot}
-                                fill
-                                className="object-cover"
-                                sizes="48px"
-                              />
-                            </div>
-                          ) : (
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border bg-muted text-[10px] text-muted-foreground">
-                              无图片
-                            </div>
-                          )}
-                          <div className="min-w-0">
-                            <div className="font-medium">{item.name_snapshot}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {item.sku_snapshot} · {item.specification_snapshot || item.unit_snapshot}
+                        {showProduct ? (
+                          <div className="flex items-center gap-3">
+                            {item.image_url_snapshot ? (
+                              <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-md border bg-muted">
+                                <Image
+                                  src={toImageSrc(item.image_url_snapshot)}
+                                  alt={item.name_snapshot}
+                                  fill
+                                  className="object-cover"
+                                  sizes="48px"
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-md border bg-muted text-[10px] text-muted-foreground">
+                                无图片
+                              </div>
+                            )}
+                            <div className="min-w-0">
+                              <div className="font-medium">{item.name_snapshot}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {item.sku_snapshot} · {item.specification_snapshot || item.unit_snapshot}
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        ) : (
+                          <span className="pl-14 text-xs text-muted-foreground">同上</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">{Number(item.quantity).toLocaleString('zh-CN')}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatCurrency(Number(item.unit_price), order.currency)}</TableCell>
@@ -487,16 +503,23 @@ export default async function BusinessOrderDetailPage({
                           </TableCell>
                         </>
                       )}
-                      {showItemAdjustments && (
+                      {hasAppendedItems && (
                         <TableCell className="text-right">
                           {item.origin === 'append' ? (
-                            <BusinessOrderItemAdjustments
-                              orderId={order.id}
-                              orderVersion={order.version}
-                              currency={order.currency}
-                              hasDailyFields={hasDailyFields}
-                              item={item}
-                            />
+                            <div className="flex flex-col items-end gap-1">
+                              <span className="text-xs text-muted-foreground">
+                                {appendDateLabel(item.created_at)}
+                              </span>
+                              {canAdjustItems && (
+                                <BusinessOrderItemAdjustments
+                                  orderId={order.id}
+                                  orderVersion={order.version}
+                                  currency={order.currency}
+                                  hasDailyFields={hasDailyFields}
+                                  item={item}
+                                />
+                              )}
+                            </div>
                           ) : (
                             <span className="text-xs text-muted-foreground">首次下单</span>
                           )}

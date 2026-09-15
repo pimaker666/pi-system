@@ -37,8 +37,8 @@ create policy "payment_accounts_select"
 drop policy if exists "payment_accounts_manage" on public.payment_accounts;
 create policy "payment_accounts_manage"
   on public.payment_accounts for all to authenticated
-  using (public.is_approved_user() and role() in ('admin', 'finance'))
-  with check (public.is_approved_user() and role() in ('admin', 'finance'));
+  using (public.is_finance_or_admin())
+  with check (public.is_finance_or_admin());
 
 -- -----------------------------------------------------------------------------
 -- 2. 业务订单增加收款账户字段
