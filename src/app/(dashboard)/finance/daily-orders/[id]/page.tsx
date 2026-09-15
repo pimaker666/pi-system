@@ -50,6 +50,7 @@ import type {
   BusinessOrderAuditLog,
   BusinessOrderFinanceDetail,
   BusinessOrderItem,
+  BusinessOrderPaymentAllocationTarget,
   BusinessOrderWithDetails,
 } from '@/types'
 
@@ -179,6 +180,50 @@ export default async function BusinessOrderDetailPage({
     throw new Error(settlementResult.error ?? '订单结算汇总读取失败')
   }
   const settlement = settlementResult.data
+  // 有效分摊并入实收展示：与结算 RPC/收款管理同一口径（分摊与其转账均未作废）。
+  type AllocationRow = {
+    transfer_id: string
+    order_id: string
+    order_item_id: string | null
+    allocation_target: BusinessOrderPaymentAllocationTarget
+    amount: string | number
+    voided_at: string | null
+    transfer: { voided_at: string | null } | null
+  }
+  const allocationRowsResult = await supabase
+    .from('business_order_payment_allocations')
+    .select(
+      'transfer_id, order_id, order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at)',
+    )
+    .eq('order_id', id)
+  if (allocationRowsResult.error) {
+    throw new Error(`订单收款分摊读取失败：${allocationRowsResult.error.message}`)
+  }
+  const allocationRows = (allocationRowsResult.data ?? []) as unknown as AllocationRow[]
+  const activeAllocationRows = allocationRows.filter(
+    (allocation) =>
+      !allocation.voided_at && allocation.transfer !== null && !allocation.transfer.voided_at,
+  )
+  const itemAllocatedByItem = new Map<string, number>()
+  let shippingAllocated = 0
+  let orderAllocated = 0
+  for (const allocation of activeAllocationRows) {
+    const amount = Number(allocation.amount)
+    if (allocation.allocation_target === 'item' && allocation.order_item_id) {
+      itemAllocatedByItem.set(
+        allocation.order_item_id,
+        (itemAllocatedByItem.get(allocation.order_item_id) ?? 0) + amount,
+      )
+    } else if (allocation.allocation_target === 'shipping') {
+      shippingAllocated += amount
+    } else {
+      orderAllocated += amount
+    }
+  }
+  const itemAllocatedTotal = [...itemAllocatedByItem.values()].reduce(
+    (sum, value) => sum + value,
+    0,
+  )
   const editConstraintsResult = await getBusinessOrderEditConstraints(order.id)
   const canEditOrder = editConstraintsResult.ok
     ? editConstraintsResult.data?.can_edit_order
@@ -209,16 +254,9 @@ export default async function BusinessOrderDetailPage({
   let lifecycleAuditLogs: BusinessLifecycleAuditLog[] = []
   let financeDetail: BusinessOrderFinanceDetail | null = null
   if (profile.role === 'admin' || profile.role === 'finance') {
-    const allocationResult = await supabase
-      .from('business_order_payment_allocations')
-      .select('transfer_id')
-      .eq('order_id', id)
-    if (allocationResult.error) {
-      throw new Error(`订单关联转账读取失败：${allocationResult.error.message}`)
-    }
     const transferIds = [...new Set(
-      (allocationResult.data ?? [])
-        .map((allocation) => allocation.transfer_id as string | null)
+      allocationRows
+        .map((allocation) => allocation.transfer_id)
         .filter((transferId): transferId is string => Boolean(transferId)),
     )]
 
@@ -393,16 +431,36 @@ export default async function BusinessOrderDetailPage({
                 <div className="space-y-2 border-t pt-2">
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
-                      总产品实收{order.total_product_received_overridden ? '（已手工覆盖）' : ''}
+                      总产品实收
+                      {order.total_product_received_overridden ? '（已手工覆盖）' : ''}
+                      {itemAllocatedTotal > 0.005 ? '（含分摊）' : ''}
                     </span>
-                    <span>{formatCurrency(Number(order.total_product_received_amount), order.currency)}</span>
+                    <span>
+                      {formatCurrency(
+                        Number(order.total_product_received_amount) + itemAllocatedTotal,
+                        order.currency,
+                      )}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">
-                      总运费实收{order.total_shipping_received_overridden ? '（已手工覆盖）' : ''}
+                      总运费实收
+                      {order.total_shipping_received_overridden ? '（已手工覆盖）' : ''}
+                      {shippingAllocated > 0.005 ? '（含分摊）' : ''}
                     </span>
-                    <span>{formatCurrency(Number(order.total_shipping_received_amount), order.currency)}</span>
+                    <span>
+                      {formatCurrency(
+                        Number(order.total_shipping_received_amount) + shippingAllocated,
+                        order.currency,
+                      )}
+                    </span>
                   </div>
+                  {orderAllocated > 0.005 && (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">整单分摊（有效）</span>
+                      <span>{formatCurrency(orderAllocated, order.currency)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between font-medium">
                     <span>实际实收总额（有效已收）</span>
                     <span>{formatCurrency(actualReceived, order.currency)}</span>
@@ -456,7 +514,10 @@ export default async function BusinessOrderDetailPage({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {itemRows.map(({ item, showProduct }) => (
+                  {itemRows.map(({ item, showProduct }) => {
+                    // 分摊到本行的有效收款并入实收展示，与收款管理同口径。
+                    const allocated = itemAllocatedByItem.get(item.id) ?? 0
+                    return (
                     <TableRow key={item.id}>
                       <TableCell>
                         {showProduct ? (
@@ -496,9 +557,19 @@ export default async function BusinessOrderDetailPage({
                             {item.daily_shipping_category ? SHIPPING_LABELS[item.daily_shipping_category] : '—'}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {item.product_received_amount === null
+                            {item.product_received_amount === null && allocated === 0
                               ? '—'
-                              : formatCurrency(Number(item.product_received_amount), order.currency)}
+                              : formatCurrency(
+                                  (item.product_received_amount === null
+                                    ? 0
+                                    : Number(item.product_received_amount)) + allocated,
+                                  order.currency,
+                                )}
+                            {allocated > 0.005 && (
+                              <div className="text-xs text-muted-foreground">
+                                含分摊 {formatCurrency(allocated, order.currency)}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
                             {item.logistics_fee_amount === null
@@ -506,9 +577,14 @@ export default async function BusinessOrderDetailPage({
                               : formatCurrency(Number(item.logistics_fee_amount), order.currency)}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {item.sales_total_amount === null
+                            {item.sales_total_amount === null && allocated === 0
                               ? '—'
-                              : formatCurrency(Number(item.sales_total_amount), order.currency)}
+                              : formatCurrency(
+                                  (item.sales_total_amount === null
+                                    ? 0
+                                    : Number(item.sales_total_amount)) + allocated,
+                                  order.currency,
+                                )}
                           </TableCell>
                         </>
                       )}
@@ -535,7 +611,8 @@ export default async function BusinessOrderDetailPage({
                         </TableCell>
                       )}
                     </TableRow>
-                  ))}
+                    )
+                  })}
                 </TableBody>
               </Table>
               {itemProductSummaries.length > 0 && (
