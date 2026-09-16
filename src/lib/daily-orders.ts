@@ -77,6 +77,7 @@ export function parseDailyOrderFilters(raw: Record<string, string | string[] | u
     salesperson: scalar('salesperson') || undefined,
     category: scalar('category') || undefined,
     payment: scalar('payment') || undefined,
+    completion: scalar('completion') || undefined,
   })
   return parsed.success ? parsed.data : { q: '' }
 }

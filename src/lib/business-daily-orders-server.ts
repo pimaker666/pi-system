@@ -93,6 +93,9 @@ function buildLedgerQuery(
   if (filters.shopGroup) query = query.eq('shop_group_id', filters.shopGroup)
   if (filters.salesperson) query = query.eq('salesperson_id', filters.salesperson)
   if (filters.payment) query = query.eq('daily_payment_category', filters.payment)
+  if (filters.completion === 'completed') {
+    query = query.eq('fulfillment_status', 'fully_shipped')
+  }
   if (filters.category) {
     query = query.eq('business_order_items.daily_shipping_category', filters.category)
   }
@@ -125,6 +128,19 @@ function compareLedgerOrders(left: BusinessDailyLedgerOrder, right: BusinessDail
 }
 
 /**
+ * 完成状态后过滤：outstanding_amount 在 SQL 查询之后由 RPC 附加，
+ * 因此收款是否收齐只能在 JS 侧判断。
+ */
+function applyCompletionFilter(
+  orders: BusinessDailyLedgerOrder[],
+  completion: DailyOrderFilters['completion'],
+): BusinessDailyLedgerOrder[] {
+  if (!completion) return orders
+  if (completion === 'completed') return orders.filter((o) => o.outstanding_amount <= 0)
+  return orders.filter((o) => o.fulfillment_status !== 'fully_shipped' || o.outstanding_amount > 0)
+}
+
+/**
  * 读取每日订单台账。PostgREST 不支持跨表 or()，所以关键字搜索拆成两次查询：
  * 一次匹配订单号 / 平台订单号 / 发货单号 / 收款账户，一次匹配产品名称与 SKU，再按同一排序合并去重。
  * 表头命中的结果保留完整明细，优先于产品命中的结果。
@@ -140,13 +156,14 @@ export async function fetchBusinessDailyLedger(
   if (!keyword) {
     const { data, error } = await buildLedgerQuery(supabase, filters, effectiveLimit, false)
     if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
-    return attachItemDisplayLabels(
-      supabase,
+    const orders = applyCompletionFilter(
       await attachOutstandingAmounts(
         supabase,
         (data ?? []) as unknown as BusinessDailyLedgerOrder[],
       ),
+      filters.completion,
     )
+    return attachItemDisplayLabels(supabase, orders)
   }
 
   const [headResult, itemResult] = await Promise.all([
@@ -166,9 +183,12 @@ export async function fetchBusinessDailyLedger(
 
   return attachItemDisplayLabels(
     supabase,
-    await attachOutstandingAmounts(
-      supabase,
-      [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+    applyCompletionFilter(
+      await attachOutstandingAmounts(
+        supabase,
+        [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+      ),
+      filters.completion,
     ),
   )
 }

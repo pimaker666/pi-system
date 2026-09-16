@@ -46,6 +46,8 @@ export const dailyOrderSchema = z.object({
   remarks: z.string().trim().max(2000).optional().default(''),
 })
 
+export const dailyOrderCompletionStatuses = ['completed', 'incomplete'] as const
+
 export const dailyOrderFilterSchema = z.object({
   q: z.string().trim().max(200).optional().default(''),
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -55,6 +57,7 @@ export const dailyOrderFilterSchema = z.object({
   salesperson: z.string().uuid().optional(),
   category: z.enum(dailyOrderShippingCategories).optional(),
   payment: z.enum(dailyOrderPaymentCategories).optional(),
+  completion: z.enum(dailyOrderCompletionStatuses).optional(),
 })
 
 export const dailyOrderShopSchema = z.object({
