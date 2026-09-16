@@ -72,6 +72,7 @@ interface EditableItem {
   quantity: number | ''
   unit_price: number | ''
   daily_shipping_category: DailyOrderShippingCategory
+  payment_category: DailyOrderPaymentCategory
   received_amount: string
   outstanding_amount: string
   logistics_fee_amount: number
@@ -115,6 +116,11 @@ const SHIPPING_OPTIONS: Array<{ value: DailyOrderShippingCategory; label: string
   { value: 'sample', label: '样品' },
   { value: 'custom', label: '定制' },
   { value: 'purchase', label: '外采' },
+]
+const PAYMENT_OPTIONS: Array<{ value: DailyOrderPaymentCategory; label: string }> = [
+  { value: 'full', label: '全款' },
+  { value: 'deposit', label: '定金' },
+  { value: 'balance', label: '尾款' },
 ]
 
 function randomHexNibble() {
@@ -317,6 +323,7 @@ export function BusinessOrderForm({
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price),
         daily_shipping_category: item.daily_shipping_category ?? 'stock',
+        payment_category: (initialOrder?.daily_payment_category ?? 'full') as DailyOrderPaymentCategory,
         received_amount: String(Number(item.product_received_amount ?? item.line_amount)),
         outstanding_amount: derivedOutstanding(
           Number(item.quantity),
@@ -418,6 +425,7 @@ export function BusinessOrderForm({
         quantity: '',
         unit_price: '',
         daily_shipping_category: 'stock',
+        payment_category: 'full',
         received_amount: '',
         outstanding_amount: '0',
         logistics_fee_amount: 0,
@@ -452,6 +460,7 @@ export function BusinessOrderForm({
         quantity,
         unit_price: unitPrice,
         daily_shipping_category: 'custom',
+        payment_category: 'deposit',
         received_amount: received,
         outstanding_amount: derivedOutstanding(quantity, unitPrice, received),
         logistics_fee_amount: 0,
@@ -497,6 +506,14 @@ export function BusinessOrderForm({
     setItems((current) =>
       current.map((item) =>
         item.key === key ? { ...item, daily_shipping_category: value } : item,
+      ),
+    )
+  }
+
+  function updatePaymentCategory(key: string, value: DailyOrderPaymentCategory) {
+    setItems((current) =>
+      current.map((item) =>
+        item.key === key ? { ...item, payment_category: value } : item,
       ),
     )
   }
@@ -712,7 +729,7 @@ export function BusinessOrderForm({
       sales_notes: salesNotes,
       daily_shipping_date: dailyShippingDate,
       daily_shipping_number: dailyShippingNumber,
-      daily_payment_category: dailyPaymentCategory,
+      daily_payment_category: items[0]?.payment_category ?? dailyPaymentCategory,
       total_product_received_amount: effectiveProductTotal,
       total_product_received_overridden: totalProductOverride !== null,
       total_shipping_received_amount: effectiveShippingTotal,
@@ -910,20 +927,6 @@ export function BusinessOrderForm({
               />
             </div>
             <div className="space-y-2">
-              <Label>收款分类</Label>
-              <Select
-                value={dailyPaymentCategory}
-                onValueChange={(value) => setDailyPaymentCategory(value as DailyOrderPaymentCategory)}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="full">全款</SelectItem>
-                  <SelectItem value="deposit">定金</SelectItem>
-                  <SelectItem value="balance">尾款</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="payment_due_date">尾款到期日</Label>
               <Input
                 id="payment_due_date"
@@ -931,19 +934,6 @@ export function BusinessOrderForm({
                 value={paymentDueDate}
                 onChange={(event) => setPaymentDueDate(event.target.value)}
               />
-            </div>
-            <div className="space-y-2">
-              <Label>订单属性</Label>
-              <Select
-                value={fulfillmentType}
-                onValueChange={(value) => setFulfillmentType(value as BusinessFulfillmentType)}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="custom">定制</SelectItem>
-                  <SelectItem value="stock">现货</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <div className="space-y-2">
               <Label>币种</Label>
@@ -1161,6 +1151,22 @@ export function BusinessOrderForm({
                           onChange={(event) => updateReceivedAmount(item.key, event.target.value)}
                           placeholder="可留空"
                         />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>收款分类</Label>
+                        <Select
+                          value={item.payment_category}
+                          onValueChange={(value) =>
+                            updatePaymentCategory(item.key, value as DailyOrderPaymentCategory)
+                          }
+                        >
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {PAYMENT_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="space-y-1">
                         <Label>未收尾款（{currency}）</Label>
