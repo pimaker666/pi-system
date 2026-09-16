@@ -1083,11 +1083,6 @@ export function BusinessOrderForm({
                       {item.specification && (
                         <div className="mt-1 text-xs text-muted-foreground">规格：{item.specification}</div>
                       )}
-                      {item.default_currency && item.default_currency !== currency && (
-                        <div className="mt-1 text-xs text-amber-700">
-                          默认价币种为 {item.default_currency}，成交单价未自动换算，请按 {currency} 手工填写。
-                        </div>
-                      )}
                       {item.source_type === 'legacy' && (
                         <div className="mt-1 text-xs text-destructive">此行仅保留展示，不可修改或删除。</div>
                       )}
