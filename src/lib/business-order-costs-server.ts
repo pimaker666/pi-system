@@ -180,48 +180,6 @@ function getCustomerName(customerSnapshot: unknown): string | null {
   return snapshot.company || snapshot.name || null
 }
 
-async function countMatchingOrders(
-  supabase: SupabaseClient,
-  filters: BusinessOrderCostFilters,
-): Promise<number> {
-  let query = supabase
-    .from('business_orders')
-    .select('id, business_order_attachments!inner(id)', { count: 'exact', head: true })
-    .eq('fulfillment_status', 'fully_shipped')
-    .eq('business_order_attachments.status', 'active')
-
-  let dateFrom = filters.dateFrom
-  let dateTo = filters.dateTo
-  if (filters.month) {
-    const range = monthToDateRange(filters.month)
-    dateFrom = dateFrom && dateFrom > range.dateFrom ? dateFrom : range.dateFrom
-    dateTo = dateTo && dateTo < range.dateTo ? dateTo : range.dateTo
-  }
-
-  if (dateFrom) query = query.gte('order_date', dateFrom)
-  if (dateTo) query = query.lte('order_date', dateTo)
-  if (filters.shops.length > 0) query = query.in('shop_id', filters.shops)
-  if (filters.salespeople.length > 0) query = query.in('salesperson_id', filters.salespeople)
-  if (filters.shopGroups.length > 0) query = query.in('shop_group_id', filters.shopGroups)
-
-  const keyword = normalizeKeyword(filters.q)
-  if (keyword) {
-    query = query.or(
-      [
-        `order_number.ilike.%${keyword}%`,
-        `external_order_number.ilike.%${keyword}%`,
-        `daily_shipping_number.ilike.%${keyword}%`,
-        `payment_account.ilike.%${keyword}%`,
-        `tracking_number.ilike.%${keyword}%`,
-      ].join(','),
-    )
-  }
-
-  const { count, error } = await query
-  if (error) throw new Error(`订单成本计数读取失败：${error.message}`)
-  return count ?? 0
-}
-
 export async function fetchBusinessOrderProductCosts(
   supabase: SupabaseClient,
   filters: BusinessOrderCostFilters,
@@ -229,20 +187,15 @@ export async function fetchBusinessOrderProductCosts(
   pageSize = COST_PAGE_SIZE,
 ): Promise<{ rows: BusinessOrderProductCost[]; totalCount: number }> {
   const effectiveLimit = Math.min(pageSize, BUSINESS_DAILY_LEDGER_LIMIT)
-  const offset = (page - 1) * effectiveLimit
-  const [orders, financialRows, overrideRows, totalCount] = await Promise.all([
-    fetchMatchingOrders(supabase, filters, offset, effectiveLimit),
+  const [allOrders, financialRows, overrideRows] = await Promise.all([
+    fetchMatchingOrders(supabase, filters, 0, 1000),
     fetchAllProductFinancials(supabase),
     fetchAllCostOverrides(supabase),
-    countMatchingOrders(supabase, filters),
   ])
-
-  const financials = new Map(financialRows.map((row) => [row.product_id, row]))
-  const overrides = new Map(overrideRows.map((row) => [row.business_order_item_id, Number(row.cost)]))
 
   const { data: outstandingData, error: outstandingError } = await supabase.rpc(
     'get_business_orders_outstanding_amount',
-    { p_order_ids: orders.map((order) => order.id) },
+    { p_order_ids: allOrders.map((order) => order.id) },
   )
   if (outstandingError) throw new Error(`订单成本未收尾款读取失败：${outstandingError.message}`)
   const outstandingByOrder = new Map(
@@ -251,6 +204,16 @@ export async function fetchBusinessOrderProductCosts(
       Number(row.outstanding_amount),
     ]),
   )
+
+  const paidOrders = allOrders.filter(
+    (order) => (outstandingByOrder.get(order.id) ?? 0) <= 0,
+  )
+  const totalCount = paidOrders.length
+  const offset = (page - 1) * effectiveLimit
+  const orders = paidOrders.slice(offset, offset + effectiveLimit)
+
+  const financials = new Map(financialRows.map((row) => [row.product_id, row]))
+  const overrides = new Map(overrideRows.map((row) => [row.business_order_item_id, Number(row.cost)]))
 
   const result: BusinessOrderProductCost[] = []
 
