@@ -29,6 +29,7 @@ import {
   getBusinessOrderSettlementSummary,
 } from '@/lib/actions/business-orders'
 import { requireApproved } from '@/lib/auth'
+import { sortedBusinessDailyItems } from '@/lib/business-daily-orders'
 import {
   attachBusinessOrderItemsDisplay,
   businessOrderItemDisplayName,
@@ -126,7 +127,9 @@ export default async function BusinessOrderDetailPage({
     supabase,
     order.business_order_items,
   )
-  order.business_order_items.sort((a, b) => a.sort_order - b.sort_order)
+  order.business_order_items = sortedBusinessDailyItems(
+    order as unknown as Parameters<typeof sortedBusinessDailyItems>[0],
+  )
   // 同一产品（含历次追加）合并为一组相邻展示：图片与名称只在首行出现，下单数据各自独立成行。
   const itemGroups = (() => {
     const groups: Array<{ key: string; items: BusinessOrderItem[] }> = []

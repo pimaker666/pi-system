@@ -108,11 +108,31 @@ export function activeBusinessOrderAttachments(order: BusinessDailyLedgerOrder) 
   )
 }
 
+function itemProductKey(item: BusinessOrderItem): string {
+  if (item.product_id) return `p:${item.product_id}`
+  if (item.custom_product_id) return `c:${item.custom_product_id}`
+  return `s:${item.sku_snapshot}|${item.name_snapshot}`
+}
+
 export function sortedBusinessDailyItems(order: BusinessDailyLedgerOrder) {
-  return [...(order.business_order_items ?? [])].sort((left, right) => {
-    if (left.sort_order !== right.sort_order) return left.sort_order - right.sort_order
-    return left.created_at.localeCompare(right.created_at)
-  })
+  const items = order.business_order_items ?? []
+  const groups = new Map<string, BusinessOrderItem[]>()
+  for (const item of items) {
+    const key = itemProductKey(item)
+    const group = groups.get(key)
+    if (group) group.push(item)
+    else groups.set(key, [item])
+  }
+  for (const group of groups.values()) {
+    group.sort((a, b) => {
+      if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order
+      return a.created_at.localeCompare(b.created_at)
+    })
+  }
+  const sortedGroups = [...groups.values()].sort(
+    (a, b) => a[0].sort_order - b[0].sort_order,
+  )
+  return sortedGroups.flat()
 }
 
 export function getBusinessOrderItemNetShipped(
