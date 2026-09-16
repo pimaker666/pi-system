@@ -60,6 +60,7 @@ function buildBaseQuery(
   let query = supabase
     .from('business_orders')
     .select(`*, ${itemsEmbed}, ${LEDGER_TAIL}`)
+    .eq('fulfillment_status', 'fully_shipped')
     .eq('business_order_attachments.status', 'active')
     .order('order_date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -186,6 +187,7 @@ async function countMatchingOrders(
   let query = supabase
     .from('business_orders')
     .select('id, business_order_attachments!inner(id)', { count: 'exact', head: true })
+    .eq('fulfillment_status', 'fully_shipped')
     .eq('business_order_attachments.status', 'active')
 
   let dateFrom = filters.dateFrom
