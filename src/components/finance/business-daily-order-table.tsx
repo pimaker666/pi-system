@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Eye, FileText, Pencil, Truck } from 'lucide-react'
+import { Download, Eye, FileText, Pencil, Truck } from 'lucide-react'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -44,6 +44,7 @@ const mergedCellClassName = 'bg-muted/20 align-top'
 export interface BusinessDailyOrderTableProps {
   orders: BusinessDailyLedgerOrder[]
   actor: Pick<Profile, 'id' | 'role'>
+  filterQuery?: string
 }
 
 function canBulkShipOrder(order: BusinessOrder, actor: Pick<Profile, 'id' | 'role'>) {
@@ -62,7 +63,7 @@ function toDateTimeLocalValue(date: Date) {
  * 恢复后的每日订单台账：表头字段跨明细行合并，产品字段逐行展示，
  * 列顺序与每日订单导出完全一致，数据来自 business_orders 单一事实源。
  */
-export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTableProps) {
+export function BusinessDailyOrderTable({ orders, actor, filterQuery = '' }: BusinessDailyOrderTableProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [bulkPending, startBulkTransition] = useTransition()
@@ -92,6 +93,15 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
     [selectedIds, selectableIds],
   )
   const allSelected = selectableOrders.length > 0 && selectedCount === selectableOrders.length
+
+  const exportUrl = useMemo(() => {
+    const validSelectedIds = [...selectedIds].filter((id) => selectableIds.has(id))
+    const base = filterQuery ? `?${filterQuery}` : '?'
+    if (validSelectedIds.length > 0) {
+      return base + '&' + validSelectedIds.map((id) => `ids=${id}`).join('&')
+    }
+    return base
+  }, [selectedIds, selectableIds, filterQuery])
 
   function viewAttachment(attachmentId: string) {
     startTransition(async () => {
@@ -140,26 +150,42 @@ export function BusinessDailyOrderTable({ orders, actor }: BusinessDailyOrderTab
 
   return (
     <div className="space-y-3">
-      {selectableOrders.length > 0 && (
+      {orders.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>已选 {selectedCount} 个订单</span>
+          {selectableOrders.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <span>已选 {selectedCount} 个订单</span>
+              </div>
+              <Input
+                type="datetime-local"
+                value={shippedAt}
+                onChange={(event) => setShippedAt(event.target.value)}
+                disabled={bulkPending}
+                className="w-auto"
+              />
+              <Button
+                type="button"
+                onClick={bulkShipSelected}
+                disabled={selectedCount === 0 || bulkPending}
+              >
+                <Truck className="mr-1.5 h-4 w-4" />
+                整单发货
+              </Button>
+            </>
+          )}
+          <div className={`${selectableOrders.length > 0 ? 'ml-auto' : ''} flex gap-2`}>
+            <Button asChild variant="outline" size="sm">
+              <a download href={`/api/finance/daily-orders/export/xlsx${exportUrl}`}>
+                <Download className="h-4 w-4" />XLSX
+              </a>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <a href={`/api/finance/daily-orders/export/pdf${exportUrl}`}>
+                <FileText className="h-4 w-4" />PDF
+              </a>
+            </Button>
           </div>
-          <Input
-            type="datetime-local"
-            value={shippedAt}
-            onChange={(event) => setShippedAt(event.target.value)}
-            disabled={bulkPending}
-            className="w-auto"
-          />
-          <Button
-            type="button"
-            onClick={bulkShipSelected}
-            disabled={selectedCount === 0 || bulkPending}
-          >
-            <Truck className="mr-1.5 h-4 w-4" />
-            整单发货
-          </Button>
         </div>
       )}
 

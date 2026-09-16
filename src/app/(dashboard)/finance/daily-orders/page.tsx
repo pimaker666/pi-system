@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Archive, CreditCard, Download, FileText, Plus, Settings, Upload } from 'lucide-react'
+import { Archive, CreditCard, Plus, Settings, Upload } from 'lucide-react'
 import { BusinessDailyOrderTable } from '@/components/finance/business-daily-order-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -172,16 +172,6 @@ export default async function DailyOrdersPage({
           <Button asChild type="button" variant="outline">
             <Link href="/finance/daily-orders">清空</Link>
           </Button>
-          <Button asChild type="button" variant="outline">
-            <a download href={`/api/finance/daily-orders/export/xlsx${query ? `?${query}` : ''}`}>
-              <Download className="h-4 w-4" />XLSX
-            </a>
-          </Button>
-          <Button asChild type="button" variant="outline">
-            <a href={`/api/finance/daily-orders/export/pdf${query ? `?${query}` : ''}`}>
-              <FileText className="h-4 w-4" />PDF
-            </a>
-          </Button>
         </div>
       </form>
 
@@ -203,7 +193,7 @@ export default async function DailyOrdersPage({
         })}
       </div>
 
-      <BusinessDailyOrderTable orders={orders} actor={profile} />
+      <BusinessDailyOrderTable orders={orders} actor={profile} filterQuery={query} />
     </div>
   )
 }

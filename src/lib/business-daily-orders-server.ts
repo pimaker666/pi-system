@@ -70,6 +70,7 @@ function buildLedgerQuery(
   filters: DailyOrderFilters,
   limit: number,
   productSearch: boolean,
+  ids?: string[],
 ) {
   const keyword = normalizeKeyword(filters.q)
   // 发货分类落在明细上；下推到明细的筛选必须用 !inner，否则父订单不会被过滤。
@@ -87,6 +88,7 @@ function buildLedgerQuery(
     .order('sort_order', { referencedTable: 'business_order_items', ascending: true })
     .limit(limit)
 
+  if (ids && ids.length > 0) query = query.in('id', ids)
   if (filters.dateFrom) query = query.gte('order_date', filters.dateFrom)
   if (filters.dateTo) query = query.lte('order_date', filters.dateTo)
   if (filters.shop) query = query.eq('shop_id', filters.shop)
@@ -149,12 +151,13 @@ export async function fetchBusinessDailyLedger(
   supabase: SupabaseClient,
   filters: DailyOrderFilters,
   limit = BUSINESS_DAILY_LEDGER_LIMIT,
+  ids?: string[],
 ): Promise<BusinessDailyLedgerOrder[]> {
   const effectiveLimit = Math.min(limit, BUSINESS_DAILY_LEDGER_LIMIT)
   const keyword = normalizeKeyword(filters.q)
 
-  if (!keyword) {
-    const { data, error } = await buildLedgerQuery(supabase, filters, effectiveLimit, false)
+  if (ids && ids.length > 0 || !keyword) {
+    const { data, error } = await buildLedgerQuery(supabase, filters, effectiveLimit, false, ids)
     if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
     const orders = applyCompletionFilter(
       await attachOutstandingAmounts(

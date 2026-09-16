@@ -24,10 +24,17 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: Request) {
   // 与 XLSX 导出一致：可见范围交给 business_orders 的 RLS，不再限定财务角色。
   await requireApproved()
-  const params = Object.fromEntries(new URL(request.url).searchParams.entries())
+  const searchParams = new URL(request.url).searchParams
+  const params = Object.fromEntries(searchParams.entries())
   const filters = parseDailyOrderFilters(params)
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+  const ids = searchParams
+    .getAll('ids')
+    .flatMap((v) => v.split(','))
+    .map((v) => v.trim())
+    .filter((v) => UUID_RE.test(v))
   const supabase = await createClient()
-  const orders = await fetchBusinessDailyLedger(supabase, filters)
+  const orders = await fetchBusinessDailyLedger(supabase, filters, undefined, ids.length > 0 ? ids : undefined)
   const imageLimitError = businessDailyExportLimitError(orders)
   if (imageLimitError) return NextResponse.json({ error: imageLimitError }, { status: 413 })
 
