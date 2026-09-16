@@ -92,7 +92,7 @@ export default async function DailyOrdersPage({
   ])
   const query = dailyOrderFilterQuery(filters)
   const canManageShops = profile.role === 'finance' || profile.role === 'admin'
-  const canCreate = ['sales', 'supervisor', 'admin'].includes(profile.role)
+  const canCreate = ['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)
 
   return (
     <div className="space-y-6">
