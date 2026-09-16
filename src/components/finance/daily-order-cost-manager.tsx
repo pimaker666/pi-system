@@ -65,7 +65,7 @@ function CostEditor({ row }: { row: BusinessOrderProductCost }) {
 
     startTransition(async () => {
       const result = await updateBusinessOrderItemCostOverride({
-        business_order_item_id: row.item_id,
+        business_order_item_ids: row.item_ids,
         cost,
       })
       if (!result.ok) {

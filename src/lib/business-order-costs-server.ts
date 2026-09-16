@@ -5,11 +5,11 @@ import { displayProfileName } from '@/lib/utils'
 import { COST_PAGE_SIZE } from '@/lib/business-order-cost'
 import {
   activeBusinessOrderAttachments,
-  businessDailyItemAmounts,
   businessDailyOrderTotals,
-  formatBusinessDailyShippingProgress,
-  sortedBusinessDailyItems,
+  formatMergedBusinessDailyShippingProgress,
+  mergeBusinessDailyItems,
   type BusinessDailyLedgerOrder,
+  type MergedBusinessDailyItem,
 } from '@/lib/business-daily-orders'
 import { BUSINESS_DAILY_LEDGER_LIMIT } from '@/lib/business-daily-orders-server'
 
@@ -215,10 +215,28 @@ export async function fetchBusinessOrderProductCosts(
   const financials = new Map(financialRows.map((row) => [row.product_id, row]))
   const overrides = new Map(overrideRows.map((row) => [row.business_order_item_id, Number(row.cost)]))
 
+  function resolveMergedCost(
+    item: MergedBusinessDailyItem | null,
+  ): { cost: number | null; overridden: boolean; catalogCost: number | null } {
+    if (!item) return { cost: null, overridden: false, catalogCost: null }
+    const isCustom = item.daily_shipping_category === 'custom'
+    const financial = !isCustom && item.product_id ? financials.get(item.product_id) : undefined
+    const catalogCost = financial?.cost == null ? null : Number(financial.cost)
+    const overrideCosts = item.item_ids.map((id) => overrides.get(id)).filter((value): value is number => value !== undefined)
+    const uniqueOverrides = new Set(overrideCosts)
+    const overriddenCost =
+      overrideCosts.length > 0 && uniqueOverrides.size === 1 ? overrideCosts[0] : undefined
+    return {
+      catalogCost,
+      cost: overriddenCost ?? catalogCost,
+      overridden: overriddenCost !== undefined,
+    }
+  }
+
   const result: BusinessOrderProductCost[] = []
 
   for (const order of orders) {
-    const items = sortedBusinessDailyItems(order)
+    const mergedItems = mergeBusinessDailyItems(order)
     const attachments = activeBusinessOrderAttachments(order)
     const salespersonName = displayProfileName(
       order.salesperson,
@@ -228,19 +246,15 @@ export async function fetchBusinessOrderProductCosts(
     const fullyShipped = order.fulfillment_status === 'fully_shipped'
     const orderTotals = businessDailyOrderTotals(order)
 
-    for (const item of items.length > 0 ? items : [null]) {
-      const productId = item?.product_id
-      const isCustom = item?.daily_shipping_category === 'custom'
-      const financial = !isCustom && productId ? financials.get(productId) : undefined
-      const catalogCost = financial?.cost == null ? null : Number(financial.cost)
-      const overriddenCost = item ? overrides.get(item.id) : undefined
-      const effectiveCost = fullyShipped ? (overriddenCost ?? catalogCost) : null
+    for (const item of mergedItems.length > 0 ? mergedItems : [null]) {
+      const { cost: effectiveCost, overridden, catalogCost } = resolveMergedCost(item)
       const quantity = item ? Number(item.quantity) : 0
-      const amounts = item ? businessDailyItemAmounts(item) : null
+      const representativeItemId = item?.item_ids[0] ?? order.id
 
       result.push({
         order_id: order.id,
-        item_id: item?.id ?? order.id,
+        item_id: representativeItemId,
+        item_ids: item?.item_ids ?? [],
         order_date: order.order_date,
         shipping_date: order.daily_shipping_date,
         shop_name: order.shop_name_snapshot,
@@ -253,13 +267,13 @@ export async function fetchBusinessOrderProductCosts(
         shipping_number: order.daily_shipping_number,
         shipping_category: item?.daily_shipping_category ?? null,
         product_name: item?.name_snapshot ?? '—',
-        product_sku: item?.sku_snapshot ?? '',
+        product_sku: item?.display_sku ?? item?.sku_snapshot ?? '',
         quantity,
-        shipping_progress: item ? formatBusinessDailyShippingProgress(order, item) : '—',
-        unit_price: amounts ? amounts.unitPrice : 0,
-        product_received_amount: amounts ? amounts.productReceived : 0,
-        logistics_fee_amount: amounts ? amounts.logisticsFee : null,
-        sales_total_amount: amounts ? amounts.salesTotal : 0,
+        shipping_progress: item ? formatMergedBusinessDailyShippingProgress(item) : '—',
+        unit_price: item ? Number(item.unit_price) : 0,
+        product_received_amount: item ? Number(item.product_received_amount) : 0,
+        logistics_fee_amount: item?.logistics_fee_amount ?? null,
+        sales_total_amount: item ? Number(item.sales_total_amount) : 0,
         currency: order.currency,
         order_total_amount: Number(order.total_amount),
         order_sales_total_amount: orderTotals.salesTotal,
@@ -269,11 +283,11 @@ export async function fetchBusinessOrderProductCosts(
         payment_category: order.daily_payment_category,
         sales_notes: order.sales_notes,
         attachments,
-        financial_number: financial?.financial_number ?? null,
-        financial_product_name: financial?.product_name ?? null,
+        financial_number: financials.get(item?.product_id ?? '')?.financial_number ?? null,
+        financial_product_name: financials.get(item?.product_id ?? '')?.product_name ?? null,
         catalog_cost: catalogCost,
         cost: effectiveCost,
-        cost_overridden: overriddenCost !== undefined,
+        cost_overridden: overridden,
         total_cost: effectiveCost === null ? null : Math.round(effectiveCost * quantity * 10000) / 10000,
         fully_shipped: fullyShipped,
       })

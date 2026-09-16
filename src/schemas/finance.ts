@@ -75,7 +75,9 @@ export const dailyOrderCostOverrideSchema = z.object({
 })
 
 export const businessOrderItemCostOverrideSchema = z.object({
-  business_order_item_id: z.string().uuid('订单明细行 ID 无效'),
+  business_order_item_ids: z
+    .array(z.string().uuid('订单明细行 ID 无效'))
+    .min(1, '至少选择一条订单明细行'),
   cost: z.preprocess(
     (value) => (value === '' || value === null || value === undefined ? null : Number(value)),
     z.number({ invalid_type_error: '成本必须是数字' })

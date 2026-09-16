@@ -124,6 +124,8 @@ export interface DailyOrderProductCost {
 export interface BusinessOrderProductCost {
   order_id: string
   item_id: string
+  /** 合并行对应的底层明细行 ID；单行时与 item_id 相同。 */
+  item_ids: string[]
   order_date: string
   shipping_date: string | null
   shop_name: string | null

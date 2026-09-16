@@ -7,12 +7,14 @@ import type {
   BusinessOrderShipment,
   BusinessOrderShipmentItem,
   CurrencyCode,
+  DailyOrderShippingCategory,
   Profile,
 } from '@/types'
 import {
   businessOrderItemDisplayName,
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
+import { roundToScale } from '@/lib/utils'
 
 /**
  * 恢复后的每日订单台账行：业务订单（表头）+ 产品明细（每行一个产品）。
@@ -135,6 +137,111 @@ export function sortedBusinessDailyItems(order: BusinessDailyLedgerOrder) {
   return sortedGroups.flat()
 }
 
+/** 台账/成本/导出里合并后的产品行：同一订单内同一产品且单价相同的多行聚合。 */
+export interface MergedBusinessDailyItem {
+  id: string
+  item_ids: string[]
+  product_id: string | null
+  custom_product_id: string | null
+  sku_snapshot: string
+  name_snapshot: string
+  display_name?: string | null
+  display_sku?: string | null
+  daily_shipping_category: DailyOrderShippingCategory | null
+  unit_price: number
+  quantity: number
+  product_received_amount: number
+  logistics_fee_amount: number | null
+  sales_total_amount: number
+  net_shipped: number
+}
+
+function mergedBusinessDailyItemKey(item: BusinessOrderItem): string {
+  return `${itemProductKey(item)}|${item.daily_shipping_category ?? ''}|${Number(item.unit_price)}`
+}
+
+export function mergeBusinessDailyItems(
+  order: BusinessDailyLedgerOrder,
+): MergedBusinessDailyItem[] {
+  const sorted = sortedBusinessDailyItems(order)
+  const groups = new Map<string, BusinessOrderItem[]>()
+  for (const item of sorted) {
+    const key = mergedBusinessDailyItemKey(item)
+    const list = groups.get(key)
+    if (list) list.push(item)
+    else groups.set(key, [item])
+  }
+
+  return [...groups.values()].map((group, index) => {
+    const first = group[0]
+    const quantity = roundToScale(
+      group.reduce((sum, item) => sum + Number(item.quantity), 0),
+      4,
+    )
+    const productReceived = roundToScale(
+      group.reduce(
+        (sum, item) =>
+          sum +
+          (item.product_received_amount === null
+            ? Number(item.line_amount)
+            : Number(item.product_received_amount)),
+        0,
+      ),
+      2,
+    )
+    const logisticsFees = group.map((item) =>
+      item.logistics_fee_amount === null ? null : Number(item.logistics_fee_amount),
+    )
+    const logisticsFee = logisticsFees.some((value) => value !== null)
+      ? roundToScale(
+          logisticsFees.reduce<number>((sum, value) => sum + (value ?? 0), 0),
+          2,
+        )
+      : null
+    const salesTotal = roundToScale(
+      group.reduce(
+        (sum, item) =>
+          sum +
+          (item.sales_total_amount === null
+            ? Number(item.line_amount)
+            : Number(item.sales_total_amount)),
+        0,
+      ),
+      2,
+    )
+    const netShipped = group.reduce(
+      (sum, item) => sum + getBusinessOrderItemNetShipped(order, item),
+      0,
+    )
+
+    return {
+      id: `${order.id}-${index}`,
+      item_ids: group.map((item) => item.id),
+      product_id: first.product_id,
+      custom_product_id: first.custom_product_id,
+      sku_snapshot: first.sku_snapshot,
+      name_snapshot: first.name_snapshot,
+      display_name: (first as { display_name?: string | null }).display_name,
+      display_sku: (first as { display_sku?: string | null }).display_sku,
+      daily_shipping_category: first.daily_shipping_category,
+      unit_price: Number(first.unit_price),
+      quantity,
+      product_received_amount: productReceived,
+      logistics_fee_amount: logisticsFee,
+      sales_total_amount: salesTotal,
+      net_shipped: netShipped,
+    }
+  })
+}
+
+export function formatMergedBusinessDailyShippingProgress(
+  merged: MergedBusinessDailyItem,
+): string {
+  const formatQuantity = (value: number) =>
+    value.toLocaleString('zh-CN', { maximumFractionDigits: 4 })
+  return `已发 ${formatQuantity(merged.net_shipped)} / ${formatQuantity(merged.quantity)}`
+}
+
 export function getBusinessOrderItemNetShipped(
   order: Pick<BusinessDailyLedgerOrder, 'business_order_shipments' | 'business_order_returns'>,
   item: BusinessOrderItem,
@@ -251,7 +358,7 @@ export function buildBusinessDailyExportRows(
   },
 ): BusinessDailyExportRow[] {
   return orders.flatMap((order, orderIndex) => {
-    const items = sortedBusinessDailyItems(order)
+    const items = mergeBusinessDailyItems(order)
     const attachments = activeBusinessOrderAttachments(order).slice(
       0,
       BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER,
@@ -289,7 +396,6 @@ export function buildBusinessDailyExportRows(
     }
 
     return items.map((item, itemIndex) => {
-      const amounts = businessDailyItemAmounts(item)
       return {
         ...header,
         sequence:
@@ -297,12 +403,14 @@ export function buildBusinessDailyExportRows(
         shippingCategory: format.shipping(item.daily_shipping_category),
         productName: businessOrderItemDisplayName(item),
         productSku: businessOrderItemDisplaySku(item),
-        quantity: String(Number(item.quantity)),
-        shippingProgress: formatBusinessDailyShippingProgress(order, item),
-        unitPrice: format.money(amounts.unitPrice, order.currency),
-        productReceived: format.money(amounts.productReceived, order.currency),
+        quantity: String(item.quantity),
+        shippingProgress: formatMergedBusinessDailyShippingProgress(item),
+        unitPrice: format.money(item.unit_price, order.currency),
+        productReceived: format.money(item.product_received_amount, order.currency),
         logisticsFee:
-          amounts.logisticsFee === null ? '' : format.money(amounts.logisticsFee, order.currency),
+          item.logistics_fee_amount === null
+            ? ''
+            : format.money(item.logistics_fee_amount, order.currency),
         attachments: itemIndex === 0 ? attachments : [],
       }
     })

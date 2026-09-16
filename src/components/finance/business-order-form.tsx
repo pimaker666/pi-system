@@ -298,7 +298,7 @@ export function BusinessOrderForm({
   const [exchangeRate, setExchangeRate] = useState(
     String(initialOrder?.exchange_rate_to_cny ?? ''),
   )
-  const [shippingFee, setShippingFee] = useState(String(initialOrder?.shipping_fee ?? 0))
+  const [shippingFee, setShippingFee] = useState(String(initialOrder?.shipping_fee ?? ''))
   const [paymentAccount, setPaymentAccount] = useState(initialOrder?.payment_account ?? '')
   const [salesNotes, setSalesNotes] = useState(initialOrder?.sales_notes ?? '')
   const [selectedProductId, setSelectedProductId] = useState('')
@@ -1286,10 +1286,10 @@ export function BusinessOrderForm({
                 type="number"
                 min="0"
                 step="0.01"
-                value={effectiveShippingTotal}
+                value={totalShippingOverride ?? ''}
+                placeholder={String(automaticShippingTotal)}
                 onChange={(event) => setTotalShippingOverride(Number(event.target.value))}
                 disabled={pending || lifecycleLocked}
-                required
               />
               <p className="text-xs text-muted-foreground">
                 自动汇总：{formatCurrency(automaticShippingTotal, currency)}

@@ -189,7 +189,7 @@ export async function updateDailyOrderCostOverride(input: {
 }
 
 export async function updateBusinessOrderItemCostOverride(input: {
-  business_order_item_id: string
+  business_order_item_ids: string[]
   cost: number | null
 }): Promise<ActionResult> {
   const profile = await requireFinanceAccess()
@@ -199,28 +199,37 @@ export async function updateBusinessOrderItemCostOverride(input: {
   }
 
   const supabase = await createClient()
+  const itemIds = parsed.data.business_order_item_ids
+
   if (parsed.data.cost === null) {
     const { error } = await supabase
       .from('finance_business_order_item_cost_overrides')
       .delete()
-      .eq('business_order_item_id', parsed.data.business_order_item_id)
+      .in('business_order_item_id', itemIds)
     if (error) return { ok: false, error: error.message }
     revalidatePath('/finance/costs')
     return { ok: true }
   }
 
-  const { data: item, error: itemError } = await supabase
+  const { data: items, error: itemError } = await supabase
     .from('business_order_items')
     .select('id, order_id')
-    .eq('id', parsed.data.business_order_item_id)
-    .maybeSingle()
+    .in('id', itemIds)
   if (itemError) return { ok: false, error: itemError.message }
-  if (!item) return { ok: false, error: '订单明细行不存在' }
+  if (!items || items.length !== itemIds.length) {
+    return { ok: false, error: '部分订单明细行不存在' }
+  }
+
+  const orderIds = new Set(items.map((item) => item.order_id))
+  if (orderIds.size !== 1) {
+    return { ok: false, error: '合并行的明细必须属于同一订单' }
+  }
+  const orderId = items[0].order_id
 
   const { data: order, error: orderError } = await supabase
     .from('business_orders')
     .select('fulfillment_status, status')
-    .eq('id', item.order_id)
+    .eq('id', orderId)
     .maybeSingle()
   if (orderError) return { ok: false, error: orderError.message }
   if (!order) return { ok: false, error: '订单不存在' }
@@ -228,16 +237,14 @@ export async function updateBusinessOrderItemCostOverride(input: {
     return { ok: false, error: '只有全部发货完成且已审核的订单才能修改成本' }
   }
 
+  const rows = itemIds.map((id) => ({
+    business_order_item_id: id,
+    cost: parsed.data.cost,
+    updated_by: profile.id,
+  }))
   const { error } = await supabase
     .from('finance_business_order_item_cost_overrides')
-    .upsert(
-      {
-        business_order_item_id: parsed.data.business_order_item_id,
-        cost: parsed.data.cost,
-        updated_by: profile.id,
-      },
-      { onConflict: 'business_order_item_id' },
-    )
+    .upsert(rows, { onConflict: 'business_order_item_id' })
   if (error) return { ok: false, error: error.message }
 
   revalidatePath('/finance/costs')

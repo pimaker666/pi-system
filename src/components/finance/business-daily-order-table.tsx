@@ -24,12 +24,12 @@ import {
 } from '@/lib/business-orders'
 import {
   activeBusinessOrderAttachments,
-  businessDailyItemAmounts,
   businessDailyOrderTotals,
   canEditBusinessDailyOrder,
-  formatBusinessDailyShippingProgress,
-  sortedBusinessDailyItems,
+  formatMergedBusinessDailyShippingProgress,
+  mergeBusinessDailyItems,
   type BusinessDailyLedgerOrder,
+  type MergedBusinessDailyItem,
 } from '@/lib/business-daily-orders'
 import {
   businessOrderItemDisplayName,
@@ -74,7 +74,7 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '' }: Bus
     () =>
       orders.map((order) => ({
         order,
-        items: sortedBusinessDailyItems(order),
+        items: mergeBusinessDailyItems(order),
         attachments: activeBusinessOrderAttachments(order),
       })),
     [orders],
@@ -224,7 +224,6 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '' }: Bus
 
               return rows.map((item, rowIndex) => {
                 const isFirstRow = rowIndex === 0
-                const amounts = item ? businessDailyItemAmounts(item) : null
 
                 return (
                   <TableRow
@@ -348,20 +347,20 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '' }: Bus
                       )}
                     </TableCell>
                     <TableCell className="tabular-nums">
-                      {item ? Number(item.quantity).toLocaleString() : '—'}
+                      {item ? item.quantity.toLocaleString() : '—'}
                     </TableCell>
                     <TableCell className="whitespace-nowrap tabular-nums">
-                      {item ? formatBusinessDailyShippingProgress(order, item) : '—'}
+                      {item ? formatMergedBusinessDailyShippingProgress(item) : '—'}
                     </TableCell>
                     <TableCell>
-                      {amounts ? formatDailyMoney(amounts.unitPrice, order.currency) : '—'}
+                      {item ? formatDailyMoney(item.unit_price, order.currency) : '—'}
                     </TableCell>
                     <TableCell>
-                      {amounts ? formatDailyMoney(amounts.productReceived, order.currency) : '—'}
+                      {item ? formatDailyMoney(item.product_received_amount, order.currency) : '—'}
                     </TableCell>
                     <TableCell>
-                      {amounts && amounts.logisticsFee !== null
-                        ? formatDailyMoney(amounts.logisticsFee, order.currency)
+                      {item && item.logistics_fee_amount !== null
+                        ? formatDailyMoney(item.logistics_fee_amount, order.currency)
                         : '—'}
                     </TableCell>
 
