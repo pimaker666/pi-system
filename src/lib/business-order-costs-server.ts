@@ -185,7 +185,7 @@ async function countMatchingOrders(
 ): Promise<number> {
   let query = supabase
     .from('business_orders')
-    .select('id', { count: 'exact', head: true })
+    .select('id, business_order_attachments!inner(id)', { count: 'exact', head: true })
     .eq('business_order_attachments.status', 'active')
 
   let dateFrom = filters.dateFrom
