@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BusinessOrderProductCost, CurrencyCode } from '@/types'
 import type { BusinessOrderCostFilters } from '@/schemas/business-order-cost'
 import { displayProfileName } from '@/lib/utils'
+import { COST_PAGE_SIZE } from '@/lib/business-order-cost'
 import {
   activeBusinessOrderAttachments,
   businessDailyItemAmounts,
@@ -48,6 +49,7 @@ function monthToDateRange(month: string): { dateFrom: string; dateTo: string } {
 function buildBaseQuery(
   supabase: SupabaseClient,
   filters: BusinessOrderCostFilters,
+  offset: number,
   limit: number,
   productSearch: boolean,
 ) {
@@ -63,7 +65,7 @@ function buildBaseQuery(
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .order('sort_order', { referencedTable: 'business_order_items', ascending: true })
-    .limit(limit)
+    .range(offset, offset + limit - 1)
 
   let dateFrom = filters.dateFrom
   let dateTo = filters.dateTo
@@ -109,19 +111,20 @@ function compareOrders(left: BusinessDailyLedgerOrder, right: BusinessDailyLedge
 async function fetchMatchingOrders(
   supabase: SupabaseClient,
   filters: BusinessOrderCostFilters,
+  offset: number,
   limit: number,
 ): Promise<BusinessDailyLedgerOrder[]> {
   const keyword = normalizeKeyword(filters.q)
 
   if (!keyword) {
-    const { data, error } = await buildBaseQuery(supabase, filters, limit, false)
+    const { data, error } = await buildBaseQuery(supabase, filters, offset, limit, false)
     if (error) throw new Error(`订单成本订单读取失败：${error.message}`)
     return (data ?? []) as unknown as BusinessDailyLedgerOrder[]
   }
 
   const [headResult, itemResult] = await Promise.all([
-    buildBaseQuery(supabase, filters, limit, false),
-    buildBaseQuery(supabase, filters, limit, true),
+    buildBaseQuery(supabase, filters, offset, limit, false),
+    buildBaseQuery(supabase, filters, offset, limit, true),
   ])
   const error = headResult.error || itemResult.error
   if (error) throw new Error(`订单成本订单读取失败：${error.message}`)
@@ -131,6 +134,7 @@ async function fetchMatchingOrders(
     merged.set(order.id, order)
   }
   for (const order of (itemResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
+    if (merged.size >= limit) break
     if (!merged.has(order.id)) merged.set(order.id, order)
   }
 
@@ -175,16 +179,60 @@ function getCustomerName(customerSnapshot: unknown): string | null {
   return snapshot.company || snapshot.name || null
 }
 
+async function countMatchingOrders(
+  supabase: SupabaseClient,
+  filters: BusinessOrderCostFilters,
+): Promise<number> {
+  let query = supabase
+    .from('business_orders')
+    .select('id', { count: 'exact', head: true })
+    .eq('business_order_attachments.status', 'active')
+
+  let dateFrom = filters.dateFrom
+  let dateTo = filters.dateTo
+  if (filters.month) {
+    const range = monthToDateRange(filters.month)
+    dateFrom = dateFrom && dateFrom > range.dateFrom ? dateFrom : range.dateFrom
+    dateTo = dateTo && dateTo < range.dateTo ? dateTo : range.dateTo
+  }
+
+  if (dateFrom) query = query.gte('order_date', dateFrom)
+  if (dateTo) query = query.lte('order_date', dateTo)
+  if (filters.shops.length > 0) query = query.in('shop_id', filters.shops)
+  if (filters.salespeople.length > 0) query = query.in('salesperson_id', filters.salespeople)
+  if (filters.shopGroups.length > 0) query = query.in('shop_group_id', filters.shopGroups)
+
+  const keyword = normalizeKeyword(filters.q)
+  if (keyword) {
+    query = query.or(
+      [
+        `order_number.ilike.%${keyword}%`,
+        `external_order_number.ilike.%${keyword}%`,
+        `daily_shipping_number.ilike.%${keyword}%`,
+        `payment_account.ilike.%${keyword}%`,
+        `tracking_number.ilike.%${keyword}%`,
+      ].join(','),
+    )
+  }
+
+  const { count, error } = await query
+  if (error) throw new Error(`订单成本计数读取失败：${error.message}`)
+  return count ?? 0
+}
+
 export async function fetchBusinessOrderProductCosts(
   supabase: SupabaseClient,
   filters: BusinessOrderCostFilters,
-  limit = BUSINESS_DAILY_LEDGER_LIMIT,
-): Promise<BusinessOrderProductCost[]> {
-  const effectiveLimit = Math.min(limit, BUSINESS_DAILY_LEDGER_LIMIT)
-  const [orders, financialRows, overrideRows] = await Promise.all([
-    fetchMatchingOrders(supabase, filters, effectiveLimit),
+  page = 1,
+  pageSize = COST_PAGE_SIZE,
+): Promise<{ rows: BusinessOrderProductCost[]; totalCount: number }> {
+  const effectiveLimit = Math.min(pageSize, BUSINESS_DAILY_LEDGER_LIMIT)
+  const offset = (page - 1) * effectiveLimit
+  const [orders, financialRows, overrideRows, totalCount] = await Promise.all([
+    fetchMatchingOrders(supabase, filters, offset, effectiveLimit),
     fetchAllProductFinancials(supabase),
     fetchAllCostOverrides(supabase),
+    countMatchingOrders(supabase, filters),
   ])
 
   const financials = new Map(financialRows.map((row) => [row.product_id, row]))
@@ -267,7 +315,7 @@ export async function fetchBusinessOrderProductCosts(
     }
   }
 
-  return result
+  return { rows: result, totalCount }
 }
 
 export function formatCostMoney(amount: number | null, currency: CurrencyCode) {

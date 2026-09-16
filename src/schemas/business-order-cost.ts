@@ -8,6 +8,7 @@ export const businessOrderCostFilterSchema = z.object({
   shops: z.array(z.string().uuid()).optional().default([]),
   salespeople: z.array(z.string().uuid()).optional().default([]),
   shopGroups: z.array(z.string().uuid()).optional().default([]),
+  page: z.coerce.number().int().min(1).optional().default(1),
 })
 
 export type BusinessOrderCostFilters = z.infer<typeof businessOrderCostFilterSchema>

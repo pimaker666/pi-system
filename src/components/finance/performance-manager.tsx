@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useMemo, useState } from 'react'
 import { Eye, Search } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -35,7 +36,7 @@ import {
 } from '@/lib/business-orders'
 import { formatCny } from '@/lib/finance'
 import { displayProfileName, formatCurrency, formatDate } from '@/lib/utils'
-import type { BusinessOrder, BusinessOrderStatus } from '@/types'
+import type { BusinessOrder } from '@/types'
 
 interface AllocationListRow {
   amount: number
@@ -50,10 +51,12 @@ export interface BusinessOrderListRow extends BusinessOrder {
   business_order_payment_allocations: AllocationListRow[]
 }
 
-type OrderStatusFilter = 'all' | 'special_closed' | BusinessOrderStatus
-
 export interface PerformanceManagerProps {
   orders: BusinessOrderListRow[]
+  totalCount: number
+  currentPage: number
+  pageSize: number
+  filters: { q: string; status: string }
 }
 
 function effectiveAllocations(order: BusinessOrderListRow) {
@@ -62,34 +65,34 @@ function effectiveAllocations(order: BusinessOrderListRow) {
   )
 }
 
-export function PerformanceManager({ orders }: PerformanceManagerProps) {
-  const [query, setQuery] = useState('')
-  const [status, setStatus] = useState<OrderStatusFilter>('all')
+function performanceUrl(q: string, status: string, page: number) {
+  const params = new URLSearchParams()
+  if (q) params.set('q', q)
+  if (status) params.set('status', status)
+  if (page > 1) params.set('page', String(page))
+  const qs = params.toString()
+  return `/finance/performance${qs ? `?${qs}` : ''}`
+}
 
-  const filteredOrders = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase('zh-CN')
-    return orders.filter((order) => {
-      if (status === 'special_closed' && !order.closed_at) return false
-      if (status !== 'all' && status !== 'special_closed' && order.status !== status) return false
-      if (!normalized) return true
-      const customer = getBusinessOrderCustomerName(order.customer_snapshot)
-      return [
-        order.order_number,
-        customer,
-        displayProfileName(
-          order.salesperson,
-          order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
-        ),
-      ]
-        .join(' ')
-        .toLocaleLowerCase('zh-CN')
-        .includes(normalized)
-    })
-  }, [orders, query, status])
+export function PerformanceManager({
+  orders,
+  totalCount,
+  currentPage,
+  pageSize,
+  filters,
+}: PerformanceManagerProps) {
+  const router = useRouter()
+  const [query, setQuery] = useState(filters.q)
+  const [status, setStatus] = useState(filters.status || 'all')
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+
+  function navigate(q: string, s: string, page: number) {
+    router.push(performanceUrl(q, s === 'all' ? '' : s, page))
+  }
 
   const summary = useMemo(
     () =>
-      filteredOrders.reduce(
+      orders.reduce(
         (result, order) => {
           const activeAllocations = effectiveAllocations(order)
           const received = activeAllocations.reduce(
@@ -113,13 +116,13 @@ export function PerformanceManager({ orders }: PerformanceManagerProps) {
         },
         { orderTotalCny: 0, receivedCny: 0, outstandingCny: 0, overdueCount: 0 },
       ),
-    [filteredOrders],
+    [orders],
   )
 
   return (
     <div className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">筛选订单</div><div className="mt-1 text-xl font-semibold">{filteredOrders.length}</div></CardContent></Card>
+        <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">筛选订单</div><div className="mt-1 text-xl font-semibold">{totalCount}</div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">订单总额</div><div className="mt-1 text-xl font-semibold tabular-nums">{formatCny(summary.orderTotalCny)}</div></CardContent></Card>
         <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">有效分摊已收</div><div className="mt-1 text-xl font-semibold tabular-nums text-green-700">{formatCny(summary.receivedCny)}</div></CardContent></Card>
         <Card className={summary.overdueCount > 0 ? 'border-destructive/40' : undefined}><CardContent className="p-4"><div className="text-xs text-muted-foreground">未收 / 逾期订单</div><div className="mt-1 text-xl font-semibold tabular-nums">{formatCny(summary.outstandingCny)} <span className={summary.overdueCount > 0 ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>/ {summary.overdueCount} 单</span></div></CardContent></Card>
@@ -132,11 +135,23 @@ export function PerformanceManager({ orders }: PerformanceManagerProps) {
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="搜索订单号、客户或业务员"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  navigate(query, status, 1)
+                }
+              }}
+              placeholder="搜索订单号或客户"
               className="pl-9"
             />
           </div>
-          <Select value={status} onValueChange={(value) => setStatus(value as typeof status)}>
+          <Select
+            value={status}
+            onValueChange={(value) => {
+              setStatus(value)
+              navigate(query, value, 1)
+            }}
+          >
             <SelectTrigger className="w-full sm:w-44">
               <SelectValue />
             </SelectTrigger>
@@ -150,6 +165,10 @@ export function PerformanceManager({ orders }: PerformanceManagerProps) {
               ))}
             </SelectContent>
           </Select>
+          <Button type="button" onClick={() => navigate(query, status, 1)}>筛选</Button>
+          <Button asChild type="button" variant="outline">
+            <Link href="/finance/performance" onClick={() => { setQuery(''); setStatus('all') }}>清空</Link>
+          </Button>
         </div>
       </div>
 
@@ -169,7 +188,7 @@ export function PerformanceManager({ orders }: PerformanceManagerProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredOrders.map((order) => {
+            {orders.map((order) => {
               const received = effectiveAllocations(order).reduce(
                 (sum, allocation) => sum + Number(allocation.amount),
                 0,
@@ -257,7 +276,7 @@ export function PerformanceManager({ orders }: PerformanceManagerProps) {
                 </TableRow>
               )
             })}
-            {filteredOrders.length === 0 && (
+            {orders.length === 0 && (
               <TableRow>
                 <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
                   暂无符合条件的业务订单
@@ -267,6 +286,56 @@ export function PerformanceManager({ orders }: PerformanceManagerProps) {
           </TableBody>
         </Table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-muted-foreground">
+            共 {totalCount} 条订单，第 {currentPage}/{totalPages} 页
+          </span>
+          <div className="flex items-center gap-1">
+            {currentPage > 1 && (
+              <Link
+                href={performanceUrl(filters.q, filters.status, currentPage - 1)}
+                className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
+              >
+                上一页
+              </Link>
+            )}
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+              .reduce<(number | 'ellipsis')[]>((acc, p, i, arr) => {
+                if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('ellipsis')
+                acc.push(p)
+                return acc
+              }, [])
+              .map((item, i) =>
+                item === 'ellipsis' ? (
+                  <span key={`e${i}`} className="px-1 text-muted-foreground">…</span>
+                ) : (
+                  <Link
+                    key={item}
+                    href={performanceUrl(filters.q, filters.status, item)}
+                    className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md text-sm ${
+                      item === currentPage
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border hover:bg-muted'
+                    }`}
+                  >
+                    {item}
+                  </Link>
+                ),
+              )}
+            {currentPage < totalPages && (
+              <Link
+                href={performanceUrl(filters.q, filters.status, currentPage + 1)}
+                className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
+              >
+                下一页
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

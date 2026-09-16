@@ -6,6 +6,9 @@ export const BUSINESS_ORDER_COST_COLUMNS = [
   '订单总金额', '未收尾款', '收款分类', '备注', '截图',
 ] as const
 
+export const COST_PAGE_SIZE = 50
+export const PERFORMANCE_PAGE_SIZE = 50
+
 function scalar(raw: Record<string, string | string[] | undefined>, key: string) {
   const value = raw[key]
   return Array.isArray(value) ? value[0] : value
@@ -28,6 +31,7 @@ export function parseBusinessOrderCostFilters(
     shops: array(raw, 'shops'),
     salespeople: array(raw, 'salespeople'),
     shopGroups: array(raw, 'shopGroups'),
+    page: Math.max(1, Number(scalar(raw, 'page') || 1) || 1),
   }
 }
 
@@ -40,6 +44,7 @@ export function businessOrderCostFilterQuery(filters: BusinessOrderCostFilters) 
   filters.shops.forEach((id) => params.append('shops', id))
   filters.salespeople.forEach((id) => params.append('salespeople', id))
   filters.shopGroups.forEach((id) => params.append('shopGroups', id))
+  if (filters.page && filters.page > 1) params.set('page', String(filters.page))
   return params.toString()
 }
 

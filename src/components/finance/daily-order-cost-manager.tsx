@@ -20,6 +20,7 @@ import { getBusinessOrderAttachmentUrl } from '@/lib/actions/business-orders'
 import { updateBusinessOrderItemCostOverride } from '@/lib/actions/finance'
 import {
   BUSINESS_ORDER_COST_COLUMNS,
+  COST_PAGE_SIZE,
   businessOrderCostFilterQuery,
   formatCostValue,
 } from '@/lib/business-order-cost'
@@ -160,6 +161,7 @@ function MultiSelect({
 
 export interface DailyOrderCostManagerProps {
   rows: BusinessOrderProductCost[]
+  totalCount: number
   filters: BusinessOrderCostFilters
   options: {
     shops: DailyOrderShop[]
@@ -168,9 +170,11 @@ export interface DailyOrderCostManagerProps {
   }
 }
 
-export function DailyOrderCostManager({ rows, filters, options }: DailyOrderCostManagerProps) {
+export function DailyOrderCostManager({ rows, totalCount, filters, options }: DailyOrderCostManagerProps) {
   const [pending, startTransition] = useTransition()
   const query = businessOrderCostFilterQuery(filters)
+  const currentPage = filters.page
+  const totalPages = Math.max(1, Math.ceil(totalCount / COST_PAGE_SIZE))
 
   const groups = useMemo(() => {
     const map = new Map<string, BusinessOrderProductCost[]>()
@@ -209,6 +213,7 @@ export function DailyOrderCostManager({ rows, filters, options }: DailyOrderCost
       </div>
 
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
+        <input type="hidden" name="page" value="1" />
         <Input
           name="q"
           defaultValue={filters.q}
@@ -404,6 +409,56 @@ export function DailyOrderCostManager({ rows, filters, options }: DailyOrderCost
           </TableBody>
         </Table>
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-muted-foreground">
+            共 {totalCount} 条订单，第 {currentPage}/{totalPages} 页
+          </span>
+          <div className="flex items-center gap-1">
+            {currentPage > 1 && (
+              <Link
+                href={`/finance/costs?${businessOrderCostFilterQuery({ ...filters, page: currentPage - 1 })}`}
+                className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
+              >
+                上一页
+              </Link>
+            )}
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+              .reduce<(number | 'ellipsis')[]>((acc, p, i, arr) => {
+                if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('ellipsis')
+                acc.push(p)
+                return acc
+              }, [])
+              .map((item, i) =>
+                item === 'ellipsis' ? (
+                  <span key={`e${i}`} className="px-1 text-muted-foreground">…</span>
+                ) : (
+                  <Link
+                    key={item}
+                    href={`/finance/costs?${businessOrderCostFilterQuery({ ...filters, page: item })}`}
+                    className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md text-sm ${
+                      item === currentPage
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border hover:bg-muted'
+                    }`}
+                  >
+                    {item}
+                  </Link>
+                ),
+              )}
+            {currentPage < totalPages && (
+              <Link
+                href={`/finance/costs?${businessOrderCostFilterQuery({ ...filters, page: currentPage + 1 })}`}
+                className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
+              >
+                下一页
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </section>
   )
 }

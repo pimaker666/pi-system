@@ -95,12 +95,13 @@ export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const filters = parseBusinessOrderCostFilters(searchParamsToRecord(request.nextUrl.searchParams))
 
-  const [dailyCosts, costs, legacyOrders, businessOrders] = await Promise.all([
-    fetchBusinessOrderProductCosts(supabase, filters),
+  const [dailyResult, costs, legacyOrders, businessOrders] = await Promise.all([
+    fetchBusinessOrderProductCosts(supabase, filters, 1, 500),
     fetchAllFinanceCosts(supabase),
     fetchAllLegacyReferences(supabase),
     fetchAllBusinessReferences(supabase),
   ])
+  const dailyCosts = dailyResult.rows
 
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'PI System'

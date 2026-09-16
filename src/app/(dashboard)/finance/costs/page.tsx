@@ -33,7 +33,7 @@ export default async function FinanceCostsPage({
         .order('order_date', { ascending: false }),
       supabase.from('finance_order_costs').select('*').order('incurred_date', { ascending: false }),
       fetchDailyOrderOptions(supabase),
-      fetchBusinessOrderProductCosts(supabase, filters),
+      fetchBusinessOrderProductCosts(supabase, filters, filters.page),
     ])
 
   const loadError = legacyOrdersResult.error || businessOrdersResult.error || costsResult.error
@@ -65,7 +65,12 @@ export default async function FinanceCostsPage({
           已发货业务订单自动匹配产品库财务资料；修改成本仅覆盖当前订单产品行，不反写产品库。
         </p>
       </div>
-      <DailyOrderCostManager rows={dailyOrderCosts} filters={filters} options={options} />
+      <DailyOrderCostManager
+        rows={dailyOrderCosts.rows}
+        totalCount={dailyOrderCosts.totalCount}
+        filters={filters}
+        options={options}
+      />
       <div className="border-t pt-8">
         <h2 className="mb-1 text-lg font-semibold">其他订单费用</h2>
         <p className="mb-4 text-sm text-muted-foreground">
