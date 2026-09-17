@@ -60,6 +60,7 @@ function buildBaseQuery(
   let query = supabase
     .from('business_orders')
     .select(`*, ${itemsEmbed}, ${LEDGER_TAIL}`)
+    .is('voided_at', null)
     .eq('fulfillment_status', 'fully_shipped')
     .eq('business_order_attachments.status', 'active')
     .order('order_date', { ascending: false })

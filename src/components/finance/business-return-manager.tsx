@@ -61,7 +61,10 @@ export interface BusinessOrderReturnView {
 }
 
 interface BusinessReturnManagerProps {
-  order: Pick<BusinessOrder, 'id' | 'status'> & { closed_at?: string | null }
+  order: Pick<BusinessOrder, 'id' | 'status'> & {
+    closed_at?: string | null
+    voided_at?: string | null
+  }
   profile: Pick<Profile, 'role'>
   orderItems: BusinessOrderItem[]
   shipments: BusinessOrderShipment[]
@@ -181,7 +184,8 @@ export function BusinessReturnManager({
   const canManage =
     (profile.role === 'admin' || profile.role === 'finance') &&
     order.status === 'approved' &&
-    !order.closed_at
+    !order.closed_at &&
+    !order.voided_at
   const hasReturnable = itemRows.some((row) => row.returnable > 0)
 
   function openCreateForm() {

@@ -661,6 +661,15 @@ export const businessOrderVoidReasonSchema = z
   .min(1, '请填写作废原因')
   .max(1000, '作废原因不能超过 1000 字')
 
+export const businessOrderVoidInputSchema = z
+  .object({
+    order_id: z.string().uuid('请选择有效订单'),
+    expected_version: z.coerce.number().int('订单版本无效').positive('订单版本无效'),
+    reason: businessOrderVoidReasonSchema,
+    idempotency_key: z.string().trim().min(1, '缺少幂等键').max(200, '幂等键不能超过 200 字'),
+  })
+  .strict()
+
 /** Legacy component input; writes are adapted to a customer transfer plus one allocation. */
 export const businessOrderPaymentInputSchema = businessCustomerTransferBaseSchema
   .extend({
@@ -686,6 +695,7 @@ export type BusinessOrderAppendItemEditInput = z.infer<typeof businessOrderAppen
 export type BusinessOrderAppendItemDeleteInput = z.infer<
   typeof businessOrderAppendItemDeleteInputSchema
 >
+export type BusinessOrderVoidInput = z.infer<typeof businessOrderVoidInputSchema>
 export type BusinessOrderAttachmentInput = z.infer<typeof businessOrderAttachmentInputSchema>
 export type BusinessCustomProductVersionInput = z.infer<
   typeof businessCustomProductVersionInputSchema

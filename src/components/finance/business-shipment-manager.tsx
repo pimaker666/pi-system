@@ -43,7 +43,7 @@ interface BusinessShipmentManagerProps {
   order: Pick<
     BusinessOrder,
     'id' | 'status' | 'approval_status' | 'salesperson_id' | 'completion_gate_version'
-  > & { closed_at?: string | null }
+  > & { closed_at?: string | null; voided_at?: string | null }
   profile: Pick<Profile, 'id' | 'role'>
   orderItems: BusinessOrderItem[]
   shipments: BusinessOrderShipment[]
@@ -124,6 +124,7 @@ export function BusinessShipmentManager({
   const canManage =
     hasRolePermission &&
     !order.closed_at &&
+    !order.voided_at &&
     order.status === 'approved' &&
     order.approval_status === 'approved'
   const isLockedCompletedOrder = order.status === 'completed' && order.completion_gate_version >= 2

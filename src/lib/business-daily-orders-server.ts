@@ -80,6 +80,7 @@ function buildLedgerQuery(
   let query = supabase
     .from('business_orders')
     .select(`*, ${itemsEmbed}, ${LEDGER_TAIL}`)
+    .is('voided_at', null)
     // 内嵌过滤只筛子行，不会误删没有附件的订单。
     .eq('business_order_attachments.status', 'active')
     .order('order_date', { ascending: false })

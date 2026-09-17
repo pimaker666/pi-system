@@ -35,7 +35,10 @@ export default async function EditBusinessOrderPage({
     .single()
 
   if (error || !data) notFound()
-  const order = data as BusinessOrderWithDetails & { closed_at?: string | null }
+  const order = data as BusinessOrderWithDetails & {
+    closed_at?: string | null
+    voided_at?: string | null
+  }
   const constraintsResult = await getBusinessOrderEditConstraints(id)
   if (!constraintsResult.ok || !constraintsResult.data) {
     throw new Error(constraintsResult.error ?? '订单编辑约束读取失败')
@@ -48,7 +51,7 @@ export default async function EditBusinessOrderPage({
         order.salesperson_id === profile.id))
   const canInspectLocked =
     (profile.role === 'admin' || profile.role === 'finance') &&
-    (order.status === 'completed' || Boolean(order.closed_at))
+    (order.status === 'completed' || Boolean(order.closed_at) || Boolean(order.voided_at))
   if (!canEdit && !canInspectLocked) redirect(`/finance/daily-orders/${id}`)
 
   const [
@@ -139,7 +142,7 @@ export default async function EditBusinessOrderPage({
         <div>
           <h1 className="text-2xl font-semibold">编辑 {order.order_number}</h1>
           <p className="text-sm text-muted-foreground">
-            {order.status === 'completed' || order.closed_at
+            {order.status === 'completed' || order.closed_at || order.voided_at
               ? '订单已锁定；此页仅用于查看数据库返回的编辑约束。'
               : '有有效收款分摊或发货事实的明细会按数据库规则限制修改。'}
           </p>

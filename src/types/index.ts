@@ -393,6 +393,9 @@ export interface BusinessOrder {
   closed_at: string | null
   closed_by: string | null
   close_reason: string | null
+  voided_at: string | null
+  voided_by: string | null
+  void_reason: string | null
   created_at: string
   updated_at: string
   /** Live-joined salesperson profile (PostgREST embed on salesperson_id) used to
@@ -716,6 +719,7 @@ export type BusinessLifecycleEntityType =
   | 'shipment'
   | 'return'
   | 'closure'
+  | 'order_void'
 
 export type BusinessLifecycleAuditAction =
   | 'create'

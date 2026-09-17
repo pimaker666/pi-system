@@ -25,6 +25,7 @@ import {
   rejectBusinessOrder,
   saveBusinessOrderFinance,
   submitBusinessOrder,
+  voidBusinessOrder,
 } from '@/lib/actions/business-orders'
 import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
 import type {
@@ -34,6 +35,13 @@ import type {
   Profile,
 } from '@/types'
 import { BusinessOrderAppendDialog } from './business-order-append-dialog'
+
+function newIdempotencyKey() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `void-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
 
 interface BusinessOrderActionsProps {
   order: Pick<
@@ -46,7 +54,9 @@ interface BusinessOrderActionsProps {
     | 'payment_status'
     | 'fulfillment_status'
     | 'currency'
-  > & { closed_at?: string | null; business_order_items: BusinessOrderItem[] }
+    | 'closed_at'
+    | 'voided_at'
+  > & { business_order_items: BusinessOrderItem[] }
   profile: Pick<Profile, 'id' | 'role'>
   financeReady: boolean
   canEditOrder?: boolean
@@ -66,14 +76,19 @@ export function BusinessOrderActions({
   const [rejectNote, setRejectNote] = useState('')
   const [closeOpen, setCloseOpen] = useState(false)
   const [closeReason, setCloseReason] = useState('')
+  const [voidOpen, setVoidOpen] = useState(false)
+  const [voidReason, setVoidReason] = useState('')
+  const [voidIdempotencyKey, setVoidIdempotencyKey] = useState('')
 
   const isClosed = Boolean(order.closed_at)
+  const isVoided = Boolean(order.voided_at)
+  const isLocked = isClosed || isVoided
   const canOwnerEdit =
     (profile.role === 'admin' ||
       ((profile.role === 'sales' || profile.role === 'supervisor') &&
         order.salesperson_id === profile.id)) &&
     ['draft', 'rejected'].includes(order.status) &&
-    !isClosed
+    !isLocked
   const completionMissing = [
     order.approval_status !== 'approved' ? '审核尚未通过' : null,
     order.payment_status !== 'fully_paid' ? '款项尚未收齐' : null,
@@ -81,18 +96,30 @@ export function BusinessOrderActions({
     !financeReady ? '财务核算尚未完整保存' : null,
   ].filter((item): item is string => Boolean(item))
   const canComplete =
-    !isClosed &&
+    !isLocked &&
     profile.role === 'finance' &&
     order.status === 'approved' &&
     completionMissing.length === 0
   const canSpecialClose =
-    !isClosed && profile.role === 'admin' && order.status !== 'completed'
-  const showEditOrder = canEditOrder ?? canOwnerEdit
+    !isLocked && profile.role === 'admin' && order.status !== 'completed'
+  const showEditOrder = (canEditOrder ?? canOwnerEdit) && !isLocked
   const appendNeedsReapproval =
     (profile.role === 'sales' || profile.role === 'supervisor') &&
     order.status === 'approved' &&
     order.approval_status === 'approved'
   const canAppendItems = canAdjustBusinessOrderItems(order, profile)
+
+  function openVoidDialog() {
+    setVoidReason('')
+    setVoidIdempotencyKey(newIdempotencyKey())
+    setVoidOpen(true)
+  }
+
+  function closeVoidDialog() {
+    setVoidOpen(false)
+    setVoidReason('')
+    setVoidIdempotencyKey('')
+  }
 
   function runAction(
     action: () => Promise<{ ok: boolean; error?: string }>,
@@ -115,7 +142,7 @@ export function BusinessOrderActions({
 
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      {!isClosed && (
+      {!isLocked && (
         <>
           {showEditOrder && (
             <Button asChild variant="outline">
@@ -177,6 +204,11 @@ export function BusinessOrderActions({
             </Button>
           )}
         </>
+      )}
+      {(profile.role === 'admin' || profile.role === 'finance') && !isVoided && (
+        <Button variant="destructive" disabled={pending} onClick={openVoidDialog}>
+          <X className="h-4 w-4" />作废订单
+        </Button>
       )}
 
       <Dialog open={rejectOpen} onOpenChange={setRejectOpen}>
@@ -252,12 +284,70 @@ export function BusinessOrderActions({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog
+        open={voidOpen}
+        onOpenChange={(open) => {
+          if (!open) closeVoidDialog()
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>作废业务订单</DialogTitle>
+            <DialogDescription>
+              此操作不可恢复。有效收款分摊会作废，但客户转账、发货、退货、附件和审计记录将继续保留。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+            作废后，订单将从默认台账、成本、业绩和导出中排除，且不能再修改或新增业务记录。
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="void_reason">作废原因</Label>
+            <Textarea
+              id="void_reason"
+              value={voidReason}
+              onChange={(event) => setVoidReason(event.target.value)}
+              maxLength={1000}
+              required
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeVoidDialog}>取消</Button>
+            <Button
+              variant="destructive"
+              disabled={pending || !voidReason.trim() || !voidIdempotencyKey}
+              onClick={() => {
+                startTransition(async () => {
+                  const result = await voidBusinessOrder(
+                    order.id,
+                    order.version,
+                    voidReason,
+                    voidIdempotencyKey,
+                  )
+                  if (!result.ok) {
+                    toast.error(result.error ?? '作废订单失败')
+                    return
+                  }
+                  toast.success('订单已作废')
+                  closeVoidDialog()
+                  router.refresh()
+                })
+              }}
+            >
+              {pending ? '作废中…' : '确认作废'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
 interface BusinessOrderFinancePanelProps {
-  order: Pick<BusinessOrder, 'id' | 'status'> & { closed_at?: string | null }
+  order: Pick<BusinessOrder, 'id' | 'status'> & {
+    closed_at?: string | null
+    voided_at?: string | null
+  }
   financeDetail: BusinessOrderFinanceDetail | null
   role: Profile['role']
 }
@@ -272,7 +362,7 @@ export function BusinessOrderFinancePanel({
   const [wage, setWage] = useState(String(financeDetail?.wage_amount_cny ?? ''))
   const [notes, setNotes] = useState(financeDetail?.calculation_notes ?? '')
   const canEdit =
-    !order.closed_at && role === 'finance' && order.status === 'approved'
+    !order.closed_at && !order.voided_at && role === 'finance' && order.status === 'approved'
 
   if (!canEdit && !financeDetail) return null
 

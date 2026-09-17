@@ -23,6 +23,7 @@ import {
   businessOrderReturnVoidInputSchema,
   businessOrderShipmentInputSchema,
   businessOrderSpecialCloseInputSchema,
+  businessOrderVoidInputSchema,
   businessOrderVoidReasonSchema,
 } from '@/schemas/business-order'
 import { getBusinessOrderItemRemainingQuantity } from '@/lib/business-daily-orders'
@@ -134,9 +135,17 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Only approved sales users', '仅已审核通过的业务员或业务主管可以执行此操作'],
     ['Only approved administrators or finance users can register returns', '仅管理员或财务可以登记退货'],
     ['Only approved administrators or finance users can void returns', '仅管理员或财务可以作废退货'],
+    ['Approved administrator or finance user required to void a business order', '仅已审核通过的管理员或财务可以作废订单'],
     ['Only approved administrators or finance users', '仅管理员或财务可以执行此操作'],
     ['Only an approved administrator', '仅已审核通过的管理员可以执行此操作'],
     ['Approved business role required', '当前账号无业务操作权限'],
+    ['Order void reason is required and cannot exceed 1000 characters', '请填写不超过 1000 字的作废原因'],
+    ['Business order is already voided', '订单已作废，请刷新页面'],
+    ['Voided business order cannot be edited or transitioned', '已作废订单不可编辑或变更状态'],
+    ['Voided business order cannot receive new allocations or shipments', '已作废订单不能新增收款分摊或发货'],
+    ['Voided business order records are immutable', '已作废订单的业务记录不可修改'],
+    ['Voided business order costs are immutable', '已作废订单的成本记录不可修改'],
+    ['Idempotency key was already used with a different payload', '该作废请求标识已用于不同内容，请关闭弹窗后重试'],
     ['Approved account required', '账号尚未审核通过'],
     ['Customer does not exist or is not manageable by current user', '客户不存在或当前账号无权管理'],
     ['Customer does not exist or is not owned', '客户不存在或不属于当前业务员'],
@@ -887,6 +896,7 @@ export async function bulkShipBusinessOrders(
     .in('id', validIds)
     .eq('status', 'approved')
     .is('closed_at', null)
+    .is('voided_at', null)
 
   if (error) return { ok: false, error: `读取订单失败：${error.message}` }
 
@@ -1116,6 +1126,36 @@ export async function closeBusinessOrderSpecial(
 
   const order = parseRpcOrder(data)
   if (!order) return { ok: false, error: '数据库未返回关闭后的订单信息' }
+  revalidateBusinessOrders(order.id)
+  return { ok: true, ...order }
+}
+
+export async function voidBusinessOrder(
+  orderId: string,
+  expectedVersion: number,
+  reason: string,
+  idempotencyKey: string,
+): Promise<BusinessOrderActionResult> {
+  await requireFinanceAccess()
+  const parsed = businessOrderVoidInputSchema.safeParse({
+    order_id: orderId,
+    expected_version: expectedVersion,
+    reason,
+    idempotency_key: idempotencyKey,
+  })
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('void_business_order', {
+    p_order_id: parsed.data.order_id,
+    p_expected_version: parsed.data.expected_version,
+    p_reason: parsed.data.reason,
+    p_idempotency_key: parsed.data.idempotency_key,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '作废订单失败') }
+
+  const order = parseRpcOrder(data)
+  if (!order) return { ok: false, error: '数据库未返回作废后的订单信息' }
   revalidateBusinessOrders(order.id)
   return { ok: true, ...order }
 }

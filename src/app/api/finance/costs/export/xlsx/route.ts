@@ -81,6 +81,7 @@ async function fetchAllBusinessReferences(supabase: Awaited<ReturnType<typeof cr
     const { data, error } = await supabase
       .from('business_orders')
       .select('id, order_number')
+      .is('voided_at', null)
       .order('id')
       .range(from, from + PAGE_SIZE - 1)
     if (error) throw new Error(`业务订单引用读取失败：${error.message}`)

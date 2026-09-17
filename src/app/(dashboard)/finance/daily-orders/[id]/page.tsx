@@ -86,6 +86,7 @@ const lifecycleEntityLabels: Record<string, string> = {
   return: '退货记录',
   order_return: '退货记录',
   closure: '特殊关闭',
+  order_void: '订单作废',
 }
 
 const lifecycleActionLabels: Record<string, string> = {
@@ -327,7 +328,9 @@ export default async function BusinessOrderDetailPage({
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-semibold">{order.order_number}</h1>
-              {order.closed_at ? (
+              {order.voided_at ? (
+                <Badge variant="destructive">已作废</Badge>
+              ) : order.closed_at ? (
                 <Badge variant="secondary">特殊关闭</Badge>
               ) : (
                 <Badge variant={BUSINESS_ORDER_STATUS_VARIANTS[order.status]}>
@@ -355,7 +358,17 @@ export default async function BusinessOrderDetailPage({
         </div>
       )}
 
-      {order.closed_at && (
+      {order.voided_at ? (
+        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+          <div className="font-medium">此订单已作废</div>
+          <div className="mt-1">
+            作废时间：{formatDate(order.voided_at, true)} · 原因：{order.void_reason || '—'}
+          </div>
+          <div className="mt-1">
+            有效收款分摊已作废；客户转账、发货、退货、附件及审计记录继续保留。此订单已从默认台账、成本、业绩和导出中排除。
+          </div>
+        </div>
+      ) : order.closed_at ? (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
           <div className="font-medium">此订单已特殊关闭</div>
           <div className="mt-1">
@@ -366,7 +379,7 @@ export default async function BusinessOrderDetailPage({
             以下审批、收款、发货及退货状态均按实际记录展示，不视为正常完成。
           </div>
         </div>
-      )}
+      ) : null}
 
       <BusinessLifecycleStatus order={order} summary={settlement} />
 
@@ -684,8 +697,8 @@ export default async function BusinessOrderDetailPage({
               orderId={order.id}
               ownerId={order.salesperson_id}
               currency={order.currency}
-              status={order.closed_at ? 'completed' : order.status}
-              completionGateVersion={order.closed_at ? 2 : order.completion_gate_version}
+              status={order.closed_at || order.voided_at ? 'completed' : order.status}
+              completionGateVersion={order.closed_at || order.voided_at ? 2 : order.completion_gate_version}
               profile={profile}
               orderVersion={order.version}
               payments={order.business_order_payments}

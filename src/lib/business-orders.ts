@@ -13,6 +13,7 @@ import type {
 export function canAdjustBusinessOrderItems(
   order: Pick<BusinessOrder, 'status' | 'salesperson_id' | 'approval_status'> & {
     closed_at?: string | null
+    voided_at?: string | null
   },
   profile: Pick<Profile, 'id' | 'role'>,
 ) {
@@ -22,6 +23,7 @@ export function canAdjustBusinessOrderItems(
     order.approval_status === 'approved'
   return (
     !order.closed_at &&
+    !order.voided_at &&
     order.status !== 'completed' &&
     (profile.role === 'admin' ||
       profile.role === 'finance' ||

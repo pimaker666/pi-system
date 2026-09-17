@@ -40,6 +40,7 @@ export default async function FinancePerformancePage({
   let ordersQuery = supabase
     .from('business_orders')
     .select(`*, ${ALLOCATION_SELECT}, ${SALESPERSON_SELECT}`)
+    .is('voided_at', null)
     .order('order_date', { ascending: false })
     .order('created_at', { ascending: false })
     .range(offset, offset + PERFORMANCE_PAGE_SIZE - 1)
@@ -47,6 +48,7 @@ export default async function FinancePerformancePage({
   let countQuery = supabase
     .from('business_orders')
     .select('id', { count: 'exact', head: true })
+    .is('voided_at', null)
 
   if (status === 'special_closed') {
     ordersQuery = ordersQuery.not('closed_at', 'is', null)

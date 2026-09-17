@@ -219,6 +219,7 @@ export function BusinessOrderPaymentManager({
               )
               .eq('customer_id', currentCustomerId)
               .eq('currency', currentCurrency)
+              .is('voided_at', null)
               .order('order_date', { ascending: false })
           : Promise.resolve({ data: [currentOrder] as OrderOption[], error: null }),
         customerScoped

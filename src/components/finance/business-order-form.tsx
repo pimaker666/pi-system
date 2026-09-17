@@ -388,10 +388,10 @@ export function BusinessOrderForm({
   const hasReceivableReceivedDifference =
     Math.round(receivableReceivedDifference * 100) !== 0
   const orderWithClosure = initialOrder as
-    | (BusinessOrderWithDetails & { closed_at?: string | null })
+    | (BusinessOrderWithDetails & { closed_at?: string | null; voided_at?: string | null })
     | undefined
   const lifecycleLocked = Boolean(
-    initialOrder?.status === 'completed' || orderWithClosure?.closed_at,
+    initialOrder?.status === 'completed' || orderWithClosure?.closed_at || orderWithClosure?.voided_at,
   )
   const hasLegacyItems = items.some((item) => item.source_type === 'legacy')
   const productRowsLocked = lifecycleLocked
@@ -669,7 +669,7 @@ export function BusinessOrderForm({
       return
     }
     if (lifecycleLocked) {
-      toast.error('已完成或特殊关闭的订单不可修改')
+      toast.error('已完成、特殊关闭或作废的订单不可修改')
       return
     }
     const belowMinimum = items.find((item) => {
@@ -827,7 +827,9 @@ export function BusinessOrderForm({
         <div className="flex gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
           <LockKeyhole className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            <div className="font-medium">订单已{orderWithClosure?.closed_at ? '特殊关闭' : '完成'}，全部字段只读</div>
+            <div className="font-medium">
+              订单已{orderWithClosure?.voided_at ? '作废' : orderWithClosure?.closed_at ? '特殊关闭' : '完成'}，全部字段只读
+            </div>
             <div className="mt-1">页面仅展示锁定原因；数据库仍会拒绝任何绕过界面的修改。</div>
           </div>
         </div>

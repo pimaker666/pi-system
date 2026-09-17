@@ -52,6 +52,7 @@ export default async function FinanceOverviewPage() {
     supabase
       .from('business_orders')
       .select('id, order_number, status, order_date, customer_snapshot, salesperson_name_snapshot, salesperson_display_name_snapshot, total_cny, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)')
+      .is('voided_at', null)
       .order('order_date', { ascending: false })
       .limit(8),
   ])

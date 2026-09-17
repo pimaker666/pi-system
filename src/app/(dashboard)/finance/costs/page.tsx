@@ -30,6 +30,7 @@ export default async function FinanceCostsPage({
         .from('business_orders')
         .select('id, order_number, customer_snapshot')
         .in('status', ['approved', 'completed'])
+        .is('voided_at', null)
         .order('order_date', { ascending: false }),
       supabase.from('finance_order_costs').select('*').order('incurred_date', { ascending: false }),
       fetchDailyOrderOptions(supabase),
