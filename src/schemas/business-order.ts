@@ -51,6 +51,13 @@ const dateSchema = z
     )
   }, '请选择有效日期')
 const optionalDateSchema = z.union([dateSchema, z.literal('')]).optional().default('')
+const nullableDateSchema = z.preprocess(
+  (value) =>
+    value === undefined || value === null || (typeof value === 'string' && value.trim() === '')
+      ? null
+      : value,
+  z.union([dateSchema, z.null()]),
+)
 const dateTimeSchema = z
   .string()
   .trim()
@@ -270,7 +277,7 @@ export const businessOrderInputSchema = z
     shipping_fee: nonNegativeAmountSchema,
     payment_account: optionalText(200, '收款账户不能超过 200 字'),
     sales_notes: optionalText(2000, '业务备注不能超过 2000 字'),
-    daily_shipping_date: dateSchema,
+    daily_shipping_date: nullableDateSchema,
     daily_shipping_number: optionalText(200, '每日订单发货单号不能超过 200 字'),
     daily_payment_category: z.enum(businessPaymentTypes),
     total_product_received_amount: nonNegativeAmountSchema,

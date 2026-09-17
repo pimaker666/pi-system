@@ -20,7 +20,7 @@ import type {
  * 每日订单批量导入（恢复版）。
  *
  * 与 0031 之前的旧导入相比有两点必须不同：
- * 1. 写入目标是 business_orders（经 create_business_order_v4），旧 finance_daily_* 保持冻结；
+ * 1. 写入目标是 business_orders（经 create_business_order_v5），旧 finance_daily_* 保持冻结；
  * 2. 因此每行必须能定位客户，且同一订单号的多行会合并为一张订单的多条明细。
  */
 
@@ -219,7 +219,9 @@ export function validateBusinessDailyImportRow(
 ) {
   const errors: string[] = []
   if (!/^\d{4}-\d{2}-\d{2}$/.test(row.order_date)) errors.push('下单日期格式应为 YYYY-MM-DD')
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(row.daily_shipping_date)) errors.push('发货日期格式应为 YYYY-MM-DD')
+  if (row.daily_shipping_date && !/^\d{4}-\d{2}-\d{2}$/.test(row.daily_shipping_date)) {
+    errors.push('发货日期格式应为 YYYY-MM-DD')
+  }
 
   const shop = refs.shops.find((item) => item.id === row.shop_id && item.is_active)
   if (!row.shop_id || !shop) errors.push('店铺不存在或已停用')
@@ -334,7 +336,7 @@ export function mapBusinessDailyImportRows(
         customer_id: customer?.id ?? '',
         customer_name: String(raw.customer_id ?? ''),
         external_order_number: String(raw.external_order_number ?? '').trim(),
-        daily_shipping_date: parseDateValue(raw.daily_shipping_date || raw.order_date),
+        daily_shipping_date: parseDateValue(raw.daily_shipping_date),
         daily_shipping_number: String(raw.daily_shipping_number ?? '').trim(),
         daily_shipping_category: String(raw.daily_shipping_category ?? '').trim()
           ? shippingValue(raw.daily_shipping_category)

@@ -282,7 +282,7 @@ export function BusinessOrderForm({
     initialOrder?.external_order_number ?? '',
   )
   const [dailyShippingDate, setDailyShippingDate] = useState(
-    initialOrder?.daily_shipping_date ?? initialOrder?.order_date ?? getBusinessDateKey(),
+    initialOrder?.daily_shipping_date ?? '',
   )
   const [dailyShippingNumber, setDailyShippingNumber] = useState(
     initialOrder?.daily_shipping_number ?? '',
@@ -866,11 +866,7 @@ export function BusinessOrderForm({
                 id="order_date"
                 type="date"
                 value={orderDate}
-                onChange={(event) => {
-                  const value = event.target.value
-                  if (dailyShippingDate === orderDate) setDailyShippingDate(value)
-                  setOrderDate(value)
-                }}
+                onChange={(event) => setOrderDate(event.target.value)}
                 required
               />
             </div>
@@ -910,13 +906,12 @@ export function BusinessOrderForm({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="daily_shipping_date">发货日期</Label>
+              <Label htmlFor="daily_shipping_date">发货日期（可选）</Label>
               <Input
                 id="daily_shipping_date"
                 type="date"
                 value={dailyShippingDate}
                 onChange={(event) => setDailyShippingDate(event.target.value)}
-                required
               />
             </div>
             <div className="space-y-2">

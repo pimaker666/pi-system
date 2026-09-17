@@ -423,7 +423,7 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
   }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('create_business_order_v4', {
+  const { data, error } = await supabase.rpc('create_business_order_v5', {
     p_customer_id: input.customer_id,
     p_order_date: input.order_date,
     p_fulfillment_type: input.fulfillment_type,
@@ -481,7 +481,7 @@ export async function updateBusinessOrder(
 
   const input = parsed.data
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('update_business_order_v4', {
+  const { data, error } = await supabase.rpc('update_business_order_v5', {
     p_order_id: id,
     p_expected_version: expectedVersion,
     p_customer_id: input.customer_id,

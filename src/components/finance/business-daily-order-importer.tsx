@@ -79,7 +79,7 @@ const selectClass = 'h-9 rounded-md border bg-background px-2'
  * 每日订单批量导入（恢复版）。
  *
  * 与冻结前的旧导入不同：解析后的行会按「订单号 + 店铺 + 业务员 + 客户」合并成一张
- * business_orders 订单的多条明细，再逐张调用 create_business_order_v4 写入，
+ * business_orders 订单的多条明细，再逐张调用 create_business_order_v5 写入，
  * 因此不再触碰已冻结的 finance_daily_* 写链路。
  */
 export function BusinessDailyOrderImporter({ shops, salespeople, products, customers }: Props) {
