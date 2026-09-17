@@ -167,6 +167,11 @@ export default async function DailyOrdersPage({
           <option value="completed">已完成</option>
           <option value="incomplete">未完成</option>
         </select>
+        <select name="balanceStatus" defaultValue={filters.balanceStatus ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
+          <option value="">全部尾款状态</option>
+          <option value="settled">已收齐</option>
+          <option value="unsettled">未收齐</option>
+        </select>
         <div className="flex flex-wrap gap-2 xl:col-span-8">
           <Button type="submit">筛选</Button>
           <Button asChild type="button" variant="outline">

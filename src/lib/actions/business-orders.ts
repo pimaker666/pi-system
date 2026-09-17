@@ -1197,7 +1197,7 @@ export async function listBusinessOrderAppendCatalog(): Promise<BusinessOrderApp
   await requireApproved()
   const supabase = await createClient()
   const [productsResult, groupsResult, financialsResult] = await Promise.all([
-    supabase.from('products').select('*').eq('is_active', true).order('name'),
+    supabase.from('products').select('*').order('name'),
     supabase.from('product_groups').select('*').order('sort_order'),
     supabase.from('product_financials').select('*'),
   ])

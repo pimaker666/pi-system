@@ -142,6 +142,15 @@ function applyCompletionFilter(
   return orders.filter((o) => o.fulfillment_status !== 'fully_shipped' || o.outstanding_amount > 0)
 }
 
+function applyBalanceStatusFilter(
+  orders: BusinessDailyLedgerOrder[],
+  balanceStatus: DailyOrderFilters['balanceStatus'],
+): BusinessDailyLedgerOrder[] {
+  if (!balanceStatus) return orders
+  if (balanceStatus === 'settled') return orders.filter((order) => order.outstanding_amount === 0)
+  return orders.filter((order) => order.outstanding_amount !== 0)
+}
+
 /**
  * 读取每日订单台账。PostgREST 不支持跨表 or()，所以关键字搜索拆成两次查询：
  * 一次匹配订单号 / 平台订单号 / 发货单号 / 收款账户，一次匹配产品名称与 SKU，再按同一排序合并去重。
@@ -159,12 +168,15 @@ export async function fetchBusinessDailyLedger(
   if (ids && ids.length > 0 || !keyword) {
     const { data, error } = await buildLedgerQuery(supabase, filters, effectiveLimit, false, ids)
     if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
-    const orders = applyCompletionFilter(
-      await attachOutstandingAmounts(
-        supabase,
-        (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+    const orders = applyBalanceStatusFilter(
+      applyCompletionFilter(
+        await attachOutstandingAmounts(
+          supabase,
+          (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+        ),
+        filters.completion,
       ),
-      filters.completion,
+      filters.balanceStatus,
     )
     return attachItemDisplayLabels(supabase, orders)
   }
@@ -186,12 +198,15 @@ export async function fetchBusinessDailyLedger(
 
   return attachItemDisplayLabels(
     supabase,
-    applyCompletionFilter(
-      await attachOutstandingAmounts(
-        supabase,
-        [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+    applyBalanceStatusFilter(
+      applyCompletionFilter(
+        await attachOutstandingAmounts(
+          supabase,
+          [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+        ),
+        filters.completion,
       ),
-      filters.completion,
+      filters.balanceStatus,
     ),
   )
 }

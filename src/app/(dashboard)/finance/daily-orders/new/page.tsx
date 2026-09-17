@@ -22,7 +22,7 @@ export default async function NewBusinessOrderPage() {
         ? customersQuery.order('name')
         : customersQuery.eq('created_by', profile.id).order('name'),
       supabase.from('customer_groups').select('*').order('name'),
-      supabase.from('products').select('*').eq('is_active', true).order('name'),
+      supabase.from('products').select('*').order('name'),
       supabase.from('product_groups').select('*').order('sort_order'),
       supabase.from('product_financials').select('*'),
       fetchDailyOrderOptions(supabase),

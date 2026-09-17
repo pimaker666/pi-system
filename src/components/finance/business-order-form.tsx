@@ -1062,7 +1062,7 @@ export function BusinessOrderForm({
                 return (
                   <div
                     key={item.key}
-                    className="grid gap-3 rounded-md border p-3 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)_40px] lg:items-start"
+                    className="grid gap-3 rounded-md border-2 border-slate-300 p-3 shadow-sm dark:border-slate-700 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)_40px] lg:items-start"
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">

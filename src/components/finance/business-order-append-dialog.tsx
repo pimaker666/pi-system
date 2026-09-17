@@ -808,7 +808,7 @@ export function BusinessOrderAppendDialog({
           <div className="space-y-3">
             {rows.map((row) =>
               row.sourceType === 'catalog' ? (
-                <div key={row.key} className="space-y-3 rounded-md border p-3">
+                <div key={row.key} className="space-y-3 rounded-md border-2 border-slate-300 p-3 shadow-sm dark:border-slate-700">
                   <div className="grid grid-cols-2 items-end gap-3 xl:grid-cols-[130px_minmax(0,1fr)_110px_130px_40px]">
                     <div className="space-y-1">
                       <Label>类型</Label>
@@ -937,7 +937,7 @@ export function BusinessOrderAppendDialog({
                   )}
                 </div>
               ) : (
-                <div key={row.key} className="space-y-3 rounded-md border p-3">
+                <div key={row.key} className="space-y-3 rounded-md border-2 border-slate-300 p-3 shadow-sm dark:border-slate-700">
                   <div className="flex items-end gap-3">
                     <div className="w-[130px] shrink-0 space-y-1">
                       <Label>类型</Label>
