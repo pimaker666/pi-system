@@ -71,6 +71,10 @@ function Thumb({
   )
 }
 
+function productDisplayName(product: ProductComboboxOption) {
+  return product.financial_product_name?.trim() || product.name
+}
+
 export function ProductCombobox({
   products,
   productGroups,
@@ -114,9 +118,9 @@ export function ProductCombobox({
         >
           {selected ? (
             <span className="flex min-w-0 items-center gap-2">
-              <Thumb src={selected.image_url} alt={selected.name} />
+              <Thumb src={selected.image_url} alt={productDisplayName(selected)} />
               <span className="truncate">
-                {selected.sku} · {selected.name}
+                {selected.sku} · {productDisplayName(selected)}
               </span>
             </span>
           ) : (
@@ -171,9 +175,13 @@ export function ProductCombobox({
                           value === product.id ? 'opacity-100' : 'opacity-0',
                         )}
                       />
-                      <Thumb src={product.image_url} alt={product.name} className="h-10 w-10" />
+                      <Thumb
+                        src={product.image_url}
+                        alt={productDisplayName(product)}
+                        className="h-10 w-10"
+                      />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium">{product.name}</div>
+                        <div className="truncate font-medium">{productDisplayName(product)}</div>
                         <div className="truncate text-xs text-muted-foreground">
                           {product.sku}
                           {product.financial_number ? ` · 财编 ${product.financial_number}` : ''}
