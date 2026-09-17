@@ -1229,6 +1229,7 @@ export function BusinessOrderAppendDialog({
                 type="button"
                 variant="outline"
                 size="sm"
+                className="border-slate-400 bg-slate-200 text-slate-900 hover:bg-slate-300"
                 onClick={() => setRows((current) => [...current, emptyRow('catalog', currency)])}
                 disabled={pending}
               >
@@ -1238,7 +1239,13 @@ export function BusinessOrderAppendDialog({
               {importableItems.length > 0 && (
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button type="button" variant="outline" size="sm" disabled={pending}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="border-slate-400 bg-slate-200 text-slate-900 hover:bg-slate-300"
+                      disabled={pending}
+                    >
                       <ListPlus className="h-4 w-4" />
                       添加本订单产品
                     </Button>
