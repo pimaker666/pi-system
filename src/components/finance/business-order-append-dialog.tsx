@@ -328,6 +328,7 @@ export function BusinessOrderAppendDialog({
         unit: product.unit,
         group_id: product.group_id,
         financial_number: product.financial_number,
+        financial_product_name: product.financial_product_name,
       })),
     [catalog],
   )

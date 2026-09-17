@@ -7,7 +7,6 @@ import { cn, formatCurrency } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
@@ -36,6 +35,7 @@ export interface ProductComboboxOption {
   unit?: string | null
   group_id?: string | null
   financial_number?: string | null
+  financial_product_name?: string | null
 }
 
 interface ProductComboboxProps {
@@ -82,14 +82,24 @@ export function ProductCombobox({
 }: ProductComboboxProps) {
   const [open, setOpen] = useState(false)
   const [groupFilter, setGroupFilter] = useState(ALL)
+  const [search, setSearch] = useState('')
   const selected = useMemo(
     () => products.find((product) => product.id === value) ?? null,
     [products, value],
   )
-  const filteredProducts = useMemo(
-    () => products.filter((product) => groupFilter === ALL || product.group_id === groupFilter),
-    [groupFilter, products],
-  )
+  const filteredProducts = useMemo(() => {
+    const query = search.trim().toLowerCase()
+    return products.filter((product) => {
+      if (groupFilter !== ALL && product.group_id !== groupFilter) return false
+      if (!query) return true
+      return [
+        product.name,
+        product.sku,
+        product.financial_number,
+        product.financial_product_name,
+      ].some((field) => field?.trim().toLowerCase().includes(query))
+    })
+  }, [groupFilter, products, search])
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -130,47 +140,55 @@ export function ProductCombobox({
             </SelectContent>
           </Select>
         </div>
-        <Command>
-          <CommandInput placeholder="搜索产品名称、SKU 或财务编号…" />
+        <Command shouldFilter={false}>
+          <CommandInput
+            value={search}
+            onValueChange={setSearch}
+            placeholder="搜索产品名称、SKU 或财务编号…"
+          />
           <CommandList className="max-h-[320px]">
-            <CommandEmpty>未找到产品</CommandEmpty>
-            <CommandGroup>
-              {filteredProducts.map((product) => {
-                const hasPrice = product.unit_price != null && product.currency != null
-                const groupName = productGroups.find((g) => g.id === product.group_id)?.name
-                return (
-                  <CommandItem
-                    key={product.id}
-                    value={`${product.name} ${product.sku} ${product.financial_number ?? ''}`}
-                    onSelect={() => {
-                      onChange(product.id)
-                      setOpen(false)
-                    }}
-                    className="gap-2"
-                  >
-                    <Check
-                      className={cn(
-                        'h-4 w-4 shrink-0',
-                        value === product.id ? 'opacity-100' : 'opacity-0',
-                      )}
-                    />
-                    <Thumb src={product.image_url} alt={product.name} className="h-10 w-10" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{product.name}</div>
-                      <div className="truncate text-xs text-muted-foreground">
-                        {product.sku}
-                        {product.financial_number ? ` · 财编 ${product.financial_number}` : ''}
-                        {hasPrice
-                          ? ` · ${formatCurrency(Number(product.unit_price), product.currency as CurrencyCode)}`
-                          : ''}
-                        {product.unit ? ` / ${product.unit}` : ''}
-                        {groupName ? ` · ${groupName}` : ''}
+            {filteredProducts.length === 0 ? (
+              <div className="py-6 text-center text-sm">未找到产品</div>
+            ) : (
+              <CommandGroup>
+                {filteredProducts.map((product) => {
+                  const hasPrice = product.unit_price != null && product.currency != null
+                  const groupName = productGroups.find((g) => g.id === product.group_id)?.name
+                  return (
+                    <CommandItem
+                      key={product.id}
+                      value={product.id}
+                      onSelect={() => {
+                        onChange(product.id)
+                        setSearch('')
+                        setOpen(false)
+                      }}
+                      className="gap-2"
+                    >
+                      <Check
+                        className={cn(
+                          'h-4 w-4 shrink-0',
+                          value === product.id ? 'opacity-100' : 'opacity-0',
+                        )}
+                      />
+                      <Thumb src={product.image_url} alt={product.name} className="h-10 w-10" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate font-medium">{product.name}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {product.sku}
+                          {product.financial_number ? ` · 财编 ${product.financial_number}` : ''}
+                          {hasPrice
+                            ? ` · ${formatCurrency(Number(product.unit_price), product.currency as CurrencyCode)}`
+                            : ''}
+                          {product.unit ? ` / ${product.unit}` : ''}
+                          {groupName ? ` · ${groupName}` : ''}
+                        </div>
                       </div>
-                    </div>
-                  </CommandItem>
-                )
-              })}
-            </CommandGroup>
+                    </CommandItem>
+                  )
+                })}
+              </CommandGroup>
+            )}
           </CommandList>
         </Command>
       </PopoverContent>

@@ -85,6 +85,7 @@ export default async function EditBusinessOrderPage({
   const products = ((productsResult.data ?? []) as Product[]).map((product) => ({
     ...product,
     financial_number: financialByProductId.get(product.id)?.financial_number ?? null,
+    financial_product_name: financialByProductId.get(product.id)?.product_name ?? null,
   }))
 
   const customers = [...((customersResult.data ?? []) as Customer[])]

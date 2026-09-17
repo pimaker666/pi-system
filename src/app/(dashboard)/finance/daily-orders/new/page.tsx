@@ -40,6 +40,7 @@ export default async function NewBusinessOrderPage() {
   const products = ((productsResult.data ?? []) as Product[]).map((product) => ({
     ...product,
     financial_number: financialByProductId.get(product.id)?.financial_number ?? null,
+    financial_product_name: financialByProductId.get(product.id)?.product_name ?? null,
   }))
 
   return (
