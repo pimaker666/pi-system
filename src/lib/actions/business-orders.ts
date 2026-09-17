@@ -166,7 +166,7 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Custom product version text exceeds', '定制产品版本文本超过长度限制'],
     ['Default unit price is invalid', '定制产品默认单价不合法'],
     ['Reason cannot exceed', '原因不能超过 1000 字'],
-    ['Product does not exist or is inactive', '订单中包含不存在或已停用的产品'],
+    ['Product does not exist', '订单中包含不存在的产品'],
     ['Quantity is invalid', '产品数量不合法'],
     ['Unit price is invalid', '成交单价不合法'],
     ['Catalog item requires only product_id', '目录产品明细只能指定产品 ID'],

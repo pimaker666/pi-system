@@ -36,6 +36,7 @@ export interface ProductComboboxOption {
   group_id?: string | null
   financial_number?: string | null
   financial_product_name?: string | null
+  is_active?: boolean | null
 }
 
 interface ProductComboboxProps {
@@ -181,7 +182,14 @@ export function ProductCombobox({
                         className="h-10 w-10"
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium">{productDisplayName(product)}</div>
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate font-medium">{productDisplayName(product)}</span>
+                          {product.is_active === false && (
+                            <span className="shrink-0 rounded border px-1 text-xs text-muted-foreground">
+                              下架
+                            </span>
+                          )}
+                        </div>
                         <div className="truncate text-xs text-muted-foreground">
                           {product.sku}
                           {product.financial_number ? ` · 财编 ${product.financial_number}` : ''}

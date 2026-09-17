@@ -3,13 +3,56 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin, requireFinanceAccess, requireProfile } from '@/lib/auth'
-import { productFinancialSchema, productSchema } from '@/schemas/product'
-import type { ProductFinancialInput } from '@/schemas/product'
+import { productFinancialSchema, orderScopedProductSchema, productSchema } from '@/schemas/product'
+import type { OrderScopedProductInput, ProductFinancialInput } from '@/schemas/product'
+import type { Product } from '@/types'
 
 export interface ActionResult {
   ok: boolean
   error?: string
   fieldErrors?: Record<string, string[]>
+}
+
+export interface CreateOrderProductResult extends ActionResult {
+  product?: Product
+}
+
+/**
+ * Create a catalog product straight from an order screen. It is stored unlisted so it never
+ * shows up when issuing a PI, while business orders can still select it freely.
+ */
+export async function createOrderScopedProduct(
+  input: OrderScopedProductInput,
+): Promise<CreateOrderProductResult> {
+  const profile = await requireProfile()
+  const parsed = orderScopedProductSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('products')
+    .insert({
+      ...parsed.data,
+      description: parsed.data.description || null,
+      specification: parsed.data.specification || null,
+      weight_g: parsed.data.weight_g ?? null,
+      image_url: parsed.data.image_url || null,
+      category: parsed.data.category || null,
+      group_id: parsed.data.group_id || null,
+      is_active: false,
+      created_by: profile.id,
+    })
+    .select('*')
+    .single()
+
+  if (error) {
+    return { ok: false, error: error.code === '23505' ? 'SKU 已存在' : error.message }
+  }
+
+  revalidatePath('/products')
+  return { ok: true, product: data as Product }
 }
 
 /** Save finance-only product fields. Both the action and table RLS enforce access. */

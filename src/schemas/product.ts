@@ -53,6 +53,9 @@ export const productSchema = z.object({
   is_active: z.boolean().default(true),
 })
 
+// 订单页新建的普通产品一律不上架，因此上架开关不在输入范围内。
+export const orderScopedProductSchema = productSchema.omit({ is_active: true })
+
 export const productFinancialSchema = z.object({
   product_id: z.string().uuid('产品 ID 无效'),
   financial_number: z.string().trim().max(100, '财务编号不能超过 100 个字符'),
@@ -69,5 +72,6 @@ export const productGroupSchema = z.object({
 })
 
 export type ProductInput = z.infer<typeof productSchema>
+export type OrderScopedProductInput = z.infer<typeof orderScopedProductSchema>
 export type ProductFinancialInput = z.infer<typeof productFinancialSchema>
 export type ProductGroupInput = z.infer<typeof productGroupSchema>

@@ -70,7 +70,7 @@ export default async function EditBusinessOrderPage({
     profile.role === 'finance'
       ? Promise.resolve({ data: [] as CustomerGroup[], error: null })
       : supabase.from('customer_groups').select('*').order('name'),
-    supabase.from('products').select('*').eq('is_active', true).order('name'),
+    supabase.from('products').select('*').order('name'),
     supabase.from('product_groups').select('*').order('sort_order'),
     supabase.from('product_financials').select('*'),
     fetchDailyOrderOptions(supabase),

@@ -14,6 +14,7 @@ import { AlertTriangle, Eye, LockKeyhole, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CustomerCombobox } from '@/components/customers/customer-combobox'
 import { BusinessCustomProductPicker } from '@/components/finance/business-custom-product-picker'
+import { BusinessOrderProductDialog } from '@/components/finance/business-order-product-dialog'
 import { PaymentAccountCombobox } from '@/components/finance/payment-account-combobox'
 import type { DailyOrderShopOption } from '@/lib/daily-orders'
 import { ProductCombobox } from '@/components/products/product-combobox'
@@ -301,6 +302,7 @@ export function BusinessOrderForm({
   const [shippingFee, setShippingFee] = useState(String(initialOrder?.shipping_fee ?? ''))
   const [paymentAccount, setPaymentAccount] = useState(initialOrder?.payment_account ?? '')
   const [salesNotes, setSalesNotes] = useState(initialOrder?.sales_notes ?? '')
+  const [catalogProducts, setCatalogProducts] = useState<Product[]>(products)
   const [selectedProductId, setSelectedProductId] = useState('')
   const [selectedCustomProduct, setSelectedCustomProduct] =
     useState<BusinessCustomProductListItem | null>(null)
@@ -401,9 +403,7 @@ export function BusinessOrderForm({
     setCustomer(nextCustomer)
   }
 
-  function addProduct() {
-    const product = products.find((item) => item.id === selectedProductId)
-    if (!product) return
+  function addCatalogProduct(product: Product) {
     if (items.some((item) => item.source_type === 'catalog' && item.product_id === product.id)) {
       toast.error('该产品已在订单中')
       return
@@ -432,6 +432,12 @@ export function BusinessOrderForm({
         default_currency: product.currency,
       },
     ])
+  }
+
+  function addProduct() {
+    const product = catalogProducts.find((item) => item.id === selectedProductId)
+    if (!product) return
+    addCatalogProduct(product)
     setSelectedProductId('')
   }
 
@@ -995,7 +1001,7 @@ export function BusinessOrderForm({
               <Label>普通产品库</Label>
               <div className="flex flex-col gap-2 sm:flex-row">
                 <ProductCombobox
-                  products={products}
+                  products={catalogProducts}
                   productGroups={productGroups}
                   value={selectedProductId}
                   onChange={setSelectedProductId}
@@ -1011,7 +1017,19 @@ export function BusinessOrderForm({
                 >
                   <Plus className="h-4 w-4" />添加普通产品
                 </Button>
+                <BusinessOrderProductDialog
+                  defaultCurrency={currency}
+                  productGroups={productGroups}
+                  disabled={productControlsDisabled}
+                  onCreated={(product) => {
+                    setCatalogProducts((current) => [...current, product])
+                    addCatalogProduct(product)
+                  }}
+                />
               </div>
+              <p className="text-xs text-muted-foreground">
+                新建的普通产品会保存到产品库但默认不上架，不影响开具 PI，并立即加入当前订单。
+              </p>
             </div>
 
             <div className="space-y-2">

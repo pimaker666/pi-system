@@ -61,6 +61,7 @@ import type {
   ProductGroup,
 } from '@/types'
 import { BusinessCustomProductPicker } from './business-custom-product-picker'
+import { BusinessOrderProductDialog } from './business-order-product-dialog'
 
 const SHIPPING_OPTIONS: Array<{ value: DailyOrderShippingCategory; label: string }> = [
   { value: 'stock', label: '现货' },
@@ -329,6 +330,7 @@ export function BusinessOrderAppendDialog({
         group_id: product.group_id,
         financial_number: product.financial_number,
         financial_product_name: product.financial_product_name,
+        is_active: product.is_active,
       })),
     [catalog],
   )
@@ -448,6 +450,18 @@ export function BusinessOrderAppendDialog({
       product && product.currency === currency ? String(product.unit_price) : row.unitPrice
     updateRow(row.key, {
       productId,
+      unitPrice: nextUnitPrice,
+      outstandingAmount: derivedOutstanding(row.quantity, nextUnitPrice, row.receivedAmount),
+    })
+  }
+
+  function handleCatalogProductCreated(row: AppendRow, product: Product) {
+    setCatalog((current) =>
+      current ? { ...current, products: [...current.products, product] } : current,
+    )
+    const nextUnitPrice = product.currency === currency ? String(product.unit_price) : row.unitPrice
+    updateRow(row.key, {
+      productId: product.id,
       unitPrice: nextUnitPrice,
       outstandingAmount: derivedOutstanding(row.quantity, nextUnitPrice, row.receivedAmount),
     })
@@ -826,14 +840,24 @@ export function BusinessOrderAppendDialog({
                     </div>
                     <div className="space-y-1">
                       <Label>产品</Label>
-                      <ProductCombobox
-                        products={productOptions}
-                        productGroups={catalog?.productGroups ?? []}
-                        value={row.productId}
-                        onChange={(productId) => handleCatalogSelect(row, productId)}
-                        placeholder="选择产品"
-                        disabled={pending || !catalog}
-                      />
+                      <div className="flex gap-2">
+                        <ProductCombobox
+                          products={productOptions}
+                          productGroups={catalog?.productGroups ?? []}
+                          value={row.productId}
+                          onChange={(productId) => handleCatalogSelect(row, productId)}
+                          placeholder="选择产品"
+                          disabled={pending || !catalog}
+                          className="flex-1"
+                        />
+                        <BusinessOrderProductDialog
+                          defaultCurrency={currency}
+                          productGroups={catalog?.productGroups ?? []}
+                          disabled={pending || !catalog}
+                          triggerLabel="新建"
+                          onCreated={(product) => handleCatalogProductCreated(row, product)}
+                        />
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <Label>数量</Label>
