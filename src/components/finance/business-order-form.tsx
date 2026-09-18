@@ -1009,6 +1009,14 @@ export function BusinessOrderForm({
                   disabled={productControlsDisabled}
                   className="flex-1"
                 />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={addProduct}
+                  disabled={productControlsDisabled || !selectedProductId}
+                >
+                  <Plus className="h-4 w-4" />添加普通产品
+                </Button>
                 <BusinessOrderProductDialog
                   defaultCurrency={currency}
                   productGroups={productGroups}
@@ -1018,14 +1026,6 @@ export function BusinessOrderForm({
                     addCatalogProduct(product)
                   }}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={addProduct}
-                  disabled={productControlsDisabled || !selectedProductId}
-                >
-                  <Plus className="h-4 w-4" />添加普通产品
-                </Button>
               </div>
               <p className="text-xs text-muted-foreground">
                 新建的普通产品会保存到产品库但默认不上架，不影响开具 PI，并立即加入当前订单。
@@ -1041,17 +1041,19 @@ export function BusinessOrderForm({
                   value={selectedCustomProduct}
                   onChange={setSelectedCustomProduct}
                   onCreated={(product) => addCustomProduct(product, true)}
+                  actionBeforeCreate={(
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => selectedCustomProduct && addCustomProduct(selectedCustomProduct)}
+                      disabled={productControlsDisabled || !selectedCustomProduct}
+                    >
+                      <Plus className="h-4 w-4" />添加定制产品
+                    </Button>
+                  )}
                   allowCreate={['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)}
                   disabled={productControlsDisabled}
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => selectedCustomProduct && addCustomProduct(selectedCustomProduct)}
-                  disabled={productControlsDisabled || !selectedCustomProduct}
-                >
-                  <Plus className="h-4 w-4" />添加定制产品
-                </Button>
               </div>
               <p className="text-xs text-muted-foreground">
                 可按产品分组筛选全局未归档版本；新建产品会立即加入当前订单。

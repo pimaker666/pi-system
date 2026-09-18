@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -38,6 +39,7 @@ interface BusinessCustomProductPickerProps {
   value: BusinessCustomProductListItem | null
   onChange: (product: BusinessCustomProductListItem | null) => void
   onCreated: (product: BusinessCustomProductListItem) => void
+  actionBeforeCreate?: ReactNode
   allowCreate?: boolean
   disabled?: boolean
 }
@@ -48,6 +50,7 @@ export function BusinessCustomProductPicker({
   value,
   onChange,
   onCreated,
+  actionBeforeCreate,
   allowCreate = true,
   disabled = false,
 }: BusinessCustomProductPickerProps) {
@@ -159,6 +162,7 @@ export function BusinessCustomProductPicker({
           </Command>
         </PopoverContent>
       </Popover>
+      {actionBeforeCreate}
       {allowCreate && (
         <BusinessCustomProductDialog
           defaultCurrency={orderCurrency}
