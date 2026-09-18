@@ -4,7 +4,11 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireFinanceAccess } from '@/lib/auth'
 import { chinaToday } from '@/lib/daily-order-costs-server'
-import { getBusinessOrderItemNetShipped, type BusinessDailyLedgerOrder } from '@/lib/business-daily-orders'
+import {
+  isMergedBusinessDailyItemPaidAndShipped,
+  mergeBusinessDailyItems,
+  type BusinessDailyLedgerOrder,
+} from '@/lib/business-daily-orders'
 import {
   businessOrderItemCostOverrideSchema,
   businessOrderItemSettlementSchema,
@@ -14,7 +18,7 @@ import {
   financeTransactionSchema,
 } from '@/schemas/finance'
 import type { ActionResult } from './products'
-import type { BusinessOrderItem, CurrencyCode } from '@/types'
+import type { CurrencyCode } from '@/types'
 
 function revalidateFinance() {
   revalidatePath('/finance')
@@ -236,13 +240,29 @@ export async function updateBusinessOrderItemCostOverride(input: {
 
   const { data: order, error: orderError } = await supabase
     .from('business_orders')
-    .select('fulfillment_status, status')
+    .select(
+      'id, status, voided_at, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*))',
+    )
     .eq('id', orderId)
     .maybeSingle()
   if (orderError) return { ok: false, error: orderError.message }
   if (!order) return { ok: false, error: '订单不存在' }
-  if (order.fulfillment_status !== 'fully_shipped' || !['approved', 'completed'].includes(order.status)) {
-    return { ok: false, error: '只有全部发货完成且已审核的订单才能修改成本' }
+  if (order.voided_at || !['approved', 'completed'].includes(order.status)) {
+    return { ok: false, error: '只有已审核且未作废的订单才能修改成本' }
+  }
+
+  const selectedIds = new Set(itemIds)
+  const mergedItem = mergeBusinessDailyItems(order as unknown as BusinessDailyLedgerOrder).find(
+    (item) =>
+      item.item_ids.length === selectedIds.size &&
+      item.item_ids.every((id) => selectedIds.has(id)),
+  )
+  if (!mergedItem) return { ok: false, error: '所选明细不是完整的产品行' }
+  if (!isMergedBusinessDailyItemPaidAndShipped(mergedItem)) {
+    if (mergedItem.product_received_amount < mergedItem.sales_total_amount) {
+      return { ok: false, error: '产品行尚未收齐，不能修改成本' }
+    }
+    return { ok: false, error: '产品行尚未全部发货，不能修改成本' }
   }
 
   const rows = itemIds.map((id) => ({
@@ -293,7 +313,7 @@ export async function settleBusinessOrderItems(input: {
   const { data: orders, error: orderError } = await supabase
     .from('business_orders')
     .select(
-      'id, status, voided_at, business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*))',
+      'id, status, voided_at, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*))',
     )
     .in('id', orderIds)
   if (orderError) return { ok: false, error: orderError.message }
@@ -307,26 +327,27 @@ export async function settleBusinessOrderItems(input: {
     }
   }
 
-  const { data: outstandingData, error: outstandingError } = await supabase.rpc(
-    'get_business_orders_outstanding_amount',
-    { p_order_ids: orderIds },
-  )
-  if (outstandingError) return { ok: false, error: outstandingError.message }
-  const outstanding = new Map(
-    ((outstandingData ?? []) as Array<{ order_id: string; outstanding_amount: number | string }>).map(
-      (row) => [row.order_id, Number(row.outstanding_amount)],
-    ),
-  )
-
-  for (const item of items) {
-    if ((outstanding.get(item.order_id) ?? 0) > 0) {
-      return { ok: false, error: '订单未收齐尾款，不能结算' }
+  const selectedIds = new Set(itemIds)
+  let matchedItemCount = 0
+  for (const orderId of orderIds) {
+    const order = orderMap.get(orderId) as unknown as BusinessDailyLedgerOrder
+    for (const mergedItem of mergeBusinessDailyItems(order)) {
+      const selectedItemCount = mergedItem.item_ids.filter((id) => selectedIds.has(id)).length
+      if (selectedItemCount === 0) continue
+      if (selectedItemCount !== mergedItem.item_ids.length) {
+        return { ok: false, error: '结算必须包含完整的产品行' }
+      }
+      matchedItemCount += selectedItemCount
+      if (!isMergedBusinessDailyItemPaidAndShipped(mergedItem)) {
+        if (mergedItem.product_received_amount < mergedItem.sales_total_amount) {
+          return { ok: false, error: '存在未收齐的产品行，不能结算' }
+        }
+        return { ok: false, error: '存在未全部发货的产品行，不能结算' }
+      }
     }
-    const order = orderMap.get(item.order_id) as unknown as BusinessDailyLedgerOrder
-    const netShipped = getBusinessOrderItemNetShipped(order, item as unknown as BusinessOrderItem)
-    if (netShipped < Number(item.quantity)) {
-      return { ok: false, error: '存在未全部发货的产品行，不能结算' }
-    }
+  }
+  if (matchedItemCount !== itemIds.length) {
+    return { ok: false, error: '部分订单明细未匹配到产品行' }
   }
 
   const { data: overrideRows, error: overrideError } = await supabase

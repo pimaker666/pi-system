@@ -63,7 +63,7 @@ export default async function FinanceCostsPage({
       <div>
         <h1 className="text-2xl font-semibold">订单成本</h1>
         <p className="text-sm text-muted-foreground">
-          已发货业务订单自动匹配产品库财务资料；修改成本仅覆盖当前订单产品行，不反写产品库。
+          已收款并发货的产品行自动匹配产品库财务资料；修改成本仅覆盖当前订单产品行，不反写产品库。
         </p>
       </div>
       <DailyOrderCostManager

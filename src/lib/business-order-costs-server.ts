@@ -7,6 +7,7 @@ import {
   activeBusinessOrderAttachments,
   businessDailyOrderTotals,
   formatMergedBusinessDailyShippingProgress,
+  isMergedBusinessDailyItemPaidAndShipped,
   mergeBusinessDailyItems,
   type BusinessDailyLedgerOrder,
   type MergedBusinessDailyItem,
@@ -196,13 +197,13 @@ function isMergedRowSettled(item: MergedBusinessDailyItem, settledIds: Set<strin
   return item.item_ids.length > 0 && item.item_ids.every((id) => settledIds.has(id))
 }
 
-/** 成本页只展示“已全部发货且未结算”的合并行；部分发货订单也据此逐行纳入。 */
+/** 成本页逐合并行判断实收与发货，不受同单其他产品状态影响。 */
 function eligibleCostRows(
   order: BusinessDailyLedgerOrder,
   settledIds: Set<string>,
 ): MergedBusinessDailyItem[] {
   return mergeBusinessDailyItems(order).filter(
-    (item) => item.net_shipped >= item.quantity && !isMergedRowSettled(item, settledIds),
+    (item) => isMergedBusinessDailyItemPaidAndShipped(item) && !isMergedRowSettled(item, settledIds),
   )
 }
 
@@ -238,9 +239,7 @@ export async function fetchBusinessOrderProductCosts(
     ]),
   )
 
-  // 只保留已收齐尾款、且至少有一条“已全部发货且未结算”产品行的订单。
   const eligibleOrders = allOrders
-    .filter((order) => (outstandingByOrder.get(order.id) ?? 0) <= 0)
     .map((order) => ({ order, rows: eligibleCostRows(order, settledIds) }))
     .filter((entry) => entry.rows.length > 0)
 

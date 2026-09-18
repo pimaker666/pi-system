@@ -156,6 +156,13 @@ export interface MergedBusinessDailyItem {
   net_shipped: number
 }
 
+export function isMergedBusinessDailyItemPaidAndShipped(item: MergedBusinessDailyItem) {
+  return (
+    item.product_received_amount >= item.sales_total_amount &&
+    item.net_shipped >= item.quantity
+  )
+}
+
 function mergedBusinessDailyItemKey(item: BusinessOrderItem): string {
   return `${itemProductKey(item)}|${item.daily_shipping_category ?? ''}|${Number(item.unit_price)}`
 }

@@ -258,9 +258,9 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">已发货业务订单产品成本</h2>
+          <h2 className="text-lg font-semibold">已收款并发货的产品成本</h2>
           <p className="text-sm text-muted-foreground">
-            只有全部发货完成的订单才会计算并允许编辑成本；其余订单成本列显示“—”。
+            产品行实收已达到销售总额且全部发货后即可计算并编辑成本。
             修改成本仅覆盖当前订单行，不反写产品库。
           </p>
         </div>
