@@ -163,7 +163,7 @@ export default async function DailyOrdersPage({
           <option value="balance">尾款</option>
         </select>
         <select name="completion" defaultValue={filters.completion ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="">全部状态</option>
+          <option value="">订单状态</option>
           <option value="completed">已完成</option>
           <option value="incomplete">未完成</option>
         </select>
