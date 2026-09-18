@@ -260,7 +260,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
         <div>
           <h2 className="text-lg font-semibold">已收款并发货的产品成本</h2>
           <p className="text-sm text-muted-foreground">
-            产品行实收已达到销售总额且全部发货后即可计算并编辑成本。
+            产品行实收已达到产品应收且全部发货后即可计算并编辑成本。
             修改成本仅覆盖当前订单行，不反写产品库。
           </p>
         </div>

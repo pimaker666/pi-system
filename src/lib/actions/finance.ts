@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireFinanceAccess } from '@/lib/auth'
 import { chinaToday } from '@/lib/daily-order-costs-server'
 import {
+  isMergedBusinessDailyItemFullyPaid,
   isMergedBusinessDailyItemPaidAndShipped,
   mergeBusinessDailyItems,
   type BusinessDailyLedgerOrder,
@@ -259,7 +260,7 @@ export async function updateBusinessOrderItemCostOverride(input: {
   )
   if (!mergedItem) return { ok: false, error: '所选明细不是完整的产品行' }
   if (!isMergedBusinessDailyItemPaidAndShipped(mergedItem)) {
-    if (mergedItem.product_received_amount < mergedItem.sales_total_amount) {
+    if (!isMergedBusinessDailyItemFullyPaid(mergedItem)) {
       return { ok: false, error: '产品行尚未收齐，不能修改成本' }
     }
     return { ok: false, error: '产品行尚未全部发货，不能修改成本' }
@@ -339,7 +340,7 @@ export async function settleBusinessOrderItems(input: {
       }
       matchedItemCount += selectedItemCount
       if (!isMergedBusinessDailyItemPaidAndShipped(mergedItem)) {
-        if (mergedItem.product_received_amount < mergedItem.sales_total_amount) {
+        if (!isMergedBusinessDailyItemFullyPaid(mergedItem)) {
           return { ok: false, error: '存在未收齐的产品行，不能结算' }
         }
         return { ok: false, error: '存在未全部发货的产品行，不能结算' }

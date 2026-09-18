@@ -156,11 +156,13 @@ export interface MergedBusinessDailyItem {
   net_shipped: number
 }
 
+export function isMergedBusinessDailyItemFullyPaid(item: MergedBusinessDailyItem) {
+  const productReceivable = roundToScale(item.quantity * item.unit_price, 2)
+  return item.product_received_amount >= productReceivable
+}
+
 export function isMergedBusinessDailyItemPaidAndShipped(item: MergedBusinessDailyItem) {
-  return (
-    item.product_received_amount >= item.sales_total_amount &&
-    item.net_shipped >= item.quantity
-  )
+  return isMergedBusinessDailyItemFullyPaid(item) && item.net_shipped >= item.quantity
 }
 
 function mergedBusinessDailyItemKey(item: BusinessOrderItem): string {
