@@ -10,7 +10,7 @@ const financeItems = [
   { href: '/finance/daily-orders', label: '每日订单', financeOnly: false },
   { href: '/finance/transactions', label: '收支流水', financeOnly: true },
   { href: '/finance/costs', label: '订单成本', financeOnly: true },
-  { href: '/finance/custom-products', label: '定制产品库', financeOnly: false },
+  { href: '/finance/settled-orders', label: '已结算订单', financeOnly: true },
   { href: '/finance/performance', label: '业务业绩', financeOnly: false },
 ] as const
 

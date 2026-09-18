@@ -88,6 +88,20 @@ export const businessOrderItemCostOverrideSchema = z.object({
   ),
 })
 
+export const businessOrderItemSettlementSchema = z.object({
+  business_order_item_ids: z
+    .array(z.string().uuid('订单明细行 ID 无效'))
+    .min(1, '至少选择一条订单明细行'),
+  period: z.string().regex(/^\d{4}-\d{2}$/, '请选择结算年月'),
+})
+
+export const businessOrderItemUnsettleSchema = z.object({
+  business_order_item_ids: z
+    .array(z.string().uuid('订单明细行 ID 无效'))
+    .min(1, '至少选择一条订单明细行'),
+})
+
 export type FinanceTransactionInput = z.infer<typeof financeTransactionSchema>
 export type FinanceCostInput = z.infer<typeof financeCostSchema>
 export type BusinessOrderItemCostOverrideInput = z.infer<typeof businessOrderItemCostOverrideSchema>
+export type BusinessOrderItemSettlementInput = z.infer<typeof businessOrderItemSettlementSchema>

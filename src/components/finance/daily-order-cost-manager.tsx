@@ -2,11 +2,18 @@
 
 import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
-import { Download, Eye, Save } from 'lucide-react'
+import { Download, Eye, Save, CheckCircle2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import {
   Table,
@@ -17,7 +24,10 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { getBusinessOrderAttachmentUrl } from '@/lib/actions/business-orders'
-import { updateBusinessOrderItemCostOverride } from '@/lib/actions/finance'
+import {
+  settleBusinessOrderItems,
+  updateBusinessOrderItemCostOverride,
+} from '@/lib/actions/finance'
 import {
   BUSINESS_ORDER_COST_COLUMNS,
   COST_PAGE_SIZE,
@@ -171,7 +181,12 @@ export interface DailyOrderCostManagerProps {
 }
 
 export function DailyOrderCostManager({ rows, totalCount, filters, options }: DailyOrderCostManagerProps) {
+  const router = useRouter()
   const [pending, startTransition] = useTransition()
+  const [settlePending, startSettleTransition] = useTransition()
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
   const query = businessOrderCostFilterQuery(filters)
   const currentPage = filters.page
   const totalPages = Math.max(1, Math.ceil(totalCount / COST_PAGE_SIZE))
@@ -185,6 +200,51 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
     }
     return [...map.values()]
   }, [rows])
+
+  const orderIds = useMemo(() => groups.map((group) => group[0].order_id), [groups])
+  const selectedCount = useMemo(
+    () => orderIds.filter((id) => selectedOrders.has(id)).length,
+    [orderIds, selectedOrders],
+  )
+  const allSelected = orderIds.length > 0 && selectedCount === orderIds.length
+
+  function toggleOrder(orderId: string, checked: boolean) {
+    setSelectedOrders((previous) => {
+      const next = new Set(previous)
+      if (checked) next.add(orderId)
+      else next.delete(orderId)
+      return next
+    })
+  }
+
+  function toggleSelectAll(checked: boolean) {
+    setSelectedOrders(checked ? new Set(orderIds) : new Set())
+  }
+
+  function confirmSettle() {
+    const itemIds = rows
+      .filter((row) => selectedOrders.has(row.order_id))
+      .flatMap((row) => row.item_ids)
+    if (itemIds.length === 0) {
+      toast.error('请先勾选订单')
+      return
+    }
+    startSettleTransition(async () => {
+      const result = await settleBusinessOrderItems({
+        business_order_item_ids: itemIds,
+        period,
+      })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '结算失败')
+        return
+      }
+      toast.success(`已结算 ${selectedCount} 个订单至 ${period}`)
+      setSelectedOrders(new Set())
+      setDialogOpen(false)
+      router.refresh()
+    })
+  }
 
   function viewAttachment(attachmentId: string) {
     startTransition(async () => {
@@ -210,6 +270,21 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
             导出成本表
           </a>
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+        <span className="text-sm text-muted-foreground">已选 {selectedCount} 个订单</span>
+        <Button
+          type="button"
+          disabled={selectedCount === 0 || settlePending}
+          onClick={() => setDialogOpen(true)}
+        >
+          <CheckCircle2 className="mr-1.5 h-4 w-4" />
+          已结算
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          结算后所选订单的产品行将移入“已结算订单”，不再显示在此页。
+        </span>
       </div>
 
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
@@ -256,6 +331,16 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
         <Table className="min-w-[3000px]">
           <TableHeader>
             <TableRow>
+              <TableHead className="w-12">
+                {orderIds.length > 0 && (
+                  <input
+                    type="checkbox"
+                    aria-label="全选"
+                    checked={allSelected}
+                    onChange={(event) => toggleSelectAll(event.target.checked)}
+                  />
+                )}
+              </TableHead>
               {BUSINESS_ORDER_COST_COLUMNS.map((label) => (
                 <TableHead key={label}>{label}</TableHead>
               ))}
@@ -274,6 +359,16 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                     key={row.item_id}
                     className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
                   >
+                    {isFirstRow && (
+                      <TableCell rowSpan={rowSpan} className="align-top">
+                        <input
+                          type="checkbox"
+                          aria-label={`选择订单 ${row.order_number}`}
+                          checked={selectedOrders.has(row.order_id)}
+                          onChange={(event) => toggleOrder(row.order_id, event.target.checked)}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div className="font-medium">
                         {groupIndex + 1}
@@ -399,7 +494,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
             {rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={BUSINESS_ORDER_COST_COLUMNS.length}
+                  colSpan={BUSINESS_ORDER_COST_COLUMNS.length + 1}
                   className="py-12 text-center text-muted-foreground"
                 >
                   没有符合筛选条件的订单
@@ -459,6 +554,40 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
           </div>
         </div>
       )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>结算至</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              将所选 {selectedCount} 个订单的产品行归档到指定年月，归档后不再显示在此页。
+            </p>
+            <label className="block text-sm font-medium" htmlFor="settle-period">
+              结算年月
+            </label>
+            <Input
+              id="settle-period"
+              type="month"
+              value={period}
+              onChange={(event) => setPeriod(event.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              disabled={settlePending || !period}
+              onClick={confirmSettle}
+            >
+              确认结算
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

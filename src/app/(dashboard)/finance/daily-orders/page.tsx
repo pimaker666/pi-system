@@ -13,6 +13,7 @@ import {
 import {
   BUSINESS_DAILY_LEDGER_LIMIT,
   fetchBusinessDailyLedger,
+  fetchSettledItemIdsForOrders,
 } from '@/lib/business-daily-orders-server'
 import { dailyOrderFilterQuery, formatDailyMoney, parseDailyOrderFilters } from '@/lib/daily-orders'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
@@ -90,6 +91,7 @@ export default async function DailyOrdersPage({
     fetchBusinessDailyLedger(supabase, filters),
     fetchDailyOrderOptions(supabase),
   ])
+  const settledItemIds = await fetchSettledItemIdsForOrders(supabase, orders)
   const query = dailyOrderFilterQuery(filters)
   const canManageShops = profile.role === 'finance' || profile.role === 'admin'
   const canCreate = ['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)
@@ -198,7 +200,7 @@ export default async function DailyOrdersPage({
         })}
       </div>
 
-      <BusinessDailyOrderTable orders={orders} actor={profile} filterQuery={query} />
+      <BusinessDailyOrderTable orders={orders} actor={profile} filterQuery={query} settledItemIds={settledItemIds} />
     </div>
   )
 }

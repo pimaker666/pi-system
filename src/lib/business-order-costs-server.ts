@@ -61,7 +61,7 @@ function buildBaseQuery(
     .from('business_orders')
     .select(`*, ${itemsEmbed}, ${LEDGER_TAIL}`)
     .is('voided_at', null)
-    .eq('fulfillment_status', 'fully_shipped')
+    .in('fulfillment_status', ['partially_shipped', 'fully_shipped'])
     .eq('business_order_attachments.status', 'active')
     .order('order_date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -175,6 +175,37 @@ async function fetchAllCostOverrides(supabase: SupabaseClient) {
   }
 }
 
+async function fetchAllSettledItemIds(supabase: SupabaseClient) {
+  const ids = new Set<string>()
+  const PAGE_SIZE = 1000
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('finance_business_order_item_settlements')
+      .select('business_order_item_id')
+      .order('business_order_item_id')
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) throw new Error(`订单结算记录读取失败：${error.message}`)
+    const page = (data ?? []) as Array<{ business_order_item_id: string }>
+    for (const row of page) ids.add(row.business_order_item_id)
+    if (page.length < PAGE_SIZE) return ids
+  }
+}
+
+/** 合并行是否已全部结算（其所有明细行都进入了结算表）。 */
+function isMergedRowSettled(item: MergedBusinessDailyItem, settledIds: Set<string>) {
+  return item.item_ids.length > 0 && item.item_ids.every((id) => settledIds.has(id))
+}
+
+/** 成本页只展示“已全部发货且未结算”的合并行；部分发货订单也据此逐行纳入。 */
+function eligibleCostRows(
+  order: BusinessDailyLedgerOrder,
+  settledIds: Set<string>,
+): MergedBusinessDailyItem[] {
+  return mergeBusinessDailyItems(order).filter(
+    (item) => item.net_shipped >= item.quantity && !isMergedRowSettled(item, settledIds),
+  )
+}
+
 function getCustomerName(customerSnapshot: unknown): string | null {
   if (!customerSnapshot || typeof customerSnapshot !== 'object') return null
   const snapshot = customerSnapshot as { name?: string | null; company?: string | null }
@@ -188,10 +219,11 @@ export async function fetchBusinessOrderProductCosts(
   pageSize = COST_PAGE_SIZE,
 ): Promise<{ rows: BusinessOrderProductCost[]; totalCount: number }> {
   const effectiveLimit = Math.min(pageSize, BUSINESS_DAILY_LEDGER_LIMIT)
-  const [allOrders, financialRows, overrideRows] = await Promise.all([
+  const [allOrders, financialRows, overrideRows, settledIds] = await Promise.all([
     fetchMatchingOrders(supabase, filters, 0, 1000),
     fetchAllProductFinancials(supabase),
     fetchAllCostOverrides(supabase),
+    fetchAllSettledItemIds(supabase),
   ])
 
   const { data: outstandingData, error: outstandingError } = await supabase.rpc(
@@ -206,12 +238,15 @@ export async function fetchBusinessOrderProductCosts(
     ]),
   )
 
-  const paidOrders = allOrders.filter(
-    (order) => (outstandingByOrder.get(order.id) ?? 0) <= 0,
-  )
-  const totalCount = paidOrders.length
+  // 只保留已收齐尾款、且至少有一条“已全部发货且未结算”产品行的订单。
+  const eligibleOrders = allOrders
+    .filter((order) => (outstandingByOrder.get(order.id) ?? 0) <= 0)
+    .map((order) => ({ order, rows: eligibleCostRows(order, settledIds) }))
+    .filter((entry) => entry.rows.length > 0)
+
+  const totalCount = eligibleOrders.length
   const offset = (page - 1) * effectiveLimit
-  const orders = paidOrders.slice(offset, offset + effectiveLimit)
+  const pagedOrders = eligibleOrders.slice(offset, offset + effectiveLimit)
 
   const financials = new Map(financialRows.map((row) => [row.product_id, row]))
   const overrides = new Map(overrideRows.map((row) => [row.business_order_item_id, Number(row.cost)]))
@@ -236,26 +271,24 @@ export async function fetchBusinessOrderProductCosts(
 
   const result: BusinessOrderProductCost[] = []
 
-  for (const order of orders) {
-    const mergedItems = mergeBusinessDailyItems(order)
+  for (const { order, rows: mergedItems } of pagedOrders) {
     const attachments = activeBusinessOrderAttachments(order)
     const salespersonName = displayProfileName(
       order.salesperson,
       order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
     )
     const outstandingAmount = outstandingByOrder.get(order.id) ?? 0
-    const fullyShipped = order.fulfillment_status === 'fully_shipped'
     const orderTotals = businessDailyOrderTotals(order)
 
-    for (const item of mergedItems.length > 0 ? mergedItems : [null]) {
+    for (const item of mergedItems) {
       const { cost: effectiveCost, overridden, catalogCost } = resolveMergedCost(item)
-      const quantity = item ? Number(item.quantity) : 0
-      const representativeItemId = item?.item_ids[0] ?? order.id
+      const quantity = Number(item.quantity)
+      const representativeItemId = item.item_ids[0] ?? order.id
 
       result.push({
         order_id: order.id,
         item_id: representativeItemId,
-        item_ids: item?.item_ids ?? [],
+        item_ids: item.item_ids,
         order_date: order.order_date,
         shipping_date: order.daily_shipping_date,
         shop_name: order.shop_name_snapshot,
@@ -266,15 +299,15 @@ export async function fetchBusinessOrderProductCosts(
         customer_name: getCustomerName(order.customer_snapshot),
         payment_account: order.payment_account,
         shipping_number: order.daily_shipping_number,
-        shipping_category: item?.daily_shipping_category ?? null,
-        product_name: item?.name_snapshot ?? '—',
-        product_sku: item?.display_sku ?? item?.sku_snapshot ?? '',
+        shipping_category: item.daily_shipping_category ?? null,
+        product_name: item.name_snapshot ?? '—',
+        product_sku: item.display_sku ?? item.sku_snapshot ?? '',
         quantity,
-        shipping_progress: item ? formatMergedBusinessDailyShippingProgress(item) : '—',
-        unit_price: item ? Number(item.unit_price) : 0,
-        product_received_amount: item ? Number(item.product_received_amount) : 0,
-        logistics_fee_amount: item?.logistics_fee_amount ?? null,
-        sales_total_amount: item ? Number(item.sales_total_amount) : 0,
+        shipping_progress: formatMergedBusinessDailyShippingProgress(item),
+        unit_price: Number(item.unit_price),
+        product_received_amount: Number(item.product_received_amount),
+        logistics_fee_amount: item.logistics_fee_amount ?? null,
+        sales_total_amount: Number(item.sales_total_amount),
         currency: order.currency,
         order_total_amount: Number(order.total_amount),
         order_sales_total_amount: orderTotals.salesTotal,
@@ -284,13 +317,15 @@ export async function fetchBusinessOrderProductCosts(
         payment_category: order.daily_payment_category,
         sales_notes: order.sales_notes,
         attachments,
-        financial_number: financials.get(item?.product_id ?? '')?.financial_number ?? null,
-        financial_product_name: financials.get(item?.product_id ?? '')?.product_name ?? null,
+        financial_number: financials.get(item.product_id ?? '')?.financial_number ?? null,
+        financial_product_name: financials.get(item.product_id ?? '')?.product_name ?? null,
         catalog_cost: catalogCost,
         cost: effectiveCost,
         cost_overridden: overridden,
         total_cost: effectiveCost === null ? null : Math.round(effectiveCost * quantity * 10000) / 10000,
-        fully_shipped: fullyShipped,
+        fully_shipped: true,
+        settled: false,
+        settled_period: null,
       })
     }
   }

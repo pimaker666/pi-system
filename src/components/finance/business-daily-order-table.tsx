@@ -45,6 +45,7 @@ export interface BusinessDailyOrderTableProps {
   orders: BusinessDailyLedgerOrder[]
   actor: Pick<Profile, 'id' | 'role'>
   filterQuery?: string
+  settledItemIds?: string[]
 }
 
 function canBulkShipOrder(order: BusinessOrder, actor: Pick<Profile, 'id' | 'role'>) {
@@ -63,12 +64,16 @@ function toDateTimeLocalValue(date: Date) {
  * 恢复后的每日订单台账：表头字段跨明细行合并，产品字段逐行展示，
  * 列顺序与每日订单导出完全一致，数据来自 business_orders 单一事实源。
  */
-export function BusinessDailyOrderTable({ orders, actor, filterQuery = '' }: BusinessDailyOrderTableProps) {
+export function BusinessDailyOrderTable({ orders, actor, filterQuery = '', settledItemIds = [] }: BusinessDailyOrderTableProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [bulkPending, startBulkTransition] = useTransition()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [shippedAt, setShippedAt] = useState(() => toDateTimeLocalValue(new Date()))
+
+  const settledSet = useMemo(() => new Set(settledItemIds), [settledItemIds])
+  const isMergedItemSettled = (item: MergedBusinessDailyItem) =>
+    item.item_ids.length > 0 && item.item_ids.every((id) => settledSet.has(id))
 
   const groups = useMemo(
     () =>
@@ -402,6 +407,18 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '' }: Bus
                         </TableCell>
                       </>
                     )}
+
+                    <TableCell className="align-top">
+                      {item ? (
+                        isMergedItemSettled(item) ? (
+                          <Badge variant="success">是</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">否</span>
+                        )
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
                   </TableRow>
                 )
               })

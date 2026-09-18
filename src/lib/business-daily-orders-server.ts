@@ -211,3 +211,32 @@ export async function fetchBusinessDailyLedger(
     ),
   )
 }
+
+/**
+ * 读取台账中这批订单已结算的明细行 id 集合（供“结算状态”列判断）。
+ * 结算表 select 对所有已认证用户开放，因此 sales 也能看到结算状态。
+ */
+export async function fetchSettledItemIdsForOrders(
+  supabase: SupabaseClient,
+  orders: BusinessDailyLedgerOrder[],
+): Promise<string[]> {
+  const itemIds = orders.flatMap((order) =>
+    (order.business_order_items ?? []).map((item) => item.id),
+  )
+  if (itemIds.length === 0) return []
+
+  const settled: string[] = []
+  const CHUNK = 500
+  for (let i = 0; i < itemIds.length; i += CHUNK) {
+    const chunk = itemIds.slice(i, i + CHUNK)
+    const { data, error } = await supabase
+      .from('finance_business_order_item_settlements')
+      .select('business_order_item_id')
+      .in('business_order_item_id', chunk)
+    if (error) throw new Error(`结算状态读取失败：${error.message}`)
+    for (const row of (data ?? []) as Array<{ business_order_item_id: string }>) {
+      settled.push(row.business_order_item_id)
+    }
+  }
+  return settled
+}

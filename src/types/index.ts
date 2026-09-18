@@ -40,6 +40,29 @@ export type BusinessAuditAction =
   | 'complete'
   | 'correct'
 
+export interface SettledOrderRow {
+  business_order_item_id: string
+  order_id: string
+  order_number: string
+  external_order_number: string | null
+  order_date: string
+  shop_name: string | null
+  shop_group_name: string | null
+  salesperson_name: string
+  customer_name: string | null
+  currency: CurrencyCode
+  product_name: string
+  product_sku: string
+  shipping_category: DailyOrderShippingCategory | null
+  quantity: number
+  unit_cost: number | null
+  total_cost: number | null
+  /** 结算归属年月（YYYY-MM）。 */
+  period: string
+  settled_by_name: string | null
+  settled_at: string
+}
+
 export interface FinanceOrder {
   id: string
   pi_id: string | null
@@ -161,6 +184,10 @@ export interface BusinessOrderProductCost {
   cost_overridden: boolean
   total_cost: number | null
   fully_shipped: boolean
+  /** 该合并行的所有明细行是否都已结算（进入“已结算订单”）。 */
+  settled: boolean
+  /** 结算归属年月（YYYY-MM）；未结算为 null。 */
+  settled_period: string | null
 }
 
 export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'

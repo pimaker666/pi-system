@@ -4,9 +4,17 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireFinanceAccess } from '@/lib/auth'
 import { chinaToday } from '@/lib/daily-order-costs-server'
-import { businessOrderItemCostOverrideSchema, dailyOrderCostOverrideSchema, financeCostSchema, financeTransactionSchema } from '@/schemas/finance'
+import { getBusinessOrderItemNetShipped, type BusinessDailyLedgerOrder } from '@/lib/business-daily-orders'
+import {
+  businessOrderItemCostOverrideSchema,
+  businessOrderItemSettlementSchema,
+  businessOrderItemUnsettleSchema,
+  dailyOrderCostOverrideSchema,
+  financeCostSchema,
+  financeTransactionSchema,
+} from '@/schemas/finance'
 import type { ActionResult } from './products'
-import type { CurrencyCode } from '@/types'
+import type { BusinessOrderItem, CurrencyCode } from '@/types'
 
 function revalidateFinance() {
   revalidatePath('/finance')
@@ -248,6 +256,140 @@ export async function updateBusinessOrderItemCostOverride(input: {
   if (error) return { ok: false, error: error.message }
 
   revalidatePath('/finance/costs')
+  return { ok: true }
+}
+
+function revalidateSettlement() {
+  revalidatePath('/finance/costs')
+  revalidatePath('/finance/settled-orders')
+  revalidatePath('/finance/daily-orders')
+}
+
+export async function settleBusinessOrderItems(input: {
+  business_order_item_ids: string[]
+  period: string
+}): Promise<ActionResult> {
+  const profile = await requireFinanceAccess()
+  const parsed = businessOrderItemSettlementSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const itemIds = parsed.data.business_order_item_ids
+  const period = `${parsed.data.period}-01`
+
+  const { data: items, error: itemError } = await supabase
+    .from('business_order_items')
+    .select('id, order_id, quantity, product_id, daily_shipping_category')
+    .in('id', itemIds)
+  if (itemError) return { ok: false, error: itemError.message }
+  if (!items || items.length !== itemIds.length) {
+    return { ok: false, error: '部分订单明细行不存在' }
+  }
+
+  const orderIds = [...new Set(items.map((item) => item.order_id))]
+
+  const { data: orders, error: orderError } = await supabase
+    .from('business_orders')
+    .select(
+      'id, status, voided_at, business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*))',
+    )
+    .in('id', orderIds)
+  if (orderError) return { ok: false, error: orderError.message }
+  const orderMap = new Map((orders ?? []).map((order) => [order.id, order]))
+
+  for (const orderId of orderIds) {
+    const order = orderMap.get(orderId)
+    if (!order) return { ok: false, error: '订单不存在' }
+    if (order.voided_at || !['approved', 'completed'].includes(order.status)) {
+      return { ok: false, error: '只有已审核且未作废的订单才能结算' }
+    }
+  }
+
+  const { data: outstandingData, error: outstandingError } = await supabase.rpc(
+    'get_business_orders_outstanding_amount',
+    { p_order_ids: orderIds },
+  )
+  if (outstandingError) return { ok: false, error: outstandingError.message }
+  const outstanding = new Map(
+    ((outstandingData ?? []) as Array<{ order_id: string; outstanding_amount: number | string }>).map(
+      (row) => [row.order_id, Number(row.outstanding_amount)],
+    ),
+  )
+
+  for (const item of items) {
+    if ((outstanding.get(item.order_id) ?? 0) > 0) {
+      return { ok: false, error: '订单未收齐尾款，不能结算' }
+    }
+    const order = orderMap.get(item.order_id) as unknown as BusinessDailyLedgerOrder
+    const netShipped = getBusinessOrderItemNetShipped(order, item as unknown as BusinessOrderItem)
+    if (netShipped < Number(item.quantity)) {
+      return { ok: false, error: '存在未全部发货的产品行，不能结算' }
+    }
+  }
+
+  const { data: overrideRows, error: overrideError } = await supabase
+    .from('finance_business_order_item_cost_overrides')
+    .select('business_order_item_id, cost')
+    .in('business_order_item_id', itemIds)
+  if (overrideError) return { ok: false, error: overrideError.message }
+  const overrides = new Map(
+    (overrideRows ?? []).map((row) => [row.business_order_item_id, Number(row.cost)]),
+  )
+
+  const productIds = [...new Set(items.map((item) => item.product_id).filter(Boolean))] as string[]
+  const catalog = new Map<string, number | null>()
+  if (productIds.length > 0) {
+    const { data: financialRows, error: financialError } = await supabase
+      .from('product_financials')
+      .select('product_id, cost')
+      .in('product_id', productIds)
+    if (financialError) return { ok: false, error: financialError.message }
+    for (const row of financialRows ?? []) {
+      catalog.set(row.product_id, row.cost == null ? null : Number(row.cost))
+    }
+  }
+
+  const rows = items.map((item) => {
+    const isCustom = item.daily_shipping_category === 'custom'
+    const catalogCost = !isCustom && item.product_id ? catalog.get(item.product_id) ?? null : null
+    const overrideCost = overrides.get(item.id)
+    return {
+      business_order_item_id: item.id,
+      period,
+      unit_cost: overrideCost ?? catalogCost,
+      quantity: Number(item.quantity),
+      settled_by: profile.id,
+    }
+  })
+
+  const { error } = await supabase
+    .from('finance_business_order_item_settlements')
+    .upsert(rows, { onConflict: 'business_order_item_id' })
+  if (error) return { ok: false, error: error.message }
+
+  revalidateSettlement()
+  return { ok: true }
+}
+
+export async function unsettleBusinessOrderItems(input: {
+  business_order_item_ids: string[]
+}): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const parsed = businessOrderItemUnsettleSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('finance_business_order_item_settlements')
+    .delete()
+    .in('business_order_item_id', parsed.data.business_order_item_ids)
+  if (error) return { ok: false, error: error.message }
+
+  revalidateSettlement()
   return { ok: true }
 }
 
