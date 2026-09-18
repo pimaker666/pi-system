@@ -90,23 +90,28 @@ function CostEditor({ row }: { row: BusinessOrderProductCost }) {
 
   return (
     <div className="flex min-w-44 items-center gap-2">
-      <Input
-        value={draft}
-        type="number"
-        min={0}
-        step="0.0001"
-        disabled={pending}
-        placeholder={row.shipping_category === 'custom' ? '定制订单留空' : '未匹配成本'}
-        title="留空保存可恢复产品库自动匹配成本"
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !pending && !unchanged) {
-            event.preventDefault()
-            save()
-          }
-        }}
-        className="h-8"
-      />
+      <div className="relative flex-1">
+        <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+          ¥
+        </span>
+        <Input
+          value={draft}
+          type="number"
+          min={0}
+          step="0.0001"
+          disabled={pending}
+          placeholder={row.shipping_category === 'custom' ? '定制订单留空' : '未匹配成本'}
+          title="成本以人民币计；留空保存可恢复产品库自动匹配成本"
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !pending && !unchanged) {
+              event.preventDefault()
+              save()
+            }
+          }}
+          className="h-8 pl-5"
+        />
+      </div>
       <Button
         type="button"
         variant="outline"
@@ -202,13 +207,29 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   }, [rows])
 
   const orderIds = useMemo(() => groups.map((group) => group[0].order_id), [groups])
+  const ordersMissingCost = useMemo(() => {
+    const set = new Set<string>()
+    for (const row of rows) {
+      if (row.cost == null) set.add(row.order_id)
+    }
+    return set
+  }, [rows])
+  const settleableOrderIds = useMemo(
+    () => orderIds.filter((id) => !ordersMissingCost.has(id)),
+    [orderIds, ordersMissingCost],
+  )
   const selectedCount = useMemo(
     () => orderIds.filter((id) => selectedOrders.has(id)).length,
     [orderIds, selectedOrders],
   )
-  const allSelected = orderIds.length > 0 && selectedCount === orderIds.length
+  const allSelected =
+    settleableOrderIds.length > 0 && settleableOrderIds.every((id) => selectedOrders.has(id))
 
   function toggleOrder(orderId: string, checked: boolean) {
+    if (checked && ordersMissingCost.has(orderId)) {
+      toast.error('该订单存在未填写成本的产品行，不能结算')
+      return
+    }
     setSelectedOrders((previous) => {
       const next = new Set(previous)
       if (checked) next.add(orderId)
@@ -218,13 +239,16 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   }
 
   function toggleSelectAll(checked: boolean) {
-    setSelectedOrders(checked ? new Set(orderIds) : new Set())
+    setSelectedOrders(checked ? new Set(settleableOrderIds) : new Set())
   }
 
   function confirmSettle() {
-    const itemIds = rows
-      .filter((row) => selectedOrders.has(row.order_id))
-      .flatMap((row) => row.item_ids)
+    const selectedRows = rows.filter((row) => selectedOrders.has(row.order_id))
+    if (selectedRows.some((row) => row.cost == null)) {
+      toast.error('存在未填写成本的产品行，不能结算')
+      return
+    }
+    const itemIds = selectedRows.flatMap((row) => row.item_ids)
     if (itemIds.length === 0) {
       toast.error('请先勾选订单')
       return
@@ -365,6 +389,12 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                           type="checkbox"
                           aria-label={`选择订单 ${row.order_number}`}
                           checked={selectedOrders.has(row.order_id)}
+                          disabled={ordersMissingCost.has(row.order_id)}
+                          title={
+                            ordersMissingCost.has(row.order_id)
+                              ? '存在未填写成本的产品行，不能结算'
+                              : undefined
+                          }
                           onChange={(event) => toggleOrder(row.order_id, event.target.checked)}
                         />
                       </TableCell>

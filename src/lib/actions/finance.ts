@@ -386,6 +386,10 @@ export async function settleBusinessOrderItems(input: {
     }
   })
 
+  if (rows.some((row) => row.unit_cost == null)) {
+    return { ok: false, error: '存在未填写成本的产品行，不能结算' }
+  }
+
   const { error } = await supabase
     .from('finance_business_order_item_settlements')
     .upsert(rows, { onConflict: 'business_order_item_id' })
