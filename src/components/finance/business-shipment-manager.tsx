@@ -116,11 +116,7 @@ export function BusinessShipmentManager({
   })
 
   const hasRemaining = itemRows.some((row) => row.remaining > 0)
-  const hasRolePermission =
-    profile.role === 'admin' ||
-    profile.role === 'finance' ||
-    ((profile.role === 'sales' || profile.role === 'supervisor') &&
-      order.salesperson_id === profile.id)
+  const hasRolePermission = profile.role === 'admin' || profile.role === 'finance'
   const canManage =
     hasRolePermission &&
     !order.closed_at &&

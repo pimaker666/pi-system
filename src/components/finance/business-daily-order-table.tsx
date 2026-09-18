@@ -2,12 +2,22 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Download, Eye, FileText, Pencil, Truck } from 'lucide-react'
+import { Download, Eye, FileText, Pencil, Truck, UserRoundPlus } from 'lucide-react'
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { CustomerCombobox } from '@/components/customers/customer-combobox'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Table,
   TableBody,
@@ -16,7 +26,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { bulkShipBusinessOrders, getBusinessOrderAttachmentUrl } from '@/lib/actions/business-orders'
+import {
+  bulkShipBusinessOrders,
+  getBusinessOrderAttachmentUrl,
+  setBusinessOrderCustomer,
+} from '@/lib/actions/business-orders'
 import {
   BUSINESS_ORDER_STATUS_LABELS,
   BUSINESS_ORDER_STATUS_VARIANTS,
@@ -37,22 +51,29 @@ import {
 } from '@/lib/business-order-financials'
 import { DAILY_ORDER_COLUMNS, formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { displayProfileName } from '@/lib/utils'
-import type { BusinessOrder, Profile } from '@/types'
+import type { BusinessOrder, Customer, CustomerGroup, Profile } from '@/types'
 
 const mergedCellClassName = 'bg-muted/20 align-top'
 
 export interface BusinessDailyOrderTableProps {
   orders: BusinessDailyLedgerOrder[]
   actor: Pick<Profile, 'id' | 'role'>
+  customers: Customer[]
+  customerGroups: CustomerGroup[]
   filterQuery?: string
   settledItemIds?: string[]
 }
 
 function canBulkShipOrder(order: BusinessOrder, actor: Pick<Profile, 'id' | 'role'>) {
-  if (order.closed_at) return false
-  if (order.status !== 'approved') return false
-  if (actor.role === 'sales' && order.salesperson_id !== actor.id) return false
-  return true
+  if (!['admin', 'finance'].includes(actor.role)) return false
+  if (order.closed_at || order.voided_at) return false
+  return order.status === 'approved'
+}
+
+function canSetOrderCustomer(order: BusinessOrder, actor: Pick<Profile, 'id' | 'role'>) {
+  if (order.voided_at) return false
+  if (actor.role === 'admin' || actor.role === 'finance') return true
+  return (actor.role === 'sales' || actor.role === 'supervisor') && order.salesperson_id === actor.id
 }
 
 function toDateTimeLocalValue(date: Date) {
@@ -64,12 +85,22 @@ function toDateTimeLocalValue(date: Date) {
  * 恢复后的每日订单台账：表头字段跨明细行合并，产品字段逐行展示，
  * 列顺序与每日订单导出完全一致，数据来自 business_orders 单一事实源。
  */
-export function BusinessDailyOrderTable({ orders, actor, filterQuery = '', settledItemIds = [] }: BusinessDailyOrderTableProps) {
+export function BusinessDailyOrderTable({
+  orders,
+  actor,
+  customers,
+  customerGroups,
+  filterQuery = '',
+  settledItemIds = [],
+}: BusinessDailyOrderTableProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [bulkPending, startBulkTransition] = useTransition()
+  const [customerPending, startCustomerTransition] = useTransition()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [shippedAt, setShippedAt] = useState(() => toDateTimeLocalValue(new Date()))
+  const [customerOrder, setCustomerOrder] = useState<BusinessDailyLedgerOrder | null>(null)
+  const [customerDraft, setCustomerDraft] = useState<Customer | null>(null)
 
   const settledSet = useMemo(() => new Set(settledItemIds), [settledItemIds])
   const isMergedItemSettled = (item: MergedBusinessDailyItem) =>
@@ -85,10 +116,12 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '', settl
     [orders],
   )
 
-  const selectableOrders = useMemo(
+  const canManageShipments = actor.role === 'admin' || actor.role === 'finance'
+  const shippableOrders = useMemo(
     () => orders.filter((order) => canBulkShipOrder(order, actor)),
     [orders, actor],
   )
+  const selectableOrders = canManageShipments ? shippableOrders : orders
   const selectableIds = useMemo(
     () => new Set(selectableOrders.map((order) => order.id)),
     [selectableOrders],
@@ -113,6 +146,32 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '', settl
       const result = await getBusinessOrderAttachmentUrl(attachmentId)
       if (result.url) window.open(result.url, '_blank', 'noopener,noreferrer')
       else toast.error(result.error ?? '无法查看截图')
+    })
+  }
+
+  function openCustomerDialog(order: BusinessDailyLedgerOrder) {
+    setCustomerOrder(order)
+    setCustomerDraft(customers.find((customer) => customer.id === order.customer_id) ?? null)
+  }
+
+  function saveCustomer() {
+    if (!customerOrder || !customerDraft) {
+      toast.error('请选择客户')
+      return
+    }
+    startCustomerTransition(async () => {
+      const result = await setBusinessOrderCustomer({
+        order_id: customerOrder.id,
+        customer_id: customerDraft.id,
+      })
+      if (!result.ok) {
+        toast.error(result.error ?? '设置订单客户失败')
+        return
+      }
+      toast.success('订单客户已同步')
+      setCustomerOrder(null)
+      setCustomerDraft(null)
+      router.refresh()
     })
   }
 
@@ -158,10 +217,12 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '', settl
       {orders.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
           {selectableOrders.length > 0 && (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>已选 {selectedCount} 个订单</span>
+            </div>
+          )}
+          {canManageShipments && shippableOrders.length > 0 && (
             <>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <span>已选 {selectedCount} 个订单</span>
-              </div>
               <Input
                 type="datetime-local"
                 value={shippedAt}
@@ -179,7 +240,7 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '', settl
               </Button>
             </>
           )}
-          <div className={`${selectableOrders.length > 0 ? 'ml-auto' : ''} flex gap-2`}>
+          <div className="ml-auto flex gap-2">
             <Button asChild variant="outline" size="sm">
               <a download href={`/api/finance/daily-orders/export/xlsx${exportUrl}`}>
                 <Download className="h-4 w-4" />XLSX
@@ -220,6 +281,8 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '', settl
               const rowSpan = rows.length
               const canEdit = canEditBusinessDailyOrder(order, actor)
               const canShip = canBulkShipOrder(order, actor)
+              const canSelect = canManageShipments ? canShip : true
+              const canSetCustomer = canSetOrderCustomer(order, actor)
               const isSelected = selectedIds.has(order.id)
               const salesperson = displayProfileName(
                 order.salesperson,
@@ -236,7 +299,7 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '', settl
                     className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
                   >
                     <TableCell className="align-top">
-                      {isFirstRow && canShip && (
+                      {isFirstRow && canSelect && (
                         <input
                           type="checkbox"
                           aria-label={`选择订单 ${order.order_number}`}
@@ -301,8 +364,20 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '', settl
                               {order.order_number}
                             </div>
                           )}
-                          <div className="text-xs font-normal text-muted-foreground">
-                            {getBusinessOrderCustomerName(order.customer_snapshot)}
+                          <div className="flex flex-wrap items-center gap-1 text-xs font-normal text-muted-foreground">
+                            <span>{getBusinessOrderCustomerName(order.customer_snapshot)}</span>
+                            {canSetCustomer && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 px-1.5 text-xs"
+                                onClick={() => openCustomerDialog(order)}
+                              >
+                                <UserRoundPlus className="h-3.5 w-3.5" />
+                                {order.customer_id ? '更换客户' : '添加客户'}
+                              </Button>
+                            )}
                           </div>
                           <div className="mt-1 space-y-0.5 text-xs font-normal tabular-nums">
                             <div>应收 {formatDailyMoney(totals.receivable, order.currency)}</div>
@@ -433,6 +508,52 @@ export function BusinessDailyOrderTable({ orders, actor, filterQuery = '', settl
           </TableBody>
         </Table>
       </div>
+
+      <Dialog
+        open={Boolean(customerOrder)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCustomerOrder(null)
+            setCustomerDraft(null)
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{customerOrder?.customer_id ? '更换订单客户' : '添加订单客户'}</DialogTitle>
+            <DialogDescription>
+              保存后立即同步订单与客户库关联，不改变订单审批状态。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>客户</Label>
+            <CustomerCombobox
+              customers={customers}
+              groups={customerGroups}
+              value={customerDraft}
+              onChange={setCustomerDraft}
+              allowCreate
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={customerPending}
+              onClick={() => setCustomerOrder(null)}
+            >
+              取消
+            </Button>
+            <Button
+              type="button"
+              disabled={customerPending || !customerDraft}
+              onClick={saveCustomer}
+            >
+              {customerPending ? '保存中…' : '保存客户'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

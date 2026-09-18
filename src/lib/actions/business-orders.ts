@@ -16,6 +16,7 @@ import {
   businessOrderAppendItemEditInputSchema,
   businessOrderAppendItemsInputSchema,
   businessOrderAttachmentInputSchema,
+  businessOrderCustomerInputSchema,
   businessOrderFinanceSchema,
   businessOrderInputSchema,
   businessOrderReasonSchema,
@@ -133,6 +134,8 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Only approved sales, supervisor, or admin users', '仅已审核的业务员、主管或管理员可以创建订单'],
     ['Approved sales, supervisor, or admin account required', '仅已审核的业务员、主管或管理员可以编辑订单'],
     ['Only approved sales users', '仅已审核通过的业务员或业务主管可以执行此操作'],
+    ['Only approved administrators or finance users can create shipments', '仅管理员或财务可以创建发货批次'],
+    ['Only approved administrators or finance users can void shipments', '仅管理员或财务可以作废发货批次'],
     ['Only approved administrators or finance users can register returns', '仅管理员或财务可以登记退货'],
     ['Only approved administrators or finance users can void returns', '仅管理员或财务可以作废退货'],
     ['Approved administrator or finance user required to void a business order', '仅已审核通过的管理员或财务可以作废订单'],
@@ -229,6 +232,7 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Attachment object metadata does not match', '附件类型或大小与已上传文件不一致'],
     ['Attachment path is already bound', '附件路径已绑定到其他记录'],
     ['Attachment name cannot exceed', '附件名称不能超过 255 字'],
+    ['Sales user cannot set customer for another owner business order', '不能为其他业务员名下的订单设置客户'],
     ['Sales user cannot edit another owner business order', '不能编辑其他业务员名下的订单'],
     ['Salesperson cannot edit', '当前状态下业务员不能编辑此订单'],
     ['Finance users cannot create business orders', '财务不能创建业务订单'],
@@ -834,13 +838,35 @@ export async function voidBusinessCustomerTransfer(
   return { ok: true }
 }
 
+export async function setBusinessOrderCustomer(rawInput: unknown): Promise<BusinessOrderActionResult> {
+  const profile = await requireApproved()
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '当前角色不能设置订单客户' }
+  }
+  const parsed = businessOrderCustomerInputSchema.safeParse(rawInput)
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('set_business_order_customer', {
+    p_order_id: parsed.data.order_id,
+    p_customer_id: parsed.data.customer_id,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '设置订单客户失败') }
+
+  const order = parseRpcOrder(data)
+  if (!order) return { ok: false, error: '数据库未返回订单信息' }
+  revalidateBusinessOrders(order.id)
+  revalidatePath('/customers')
+  return { ok: true, ...order }
+}
+
 export async function createBusinessOrderShipment(
   orderId: string,
   rawInput: unknown,
 ): Promise<BusinessOrderShipmentActionResult> {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '当前角色不能创建发货批次' }
+  if (!['admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '仅管理员或财务可以创建发货批次' }
   }
 
   const parsed = businessOrderShipmentInputSchema.safeParse(rawInput)
@@ -877,8 +903,8 @@ export async function bulkShipBusinessOrders(
   shippedAt: string,
 ): Promise<BulkShipBusinessOrdersResult> {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '当前角色不能执行整单发货' }
+  if (!['admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '仅管理员或财务可以执行整单发货' }
   }
 
   const validIds = orderIds.filter((id) => z.string().uuid().safeParse(id).success)
@@ -912,11 +938,6 @@ export async function bulkShipBusinessOrders(
   const errors: string[] = []
 
   for (const order of orders) {
-    if (profile.role === 'sales' && order.salesperson_id !== profile.id) {
-      errors.push(`订单 ${order.order_number} 不属于当前业务员`)
-      continue
-    }
-
     const items = order.business_order_items ?? []
     const shipmentItems = items
       .map((item): { order_item_id: string; quantity: number } => ({
@@ -956,8 +977,8 @@ export async function voidBusinessOrderShipment(
   reason: string,
 ): Promise<ActionResult> {
   const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '当前角色不能作废发货批次' }
+  if (!['admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '仅管理员或财务可以作废发货批次' }
   }
   const parsedReason = businessOrderVoidReasonSchema.safeParse(reason)
   if (!parsedReason.success) return { ok: false, error: firstValidationError(parsedReason.error) }

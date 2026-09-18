@@ -19,7 +19,7 @@ import { dailyOrderFilterQuery, formatDailyMoney, parseDailyOrderFilters } from 
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
-import type { CurrencyCode } from '@/types'
+import type { CurrencyCode, Customer, CustomerGroup } from '@/types'
 
 type CurrencyTotals = Partial<Record<CurrencyCode, number>>
 
@@ -87,10 +87,17 @@ export default async function DailyOrdersPage({
   const profile = await requireApproved()
   const filters = parseDailyOrderFilters(await searchParams)
   const supabase = await createClient()
-  const [orders, options] = await Promise.all([
+  const customersQuery = supabase.from('customers').select('*')
+  const [orders, options, customersResult, customerGroupsResult] = await Promise.all([
     fetchBusinessDailyLedger(supabase, filters),
     fetchDailyOrderOptions(supabase),
+    ['admin', 'finance'].includes(profile.role)
+      ? customersQuery.order('name')
+      : customersQuery.eq('created_by', profile.id).order('name'),
+    supabase.from('customer_groups').select('*').order('name'),
   ])
+  const customerError = customersResult.error || customerGroupsResult.error
+  if (customerError) throw new Error(`订单客户数据读取失败：${customerError.message}`)
   const settledItemIds = await fetchSettledItemIdsForOrders(supabase, orders)
   const query = dailyOrderFilterQuery(filters)
   const canManageShops = profile.role === 'finance' || profile.role === 'admin'
@@ -200,7 +207,14 @@ export default async function DailyOrdersPage({
         })}
       </div>
 
-      <BusinessDailyOrderTable orders={orders} actor={profile} filterQuery={query} settledItemIds={settledItemIds} />
+      <BusinessDailyOrderTable
+        orders={orders}
+        actor={profile}
+        customers={(customersResult.data ?? []) as Customer[]}
+        customerGroups={(customerGroupsResult.data ?? []) as CustomerGroup[]}
+        filterQuery={query}
+        settledItemIds={settledItemIds}
+      />
     </div>
   )
 }

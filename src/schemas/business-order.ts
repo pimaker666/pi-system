@@ -605,6 +605,13 @@ export const businessOrderShipmentInputSchema = z
   })
   .strict()
 
+export const businessOrderCustomerInputSchema = z
+  .object({
+    order_id: z.string().uuid('订单 ID 不合法'),
+    customer_id: z.string().uuid('请选择有效客户'),
+  })
+  .strict()
+
 export const businessOrderReturnItemInputSchema = z
   .object({
     shipment_item_id: z.string().uuid('请选择有效发货明细'),
