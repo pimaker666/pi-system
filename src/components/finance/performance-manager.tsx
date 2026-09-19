@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { CountryFlag } from '@/components/shared/country-flag'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -209,7 +210,8 @@ export function PerformanceManager({
                     >
                       {order.order_number}
                     </Link>
-                    <div className="text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <CountryFlag country={order.customer_snapshot?.country} />
                       {getBusinessOrderCustomerName(order.customer_snapshot)}
                     </div>
                   </TableCell>

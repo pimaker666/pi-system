@@ -42,6 +42,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { CustomerRowActions } from './customer-row-actions'
+import { CountryFlag } from '@/components/shared/country-flag'
 import {
   bulkTransferCustomers,
   bulkCopyCustomers,
@@ -56,8 +57,22 @@ export interface CustomerRow extends Customer {
   customer_groups: { name: string } | null
 }
 
+export interface CustomerOrderStats {
+  lastYearAmountCny: number
+  lastOrderDate: string | null
+  customOrderCount: number
+}
+
+export type CustomerOrderStatsMap = Record<string, CustomerOrderStats>
+
 const KEEP = '__keep__'
 const NO_GROUP = '__none__'
+
+const cnyFormatter = new Intl.NumberFormat('zh-CN', {
+  style: 'currency',
+  currency: 'CNY',
+  maximumFractionDigits: 2,
+})
 
 export function CustomerTable({
   customers,
@@ -65,12 +80,14 @@ export function CustomerTable({
   owners = [],
   transferOwners = [],
   isAdmin = false,
+  stats = {},
 }: {
   customers: CustomerRow[]
   groups: CustomerGroup[]
   owners?: OwnerOption[]
   transferOwners?: OwnerOption[]
   isAdmin?: boolean
+  stats?: CustomerOrderStatsMap
 }) {
   const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -98,7 +115,7 @@ export function CustomerTable({
   const allChecked = customers.length > 0 && selected.size === customers.length
   const someChecked = selected.size > 0 && !allChecked
   const ids = useMemo(() => Array.from(selected), [selected])
-  const colCount = isAdmin ? 8 : 7
+  const colCount = isAdmin ? 11 : 10
 
   function toggleAll() {
     setSelected(allChecked ? new Set() : new Set(customers.map((c) => c.id)))
@@ -277,6 +294,9 @@ export function CustomerTable({
                 <TableHead>国家</TableHead>
                 <TableHead>分组</TableHead>
                 <TableHead>联系方式</TableHead>
+                <TableHead className="text-right">近一年下单金额</TableHead>
+                <TableHead>上次下单时间</TableHead>
+                <TableHead className="text-right">定制订单数</TableHead>
                 {isAdmin && <TableHead>归属账号</TableHead>}
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
@@ -295,7 +315,12 @@ export function CustomerTable({
                   </TableCell>
                   <TableCell className="font-medium">{c.name}</TableCell>
                   <TableCell>{c.company ?? '—'}</TableCell>
-                  <TableCell>{c.country ?? '—'}</TableCell>
+                  <TableCell>
+                    <span className="flex items-center gap-1.5">
+                      <CountryFlag country={c.country} />
+                      {c.country ?? '—'}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     {c.customer_groups ? (
                       <Badge variant="secondary">{c.customer_groups.name}</Badge>
@@ -305,6 +330,17 @@ export function CustomerTable({
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {c.email ?? c.phone ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {stats[c.id]?.lastYearAmountCny
+                      ? cnyFormatter.format(stats[c.id].lastYearAmountCny)
+                      : '—'}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground tabular-nums">
+                    {stats[c.id]?.lastOrderDate ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {stats[c.id]?.customOrderCount ?? 0}
                   </TableCell>
                   {isAdmin && (
                     <TableCell className="text-sm text-muted-foreground">

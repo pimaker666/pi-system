@@ -6,7 +6,7 @@ import { displayProfileName } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { NewCustomerButton } from '@/components/customers/new-customer-button'
 import { CustomerFilters } from '@/components/customers/customer-filters'
-import { CustomerTable, type CustomerRow } from '@/components/customers/customer-table'
+import { CustomerTable, type CustomerRow, type CustomerOrderStatsMap } from '@/components/customers/customer-table'
 import type { OwnerOption } from '@/components/shared/owner-filter'
 import type { CustomerGroup, Profile } from '@/types'
 
@@ -53,6 +53,25 @@ export default async function CustomersPage({
     Profile,
     'id' | 'full_name' | 'email' | 'chinese_name' | 'role' | 'status'
   >[]
+
+  const statsMap: CustomerOrderStatsMap = {}
+  if (customers.length > 0) {
+    const { data: statsData } = await supabase.rpc('get_customer_order_stats', {
+      p_customer_ids: customers.map((c) => c.id),
+    })
+    for (const s of (statsData ?? []) as {
+      customer_id: string
+      last_year_amount_cny: number | string | null
+      last_order_date: string | null
+      custom_order_count: number | null
+    }[]) {
+      statsMap[s.customer_id] = {
+        lastYearAmountCny: Number(s.last_year_amount_cny ?? 0),
+        lastOrderDate: s.last_order_date,
+        customOrderCount: Number(s.custom_order_count ?? 0),
+      }
+    }
+  }
 
   const owners: OwnerOption[] = profiles.map((p) => ({
     id: p.id,
@@ -102,6 +121,7 @@ export default async function CustomersPage({
         owners={owners}
         transferOwners={transferOwners}
         isAdmin={isAdmin}
+        stats={statsMap}
       />
     </div>
   )

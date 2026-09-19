@@ -11,6 +11,7 @@ export const customerSchema = z.object({
   postal_code: z.string().trim().max(20).optional().or(z.literal('')),
   country: z.string().trim().max(100).optional().or(z.literal('')),
   contact_person: z.string().trim().max(200).optional().or(z.literal('')),
+  remarks: z.string().trim().max(2000).optional().or(z.literal('')),
   group_id: z.string().uuid().optional().nullable().or(z.literal('')),
 })
 

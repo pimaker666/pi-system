@@ -6,6 +6,7 @@ import { Download, Eye, FileText, Pencil, Truck, UserRoundPlus } from 'lucide-re
 import { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { CustomerCombobox } from '@/components/customers/customer-combobox'
+import { CountryFlag } from '@/components/shared/country-flag'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -365,6 +366,7 @@ export function BusinessDailyOrderTable({
                             </div>
                           )}
                           <div className="flex flex-wrap items-center gap-1 text-xs font-normal text-muted-foreground">
+                            <CountryFlag country={order.customer_snapshot?.country} />
                             <span>{getBusinessOrderCustomerName(order.customer_snapshot)}</span>
                             {canSetCustomer && (
                               <Button

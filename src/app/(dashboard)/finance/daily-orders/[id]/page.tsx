@@ -6,6 +6,7 @@ import { BusinessOrderActions, BusinessOrderFinancePanel } from '@/components/fi
 import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
 import { BusinessOrderItemAdjustments } from '@/components/finance/business-order-item-adjustments'
 import { BusinessLifecycleStatus } from '@/components/finance/business-lifecycle-status'
+import { CountryFlag } from '@/components/shared/country-flag'
 import { BusinessOrderPaymentManager } from '@/components/finance/business-order-payment-manager'
 import {
   BusinessReturnManager,
@@ -388,7 +389,10 @@ export default async function BusinessOrderDetailPage({
           <Card>
             <CardHeader><CardTitle className="text-base">客户与订单</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
-              <div className="font-medium">{getBusinessOrderCustomerName(customer)}</div>
+              <div className="flex items-center gap-1.5 font-medium">
+                <CountryFlag country={customer.country} />
+                {getBusinessOrderCustomerName(customer)}
+              </div>
               {customer.contact_person && <div>联系人：{customer.contact_person}</div>}
               {customer.email && <div className="text-muted-foreground">{customer.email}</div>}
               {customer.phone && <div className="text-muted-foreground">{customer.phone}</div>}

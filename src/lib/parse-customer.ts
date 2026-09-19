@@ -297,6 +297,18 @@ function detectCountry(text: string): string | undefined {
 }
 
 /**
+ * Normalize an arbitrary country string (free text, Chinese alias, or already a
+ * canonical name) to its canonical display name, or undefined if unrecognized.
+ * Tries whole-line match first, then any-substring detection.
+ */
+export function canonicalCountry(raw: string | null | undefined): string | undefined {
+  if (!raw) return undefined
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+  return pureCountry(trimmed) ?? detectCountry(trimmed)
+}
+
+/**
  * Return the canonical country ONLY when the whole line is essentially just a
  * country name (e.g. "United States", "USA", "美国"). Such a line should feed
  * the country field, never the customer name. Tolerates trailing punctuation
@@ -463,6 +475,30 @@ export function parseCustomerText(text: string): ParsedCustomer {
       result.city = csMatch[1].trim()
       if (!result.state) result.state = csMatch[2].trim()
     }
+  }
+
+  // Chinese-address enhancement: split 省/市 into state/city, pull the 6-digit
+  // postal code, and default the country to China when the text clearly carries
+  // Chinese administrative markers.
+  const cjkSource = result.address || text
+  if (/[\u4e00-\u9fff]/.test(cjkSource)) {
+    if (!result.state) {
+      const prov = cjkSource.match(
+        /(北京市|天津市|上海市|重庆市|香港特别行政区|澳门特别行政区|(?:内蒙古|广西壮族|西藏|宁夏回族|新疆维吾尔)自治区|[\u4e00-\u9fff]{2,3}省)/,
+      )
+      if (prov) result.state = prov[1]
+    }
+    if (!result.city) {
+      const rest = result.state ? cjkSource.replace(result.state, '') : cjkSource
+      const cityMatch = rest.match(/([\u4e00-\u9fff]{2,6}?(?:市|自治州|地区|盟))/)
+      if (cityMatch) result.city = cityMatch[1]
+    }
+    if (!result.postal_code) {
+      const cnZip = cjkSource.match(/(?<!\d)(\d{6})(?!\d)/)
+      if (cnZip) result.postal_code = cnZip[1]
+    }
+    const hasCnMarker = /(省|自治区|自治州|特别行政区|市|区|县|镇|乡|路|街道|街|号|栋|幢|单元|室|楼)/.test(cjkSource)
+    if (!result.country && hasCnMarker) result.country = 'China'
   }
 
   return result

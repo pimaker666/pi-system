@@ -19,6 +19,7 @@ function parseCustomer(formData: FormData) {
     postal_code: formData.get('postal_code') || '',
     country: formData.get('country') || '',
     contact_person: formData.get('contact_person') || '',
+    remarks: formData.get('remarks') || '',
     group_id: formData.get('group_id') || '',
   })
 }
@@ -35,6 +36,7 @@ function normalize(data: ReturnType<typeof customerSchema.parse>) {
     postal_code: data.postal_code || null,
     country: data.country || null,
     contact_person: data.contact_person || null,
+    remarks: data.remarks || null,
     group_id: data.group_id ? data.group_id : null,
   }
 }

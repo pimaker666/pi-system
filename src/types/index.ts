@@ -941,6 +941,7 @@ export interface Customer {
   postal_code: string | null
   country: string | null
   contact_person: string | null
+  remarks: string | null
   group_id: string | null
   created_by: string | null
   created_at: string

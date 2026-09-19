@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/select'
 import { createCustomer, updateCustomer } from '@/lib/actions/customers'
 import { parseCustomerText } from '@/lib/parse-customer'
+import { CountryFlag } from '@/components/shared/country-flag'
 import { usePostalLookup, type PostalResult } from '@/hooks/use-postal-lookup'
 import type { Customer, CustomerGroup } from '@/types'
 
@@ -38,6 +39,7 @@ interface FormState {
   city: string
   state: string
   postal_code: string
+  remarks: string
 }
 
 export function CustomerFormFields({ customer, groups, onSuccess }: CustomerFormProps) {
@@ -55,6 +57,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
     city: customer?.city ?? '',
     state: customer?.state ?? '',
     postal_code: customer?.postal_code ?? '',
+    remarks: customer?.remarks ?? '',
   })
 
   const [showPaste, setShowPaste] = useState(false)
@@ -263,7 +266,10 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="country">国家/地区</Label>
+          <Label htmlFor="country" className="flex items-center gap-1.5">
+            国家/地区
+            <CountryFlag country={form.country} />
+          </Label>
           <Input
             id="country"
             name="country"
@@ -399,6 +405,18 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="remarks">备注</Label>
+        <Textarea
+          id="remarks"
+          name="remarks"
+          rows={3}
+          value={form.remarks}
+          onChange={(e) => update('remarks', e.target.value)}
+          placeholder="客户相关备注，例如偏好、历史情况等"
+        />
       </div>
 
       <Button type="submit" disabled={pending} className="w-full">
