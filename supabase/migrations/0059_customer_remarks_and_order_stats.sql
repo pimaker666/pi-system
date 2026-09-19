@@ -56,7 +56,8 @@ as $$
   group by o.customer_id
 $$;
 
-revoke all on function public.get_customer_order_stats(uuid[]) from public;
+revoke all on function public.get_customer_order_stats(uuid[])
+  from public, anon, authenticated, service_role;
 grant execute on function public.get_customer_order_stats(uuid[]) to authenticated;
 
 commit;

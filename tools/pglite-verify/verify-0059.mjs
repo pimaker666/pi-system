@@ -15,6 +15,7 @@ await db.exec(`
   create role anon nologin;
   create role authenticated nologin;
   create role service_role nologin;
+  alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
   create function public.uuid_generate_v4() returns uuid language sql volatile as $$
     select gen_random_uuid()
   $$;
