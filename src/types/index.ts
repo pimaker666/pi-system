@@ -428,6 +428,10 @@ export interface BusinessOrder {
   /** Live-joined salesperson profile (PostgREST embed on salesperson_id) used to
    *  render the current chinese_name; null when the user was deleted. */
   salesperson?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
+  /** Linked customer's current country, attached server-side for flag rendering so
+   *  the flag reflects the live customer record rather than the frozen snapshot.
+   *  Undefined when not attached; null when the order has no linked customer. */
+  current_customer_country?: string | null
 }
 
 export interface BusinessOrderItem {

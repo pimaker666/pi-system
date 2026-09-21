@@ -3,6 +3,7 @@ import {
   type BusinessOrderListRow,
 } from '@/components/finance/performance-manager'
 import { requireApproved } from '@/lib/auth'
+import { fetchCurrentCustomerCountries } from '@/lib/business-daily-orders-server'
 import { PERFORMANCE_PAGE_SIZE } from '@/lib/business-order-cost'
 import { BUSINESS_ORDER_STATUS_LABELS } from '@/lib/business-orders'
 import { createClient } from '@/lib/supabase/server'
@@ -73,8 +74,18 @@ export default async function FinancePerformancePage({
   if (ordersResult.error) throw new Error(`业务订单读取失败：${ordersResult.error.message}`)
   if (countResult.error) throw new Error(`业务订单计数读取失败：${countResult.error.message}`)
 
-  const orders = (ordersResult.data ?? []) as BusinessOrderListRow[]
+  const baseOrders = (ordersResult.data ?? []) as BusinessOrderListRow[]
   const totalCount = countResult.count ?? 0
+
+  // 国旗读实时客户国家（走 security definer RPC），未关联客户时回落到下单快照。
+  const countries = await fetchCurrentCustomerCountries(
+    supabase,
+    baseOrders.map((order) => order.id),
+  )
+  const orders = baseOrders.map((order) => ({
+    ...order,
+    current_customer_country: countries.get(order.id) ?? null,
+  }))
 
   return (
     <div className="space-y-6">

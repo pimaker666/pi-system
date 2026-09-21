@@ -366,7 +366,7 @@ export function BusinessDailyOrderTable({
                             </div>
                           )}
                           <div className="flex flex-wrap items-center gap-1 text-xs font-normal text-muted-foreground">
-                            <CountryFlag country={order.customer_snapshot?.country} />
+                            <CountryFlag country={order.current_customer_country ?? order.customer_snapshot?.country} />
                             <span>{getBusinessOrderCustomerName(order.customer_snapshot)}</span>
                             {canSetCustomer && (
                               <Button

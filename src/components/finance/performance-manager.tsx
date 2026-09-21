@@ -211,7 +211,7 @@ export function PerformanceManager({
                       {order.order_number}
                     </Link>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <CountryFlag country={order.customer_snapshot?.country} />
+                      <CountryFlag country={order.current_customer_country ?? order.customer_snapshot?.country} />
                       {getBusinessOrderCustomerName(order.customer_snapshot)}
                     </div>
                   </TableCell>

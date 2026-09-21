@@ -42,6 +42,42 @@ function normalizeKeyword(raw: string) {
   return raw.replace(/[,()%*]/g, ' ').trim()
 }
 
+/**
+ * 按订单 id 批量取“当前”客户国家（读 customers 表实时值，非下单快照）。
+ * 走 security definer 的 get_business_orders_customer_country，可见范围由订单级
+ * 权限收敛，财务也能拿到别人名下客户的国家。未关联客户的订单不返回，Map 里缺省。
+ */
+export async function fetchCurrentCustomerCountries(
+  supabase: SupabaseClient,
+  orderIds: string[],
+): Promise<Map<string, string | null>> {
+  const result = new Map<string, string | null>()
+  if (orderIds.length === 0) return result
+  const { data, error } = await supabase.rpc('get_business_orders_customer_country', {
+    p_order_ids: orderIds,
+  })
+  if (error) throw new Error(`订单客户国家读取失败：${error.message}`)
+  for (const row of (data ?? []) as Array<{ order_id: string; country: string | null }>) {
+    result.set(row.order_id, row.country)
+  }
+  return result
+}
+
+async function attachCurrentCustomerCountry(
+  supabase: SupabaseClient,
+  orders: BusinessDailyLedgerOrder[],
+): Promise<BusinessDailyLedgerOrder[]> {
+  if (orders.length === 0) return orders
+  const countries = await fetchCurrentCustomerCountries(
+    supabase,
+    orders.map((order) => order.id),
+  )
+  return orders.map((order) => ({
+    ...order,
+    current_customer_country: countries.get(order.id) ?? null,
+  }))
+}
+
 /** 给台账明细附加财务展示字段：产品名称/财务编号优先于销售快照。 */
 async function attachItemDisplayLabels(
   supabase: SupabaseClient,
@@ -179,7 +215,7 @@ export async function fetchBusinessDailyLedger(
       ),
       filters.balanceStatus,
     )
-    return attachItemDisplayLabels(supabase, orders)
+    return attachCurrentCustomerCountry(supabase, await attachItemDisplayLabels(supabase, orders))
   }
 
   const [headResult, itemResult] = await Promise.all([
@@ -197,17 +233,20 @@ export async function fetchBusinessDailyLedger(
     if (!merged.has(order.id)) merged.set(order.id, order)
   }
 
-  return attachItemDisplayLabels(
+  return attachCurrentCustomerCountry(
     supabase,
-    applyBalanceStatusFilter(
-      applyCompletionFilter(
-        await attachOutstandingAmounts(
-          supabase,
-          [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+    await attachItemDisplayLabels(
+      supabase,
+      applyBalanceStatusFilter(
+        applyCompletionFilter(
+          await attachOutstandingAmounts(
+            supabase,
+            [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+          ),
+          filters.completion,
         ),
-        filters.completion,
+        filters.balanceStatus,
       ),
-      filters.balanceStatus,
     ),
   )
 }

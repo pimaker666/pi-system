@@ -31,6 +31,7 @@ import {
 } from '@/lib/actions/business-orders'
 import { requireApproved } from '@/lib/auth'
 import { sortedBusinessDailyItems } from '@/lib/business-daily-orders'
+import { fetchCurrentCustomerCountries } from '@/lib/business-daily-orders-server'
 import {
   attachBusinessOrderItemsDisplay,
   businessOrderItemDisplayName,
@@ -308,6 +309,10 @@ export default async function BusinessOrderDetailPage({
     financeDetail = financeResult.data as BusinessOrderFinanceDetail | null
   }
 
+  // 国旗读实时客户国家（走 security definer RPC），未关联客户时回落到下单快照。
+  const currentCustomerCountry =
+    (await fetchCurrentCustomerCountries(supabase, [order.id])).get(order.id) ?? null
+
   const customer = order.customer_snapshot
   const financeReady = Boolean(
     financeDetail &&
@@ -390,7 +395,7 @@ export default async function BusinessOrderDetailPage({
             <CardHeader><CardTitle className="text-base">客户与订单</CardTitle></CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="flex items-center gap-1.5 font-medium">
-                <CountryFlag country={customer.country} />
+                <CountryFlag country={currentCustomerCountry ?? customer.country} />
                 {getBusinessOrderCustomerName(customer)}
               </div>
               {customer.contact_person && <div>联系人：{customer.contact_person}</div>}
