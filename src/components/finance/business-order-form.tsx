@@ -75,6 +75,7 @@ interface EditableItem {
   daily_shipping_category: DailyOrderShippingCategory
   payment_category: DailyOrderPaymentCategory
   received_amount: string
+  received_amount_overridden: boolean
   outstanding_amount: string
   logistics_fee_amount: number
   default_currency: CurrencyCode | null
@@ -327,6 +328,7 @@ export function BusinessOrderForm({
         daily_shipping_category: item.daily_shipping_category ?? 'stock',
         payment_category: (initialOrder?.daily_payment_category ?? 'full') as DailyOrderPaymentCategory,
         received_amount: String(Number(item.product_received_amount ?? item.line_amount)),
+        received_amount_overridden: item.product_received_overridden,
         outstanding_amount: derivedOutstanding(
           Number(item.quantity),
           Number(item.unit_price),
@@ -427,6 +429,7 @@ export function BusinessOrderForm({
         daily_shipping_category: 'stock',
         payment_category: 'full',
         received_amount: '',
+        received_amount_overridden: false,
         outstanding_amount: '0',
         logistics_fee_amount: 0,
         default_currency: product.currency,
@@ -468,6 +471,7 @@ export function BusinessOrderForm({
         daily_shipping_category: 'custom',
         payment_category: 'deposit',
         received_amount: received,
+        received_amount_overridden: true,
         outstanding_amount: derivedOutstanding(quantity, unitPrice, received),
         logistics_fee_amount: 0,
         default_currency: product.default_currency,
@@ -498,6 +502,12 @@ export function BusinessOrderForm({
       current.map((item) => {
         if (item.key !== key) return item
         const next = { ...item, [field]: number }
+        if (next.source_type === 'catalog' && !next.received_amount_overridden) {
+          next.received_amount =
+            next.quantity === '' || next.unit_price === ''
+              ? ''
+              : String(derivedOrderAmount(next.quantity, next.unit_price))
+        }
         next.outstanding_amount = derivedOutstanding(
           next.quantity,
           next.unit_price,
@@ -531,6 +541,7 @@ export function BusinessOrderForm({
           ? {
               ...item,
               received_amount: value,
+              received_amount_overridden: true,
               outstanding_amount: derivedOutstanding(item.quantity, item.unit_price, value),
             }
           : item,
@@ -546,6 +557,7 @@ export function BusinessOrderForm({
         return {
           ...item,
           received_amount: String(Math.max(0, roundMoney(orderAmount - numericValue(value)))),
+          received_amount_overridden: true,
           outstanding_amount: value,
         }
       }),
@@ -571,6 +583,8 @@ export function BusinessOrderForm({
             ...item,
             unit_price: '',
             received_amount: '',
+            received_amount_overridden:
+              item.source_type === 'catalog' ? false : item.received_amount_overridden,
             outstanding_amount: '0',
           }
         }),
@@ -1161,7 +1175,9 @@ export function BusinessOrderForm({
                           step="0.01"
                           value={item.received_amount}
                           onChange={(event) => updateReceivedAmount(item.key, event.target.value)}
-                          placeholder="可留空"
+                          placeholder={
+                            item.source_type === 'catalog' ? '自动计算，可修改' : '可留空'
+                          }
                         />
                       </div>
                       <div className="space-y-1">

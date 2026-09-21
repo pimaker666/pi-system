@@ -135,6 +135,7 @@ interface AppendRow {
   quantity: string
   unitPrice: string
   receivedAmount: string
+  receivedAmountOverridden: boolean
   outstandingAmount: string
   dailyShippingCategory: DailyOrderShippingCategory
 }
@@ -165,6 +166,7 @@ function emptyRow(
     quantity: '',
     unitPrice: '',
     receivedAmount: '',
+    receivedAmountOverridden: false,
     outstandingAmount: '0',
     dailyShippingCategory: 'stock',
   }
@@ -383,10 +385,17 @@ export function BusinessOrderAppendDialog({
     setRows((current) =>
       current.map((row) => {
         if (row.key !== key) return row
+        const receivedAmount =
+          row.sourceType === 'catalog' && !row.receivedAmountOverridden
+            ? value === '' || row.unitPrice === ''
+              ? ''
+              : String(derivedOrderAmount(value, row.unitPrice))
+            : row.receivedAmount
         return {
           ...row,
           quantity: value,
-          outstandingAmount: derivedOutstanding(value, row.unitPrice, row.receivedAmount),
+          receivedAmount,
+          outstandingAmount: derivedOutstanding(value, row.unitPrice, receivedAmount),
         }
       }),
     )
@@ -396,10 +405,17 @@ export function BusinessOrderAppendDialog({
     setRows((current) =>
       current.map((row) => {
         if (row.key !== key) return row
+        const receivedAmount =
+          row.sourceType === 'catalog' && !row.receivedAmountOverridden
+            ? row.quantity === '' || value === ''
+              ? ''
+              : String(derivedOrderAmount(row.quantity, value))
+            : row.receivedAmount
         return {
           ...row,
           unitPrice: value,
-          outstandingAmount: derivedOutstanding(row.quantity, value, row.receivedAmount),
+          receivedAmount,
+          outstandingAmount: derivedOutstanding(row.quantity, value, receivedAmount),
         }
       }),
     )
@@ -412,6 +428,7 @@ export function BusinessOrderAppendDialog({
         return {
           ...row,
           receivedAmount: value,
+          receivedAmountOverridden: true,
           outstandingAmount: derivedOutstanding(row.quantity, row.unitPrice, value),
         }
       }),
@@ -426,6 +443,7 @@ export function BusinessOrderAppendDialog({
         return {
           ...row,
           receivedAmount: String(Math.max(0, roundMoney(orderAmount - numericValue(value)))),
+          receivedAmountOverridden: true,
           outstandingAmount: value,
         }
       }),
@@ -437,7 +455,20 @@ export function BusinessOrderAppendDialog({
       current.map((row) => {
         if (row.key !== key || row.sourceType === sourceType) return row
         if (sourceType === 'catalog') {
-          return { ...row, sourceType, productId: '', linkedCustom: null, custom: emptyCustomFields(currency) }
+          const receivedAmount =
+            row.quantity === '' || row.unitPrice === ''
+              ? ''
+              : String(derivedOrderAmount(row.quantity, row.unitPrice))
+          return {
+            ...row,
+            sourceType,
+            productId: '',
+            linkedCustom: null,
+            custom: emptyCustomFields(currency),
+            receivedAmount,
+            receivedAmountOverridden: false,
+            outstandingAmount: derivedOutstanding(row.quantity, row.unitPrice, receivedAmount),
+          }
         }
         return { ...row, sourceType, productId: '' }
       }),
@@ -448,10 +479,15 @@ export function BusinessOrderAppendDialog({
     const product = catalog?.products.find((item) => item.id === productId)
     const nextUnitPrice =
       product && product.currency === currency ? String(product.unit_price) : row.unitPrice
+    const receivedAmount =
+      !row.receivedAmountOverridden && row.quantity !== '' && nextUnitPrice !== ''
+        ? String(derivedOrderAmount(row.quantity, nextUnitPrice))
+        : row.receivedAmount
     updateRow(row.key, {
       productId,
       unitPrice: nextUnitPrice,
-      outstandingAmount: derivedOutstanding(row.quantity, nextUnitPrice, row.receivedAmount),
+      receivedAmount,
+      outstandingAmount: derivedOutstanding(row.quantity, nextUnitPrice, receivedAmount),
     })
   }
 
@@ -460,10 +496,15 @@ export function BusinessOrderAppendDialog({
       current ? { ...current, products: [...current.products, product] } : current,
     )
     const nextUnitPrice = product.currency === currency ? String(product.unit_price) : row.unitPrice
+    const receivedAmount =
+      !row.receivedAmountOverridden && row.quantity !== '' && nextUnitPrice !== ''
+        ? String(derivedOrderAmount(row.quantity, nextUnitPrice))
+        : row.receivedAmount
     updateRow(row.key, {
       productId: product.id,
       unitPrice: nextUnitPrice,
-      outstandingAmount: derivedOutstanding(row.quantity, nextUnitPrice, row.receivedAmount),
+      receivedAmount,
+      outstandingAmount: derivedOutstanding(row.quantity, nextUnitPrice, receivedAmount),
     })
   }
 
@@ -499,6 +540,7 @@ export function BusinessOrderAppendDialog({
       row.productId = item.product_id
       row.quantity = String(item.quantity)
       row.unitPrice = String(item.unit_price)
+      row.receivedAmount = String(derivedOrderAmount(row.quantity, row.unitPrice))
       row.outstandingAmount = derivedOutstanding(row.quantity, row.unitPrice, row.receivedAmount)
       setRows((current) => [...current, row])
       return
@@ -922,7 +964,7 @@ export function BusinessOrderAppendDialog({
                           step="0.01"
                           value={row.receivedAmount}
                           onChange={(event) => updateReceivedAmount(row.key, event.target.value)}
-                          placeholder="可留空"
+                          placeholder="自动计算，可修改"
                           disabled={pending}
                         />
                       </div>
