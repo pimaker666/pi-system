@@ -23,12 +23,14 @@ export function ProductFilters({
   q,
   category,
   group,
+  canSearchFinancials,
 }: {
   categories: string[]
   groups: ProductGroup[]
   q: string
   category: string
   group: string
+  canSearchFinancials: boolean
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -55,7 +57,11 @@ export function ProductFilters({
         <Input
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder="搜索产品名/SKU…"
+          placeholder={
+            canSearchFinancials
+              ? '搜索销售名/SKU/财务编号/产品名称…'
+              : '搜索产品名/SKU…'
+          }
           className="w-64"
         />
         <Button type="submit" variant="outline" size="icon">
