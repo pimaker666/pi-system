@@ -26,11 +26,19 @@ create table if not exists public.business_order_purge_log (
   order_number    text,
   terminated_kind text not null check (terminated_kind in ('voided', 'closed')),
   terminated_at   timestamptz not null,
-  purged_at       timestamptz not null default now(),
-  retention       interval not null,
-  snapshot        jsonb not null,
-  storage_objects jsonb not null default '[]'::jsonb
+  purged_at                   timestamptz not null default now(),
+  retention                   interval not null,
+  snapshot                    jsonb not null,
+  storage_objects             jsonb not null default '[]'::jsonb,
+  storage_cleanup_attempted_at timestamptz,
+  storage_cleanup_at          timestamptz,
+  storage_cleanup_error       text
 );
+
+alter table public.business_order_purge_log
+  add column if not exists storage_cleanup_attempted_at timestamptz,
+  add column if not exists storage_cleanup_at timestamptz,
+  add column if not exists storage_cleanup_error text;
 
 comment on table public.business_order_purge_log is
   '终止订单物理清除的归档：删除前的整单快照 + 待删存储对象清单，供不可逆删除兜底恢复';
@@ -39,6 +47,9 @@ create index if not exists idx_business_order_purge_log_order
   on public.business_order_purge_log (order_id);
 create index if not exists idx_business_order_purge_log_purged_at
   on public.business_order_purge_log (purged_at desc);
+create index if not exists idx_business_order_purge_log_storage_pending
+  on public.business_order_purge_log (id)
+  where storage_cleanup_at is null;
 
 alter table public.business_order_purge_log enable row level security;
 -- 仅超级用户 / security definer 可访问；应用侧无需读取，故不建任何策略。
@@ -91,15 +102,15 @@ begin
     from (
       select 'finance-daily-order-screenshots'::text as bucket, a.object_path as object_path
         from public.business_order_attachments a
-        where a.order_id = v_order.id
+        where a.order_id = v_order.id and nullif(btrim(a.object_path), '') is not null
       union all
       select 'business-payment-proofs'::text, p.proof_path
         from public.business_order_payments p
-        where p.order_id = v_order.id
+        where p.order_id = v_order.id and nullif(btrim(p.proof_path), '') is not null
       union all
       select 'business-payment-proofs'::text, t.proof_path
         from public.business_customer_transfers t
-        where t.order_id = v_order.id
+        where t.order_id = v_order.id and nullif(btrim(t.proof_path), '') is not null
     ) o;
 
     -- 整单快照（含全部子表），删除前落库。
@@ -146,10 +157,12 @@ begin
     );
 
     insert into public.business_order_purge_log (
-      order_id, order_number, terminated_kind, terminated_at, retention, snapshot, storage_objects
+      order_id, order_number, terminated_kind, terminated_at, retention, snapshot, storage_objects,
+      storage_cleanup_at
     ) values (
       v_order.id, v_order.order_number, v_order.kind, v_order.terminated_at,
-      p_retention, v_snapshot, v_storage
+      p_retention, v_snapshot, v_storage,
+      case when jsonb_array_length(v_storage) = 0 then now() end
     );
 
     return query
