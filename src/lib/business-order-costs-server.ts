@@ -12,9 +12,9 @@ import {
   type BusinessDailyLedgerOrder,
   type MergedBusinessDailyItem,
 } from '@/lib/business-daily-orders'
-import { BUSINESS_DAILY_LEDGER_LIMIT } from '@/lib/business-daily-orders-server'
+import { BUSINESS_DAILY_EXPORT_LIMIT, BUSINESS_DAILY_LEDGER_LIMIT } from '@/lib/business-daily-orders-server'
 
-export { BUSINESS_DAILY_LEDGER_LIMIT }
+export { BUSINESS_DAILY_EXPORT_LIMIT, BUSINESS_DAILY_LEDGER_LIMIT }
 
 interface ProductFinancialRow {
   product_id: string
@@ -219,7 +219,7 @@ export async function fetchBusinessOrderProductCosts(
   page = 1,
   pageSize = COST_PAGE_SIZE,
 ): Promise<{ rows: BusinessOrderProductCost[]; totalCount: number }> {
-  const effectiveLimit = Math.min(pageSize, BUSINESS_DAILY_LEDGER_LIMIT)
+  const effectiveLimit = Math.min(pageSize, BUSINESS_DAILY_EXPORT_LIMIT)
   const [allOrders, financialRows, overrideRows, settledIds] = await Promise.all([
     fetchMatchingOrders(supabase, filters, 0, 1000),
     fetchAllProductFinancials(supabase),

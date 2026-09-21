@@ -2,7 +2,7 @@ import ExcelJS from 'exceljs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { requireFinanceAccess } from '@/lib/auth'
-import { fetchBusinessOrderProductCosts } from '@/lib/business-order-costs-server'
+import { BUSINESS_DAILY_EXPORT_LIMIT, fetchBusinessOrderProductCosts } from '@/lib/business-order-costs-server'
 import { chinaToday } from '@/lib/daily-order-costs-server'
 import { formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { FINANCE_COST_LABELS } from '@/lib/finance'
@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
   const filters = parseBusinessOrderCostFilters(searchParamsToRecord(request.nextUrl.searchParams))
 
   const [dailyResult, costs, legacyOrders, businessOrders] = await Promise.all([
-    fetchBusinessOrderProductCosts(supabase, filters, 1, 500),
+    fetchBusinessOrderProductCosts(supabase, filters, 1, BUSINESS_DAILY_EXPORT_LIMIT),
     fetchAllFinanceCosts(supabase),
     fetchAllLegacyReferences(supabase),
     fetchAllBusinessReferences(supabase),

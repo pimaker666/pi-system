@@ -11,6 +11,7 @@ import {
   type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
 import {
+  BUSINESS_DAILY_EXPORT_LIMIT,
   BUSINESS_DAILY_LEDGER_LIMIT,
   fetchBusinessDailyLedger,
   fetchSettledItemIdsForOrders,
@@ -109,7 +110,7 @@ export default async function DailyOrdersPage({
         <div>
           <h1 className="text-2xl font-semibold">财务每日订单台账</h1>
           <p className="text-sm text-muted-foreground">
-            每行对应一个产品；当前筛选最多显示与导出 {BUSINESS_DAILY_LEDGER_LIMIT} 行。
+            每行对应一个产品；当前筛选最多显示 {BUSINESS_DAILY_LEDGER_LIMIT} 行、导出 {BUSINESS_DAILY_EXPORT_LIMIT} 行。
             建单、收款、发货、退货与结单全部使用业务订单作为单一事实源。
           </p>
         </div>

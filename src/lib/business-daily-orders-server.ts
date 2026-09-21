@@ -6,8 +6,11 @@ import {
   fetchProductFinancialLabels,
 } from '@/lib/business-order-financials'
 
-/** 台账与导出的统一上限，和旧版每日订单台账保持一致。 */
+/** 台账页面展示上限，和旧版每日订单台账保持一致。 */
 export const BUSINESS_DAILY_LEDGER_LIMIT = 500
+
+/** 导出上限，高于页面展示上限，避免一次导出行数被展示上限卡住。 */
+export const BUSINESS_DAILY_EXPORT_LIMIT = 2000
 
 const LEDGER_TAIL = `
   salesperson:profiles!salesperson_id(id, chinese_name, full_name, email),
@@ -199,7 +202,7 @@ export async function fetchBusinessDailyLedger(
   limit = BUSINESS_DAILY_LEDGER_LIMIT,
   ids?: string[],
 ): Promise<BusinessDailyLedgerOrder[]> {
-  const effectiveLimit = Math.min(limit, BUSINESS_DAILY_LEDGER_LIMIT)
+  const effectiveLimit = Math.min(limit, BUSINESS_DAILY_EXPORT_LIMIT)
   const keyword = normalizeKeyword(filters.q)
 
   if (ids && ids.length > 0 || !keyword) {

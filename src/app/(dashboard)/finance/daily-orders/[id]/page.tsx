@@ -1,7 +1,7 @@
 import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
 import { BusinessOrderActions, BusinessOrderFinancePanel } from '@/components/finance/business-order-actions'
 import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
 import { BusinessOrderItemAdjustments } from '@/components/finance/business-order-item-adjustments'
@@ -349,13 +349,18 @@ export default async function BusinessOrderDetailPage({
             </p>
           </div>
         </div>
-        <BusinessOrderActions
-          order={order}
-          profile={profile}
-          financeReady={financeReady}
-          canEditOrder={canEditOrder}
-          hasDailyFields={hasDailyFields}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button asChild>
+            <Link href="/finance/daily-orders/new"><Plus className="h-4 w-4" />新建订单</Link>
+          </Button>
+          <BusinessOrderActions
+            order={order}
+            profile={profile}
+            financeReady={financeReady}
+            canEditOrder={canEditOrder}
+            hasDailyFields={hasDailyFields}
+          />
+        </div>
       </div>
 
       {order.review_note && (

@@ -6,7 +6,7 @@ import {
   buildBusinessDailyExportRows,
   businessDailyExportLimitError,
 } from '@/lib/business-daily-orders'
-import { fetchBusinessDailyLedger } from '@/lib/business-daily-orders-server'
+import { BUSINESS_DAILY_EXPORT_LIMIT, fetchBusinessDailyLedger } from '@/lib/business-daily-orders-server'
 import { isRenderableExportImage } from '@/lib/export-image-guard'
 import {
   formatDailyMoney,
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
     .map((v) => v.trim())
     .filter((v) => UUID_RE.test(v))
   const supabase = await createClient()
-  const orders = await fetchBusinessDailyLedger(supabase, filters, undefined, ids.length > 0 ? ids : undefined)
+  const orders = await fetchBusinessDailyLedger(supabase, filters, BUSINESS_DAILY_EXPORT_LIMIT, ids.length > 0 ? ids : undefined)
   const imageLimitError = businessDailyExportLimitError(orders)
   if (imageLimitError) return NextResponse.json({ error: imageLimitError }, { status: 413 })
 

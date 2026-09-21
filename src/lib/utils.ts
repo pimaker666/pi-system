@@ -58,6 +58,7 @@ export function formatCurrency(amount: number, currency = 'USD') {
 export function formatDate(input: string | Date, withTime = false) {
   const d = typeof input === 'string' ? new Date(input) : input
   const opts: Intl.DateTimeFormatOptions = {
+    timeZone: 'Asia/Shanghai',
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
