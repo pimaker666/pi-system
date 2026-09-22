@@ -35,6 +35,12 @@ export interface BusinessPerformanceSummary {
   received_cny: number
   outstanding_cny: number
   overdue_count: number
+  /** 当所有订单币种一致时返回该币种，否则为 null（多币种）。 */
+  currency: string | null
+  /** 已收金额（原币口径）。 */
+  received_amount: number
+  /** 未收金额（原币口径）。 */
+  outstanding_amount: number
 }
 
 export interface BusinessPerformanceGroupRow {
@@ -47,6 +53,12 @@ export interface BusinessPerformanceGroupRow {
   received_cny: number
   outstanding_cny: number
   overdue_count: number
+  /** 当该分组下所有订单币种一致时返回该币种，否则为 null（多币种）。 */
+  currency: string | null
+  /** 已收金额（原币口径）。 */
+  received_amount: number
+  /** 未收金额（原币口径）。 */
+  outstanding_amount: number
 }
 export type BusinessOrderItemSourceType = 'catalog' | 'custom' | 'legacy'
 export type BusinessApprovalStatus = 'draft' | 'submitted' | 'rejected' | 'approved'

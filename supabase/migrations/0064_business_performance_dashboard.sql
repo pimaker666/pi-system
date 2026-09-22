@@ -34,7 +34,10 @@ returns table (
   order_total_cny numeric,
   received_cny numeric,
   outstanding_cny numeric,
-  overdue_count bigint
+  overdue_count bigint,
+  currency text,
+  received_amount numeric,
+  outstanding_amount numeric
 )
 language plpgsql
 security definer
@@ -47,6 +50,7 @@ begin
   return query
   with filtered_orders as (
     select bo.id,
+           bo.currency,
            bo.total_amount,
            bo.total_cny,
            bo.exchange_rate_to_cny,
@@ -95,15 +99,37 @@ begin
     ), 0),
     coalesce(sum(
       greatest(
-        bo.total_amount - coalesce(bo.total_sales_amount, 0) - coalesce(a.allocated_amount, 0),
+        (bo.total_amount - coalesce(bo.total_sales_amount, 0)) * coalesce(bo.exchange_rate_to_cny, 0)
+        - coalesce(a.allocated_cny, 0),
         0
-      ) * coalesce(bo.exchange_rate_to_cny, 0)
+      )
     ), 0),
     count(distinct oms.id) filter (
       where bo.payment_status <> 'fully_paid'
         and bo.payment_due_date is not null
         and bo.payment_due_date < v_today
-    )
+    ),
+    case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+    coalesce(sum(
+      coalesce(bo.total_sales_amount, 0)
+      + case
+          when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+          then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+          else 0
+        end
+    ), 0),
+    coalesce(sum(
+      greatest(
+        bo.total_amount
+        - coalesce(bo.total_sales_amount, 0)
+        - case
+            when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+            then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+            else 0
+          end,
+        0
+      )
+    ), 0)
   from orders_matching_shipping oms
   join public.business_orders bo on bo.id = oms.id
   left join allocations a on a.order_id = oms.id;
@@ -138,7 +164,10 @@ returns table (
   order_total_cny numeric,
   received_cny numeric,
   outstanding_cny numeric,
-  overdue_count bigint
+  overdue_count bigint,
+  currency text,
+  received_amount numeric,
+  outstanding_amount numeric
 )
 language plpgsql
 security definer
@@ -158,6 +187,7 @@ begin
     with filtered_orders as (
       select bo.id,
              bo.salesperson_id,
+             bo.currency,
              bo.total_amount,
              bo.total_cny,
              bo.exchange_rate_to_cny,
@@ -214,15 +244,37 @@ begin
       ), 0),
       coalesce(sum(
         greatest(
-          bo.total_amount - coalesce(bo.total_sales_amount, 0) - coalesce(a.allocated_amount, 0),
+          (bo.total_amount - coalesce(bo.total_sales_amount, 0)) * coalesce(bo.exchange_rate_to_cny, 0)
+          - coalesce(a.allocated_cny, 0),
           0
-        ) * coalesce(bo.exchange_rate_to_cny, 0)
+        )
       ), 0),
       count(distinct oms.id) filter (
         where bo.payment_status <> 'fully_paid'
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
-      )
+      ),
+      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      coalesce(sum(
+        coalesce(bo.total_sales_amount, 0)
+        + case
+            when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+            then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+            else 0
+          end
+      ), 0),
+      coalesce(sum(
+        greatest(
+          bo.total_amount
+          - coalesce(bo.total_sales_amount, 0)
+          - case
+              when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+              then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+              else 0
+            end,
+          0
+        )
+      ), 0)
     from orders_matching_shipping oms
     join public.business_orders bo on bo.id = oms.id
     left join public.profiles p on p.id = bo.salesperson_id
@@ -242,6 +294,7 @@ begin
       select bo.id,
              bo.shop_id,
              bo.shop_name_snapshot,
+             bo.currency,
              bo.total_amount,
              bo.total_cny,
              bo.exchange_rate_to_cny,
@@ -293,15 +346,37 @@ begin
       ), 0),
       coalesce(sum(
         greatest(
-          bo.total_amount - coalesce(bo.total_sales_amount, 0) - coalesce(a.allocated_amount, 0),
+          (bo.total_amount - coalesce(bo.total_sales_amount, 0)) * coalesce(bo.exchange_rate_to_cny, 0)
+          - coalesce(a.allocated_cny, 0),
           0
-        ) * coalesce(bo.exchange_rate_to_cny, 0)
+        )
       ), 0),
       count(distinct oms.id) filter (
         where bo.payment_status <> 'fully_paid'
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
-      )
+      ),
+      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      coalesce(sum(
+        coalesce(bo.total_sales_amount, 0)
+        + case
+            when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+            then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+            else 0
+          end
+      ), 0),
+      coalesce(sum(
+        greatest(
+          bo.total_amount
+          - coalesce(bo.total_sales_amount, 0)
+          - case
+              when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+              then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+              else 0
+            end,
+          0
+        )
+      ), 0)
     from orders_matching_shipping oms
     join public.business_orders bo on bo.id = oms.id
     left join allocations a on a.order_id = oms.id
@@ -314,6 +389,7 @@ begin
     with filtered_orders as (
       select bo.id,
              bo.order_date,
+             bo.currency,
              bo.total_amount,
              bo.total_cny,
              bo.exchange_rate_to_cny,
@@ -365,15 +441,37 @@ begin
       ), 0),
       coalesce(sum(
         greatest(
-          bo.total_amount - coalesce(bo.total_sales_amount, 0) - coalesce(a.allocated_amount, 0),
+          (bo.total_amount - coalesce(bo.total_sales_amount, 0)) * coalesce(bo.exchange_rate_to_cny, 0)
+          - coalesce(a.allocated_cny, 0),
           0
-        ) * coalesce(bo.exchange_rate_to_cny, 0)
+        )
       ), 0),
       count(distinct oms.id) filter (
         where bo.payment_status <> 'fully_paid'
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
-      )
+      ),
+      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      coalesce(sum(
+        coalesce(bo.total_sales_amount, 0)
+        + case
+            when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+            then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+            else 0
+          end
+      ), 0),
+      coalesce(sum(
+        greatest(
+          bo.total_amount
+          - coalesce(bo.total_sales_amount, 0)
+          - case
+              when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+              then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+              else 0
+            end,
+          0
+        )
+      ), 0)
     from orders_matching_shipping oms
     join public.business_orders bo on bo.id = oms.id
     left join allocations a on a.order_id = oms.id
@@ -386,6 +484,7 @@ begin
     with filtered_orders as (
       select bo.id,
              bo.order_date,
+             bo.currency,
              bo.total_amount,
              bo.total_cny,
              bo.exchange_rate_to_cny,
@@ -437,15 +536,37 @@ begin
       ), 0),
       coalesce(sum(
         greatest(
-          bo.total_amount - coalesce(bo.total_sales_amount, 0) - coalesce(a.allocated_amount, 0),
+          (bo.total_amount - coalesce(bo.total_sales_amount, 0)) * coalesce(bo.exchange_rate_to_cny, 0)
+          - coalesce(a.allocated_cny, 0),
           0
-        ) * coalesce(bo.exchange_rate_to_cny, 0)
+        )
       ), 0),
       count(distinct oms.id) filter (
         where bo.payment_status <> 'fully_paid'
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
-      )
+      ),
+      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      coalesce(sum(
+        coalesce(bo.total_sales_amount, 0)
+        + case
+            when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+            then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+            else 0
+          end
+      ), 0),
+      coalesce(sum(
+        greatest(
+          bo.total_amount
+          - coalesce(bo.total_sales_amount, 0)
+          - case
+              when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+              then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+              else 0
+            end,
+          0
+        )
+      ), 0)
     from orders_matching_shipping oms
     join public.business_orders bo on bo.id = oms.id
     left join allocations a on a.order_id = oms.id
@@ -458,6 +579,7 @@ begin
     with filtered_orders as (
       select bo.id,
              bo.fulfillment_type,
+             bo.currency,
              bo.total_amount,
              bo.total_cny,
              bo.exchange_rate_to_cny,
@@ -513,15 +635,37 @@ begin
       ), 0),
       coalesce(sum(
         greatest(
-          bo.total_amount - coalesce(bo.total_sales_amount, 0) - coalesce(a.allocated_amount, 0),
+          (bo.total_amount - coalesce(bo.total_sales_amount, 0)) * coalesce(bo.exchange_rate_to_cny, 0)
+          - coalesce(a.allocated_cny, 0),
           0
-        ) * coalesce(bo.exchange_rate_to_cny, 0)
+        )
       ), 0),
       count(distinct oms.id) filter (
         where bo.payment_status <> 'fully_paid'
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
-      )
+      ),
+      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      coalesce(sum(
+        coalesce(bo.total_sales_amount, 0)
+        + case
+            when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+            then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+            else 0
+          end
+      ), 0),
+      coalesce(sum(
+        greatest(
+          bo.total_amount
+          - coalesce(bo.total_sales_amount, 0)
+          - case
+              when bo.exchange_rate_to_cny is not null and bo.exchange_rate_to_cny <> 0
+              then coalesce(a.allocated_cny, 0) / bo.exchange_rate_to_cny
+              else 0
+            end,
+          0
+        )
+      ), 0)
     from orders_matching_shipping oms
     join public.business_orders bo on bo.id = oms.id
     left join allocations a on a.order_id = oms.id
@@ -533,6 +677,7 @@ begin
     return query
     with filtered_orders as (
       select bo.id,
+             bo.currency,
              bo.total_amount,
              bo.exchange_rate_to_cny,
              bo.payment_status,
@@ -588,7 +733,10 @@ begin
         where bo.payment_status <> 'fully_paid'
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
-      )
+      ),
+      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      coalesce(sum(coalesce(i.product_received_amount, 0)), 0),
+      coalesce(sum(i.line_amount - coalesce(i.product_received_amount, 0)), 0)
     from items i
     join public.business_orders bo on bo.id = i.order_id
     group by i.daily_shipping_category

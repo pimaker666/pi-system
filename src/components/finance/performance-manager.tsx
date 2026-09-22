@@ -19,7 +19,7 @@ import {
 import { BUSINESS_FULFILLMENT_LABELS } from '@/lib/business-orders'
 import { SHIPPING_LABELS } from '@/lib/daily-orders'
 import { formatCny } from '@/lib/finance'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
 import type {
   BusinessFulfillmentType,
@@ -28,6 +28,16 @@ import type {
   BusinessPerformanceSummary,
   DailyOrderShippingCategory,
 } from '@/types'
+
+function formatOriginal(amount: number, currency: string | null) {
+  if (currency) {
+    return formatCurrency(amount, currency)
+  }
+  return `${amount.toLocaleString('zh-CN', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} (多币种)`
+}
 
 interface Option {
   value: string
@@ -224,6 +234,11 @@ export function PerformanceManager({
             <div className="mt-1 text-xl font-semibold tabular-nums">
               {formatCny(Number(summary.order_total_cny))}
             </div>
+            {summary.currency !== undefined && (
+              <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                = {formatOriginal(Number(summary.order_total_amount), summary.currency)}
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card>
@@ -232,6 +247,11 @@ export function PerformanceManager({
             <div className="mt-1 text-xl font-semibold tabular-nums text-green-700">
               {formatCny(Number(summary.received_cny))}
             </div>
+            {summary.currency !== undefined && (
+              <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                = {formatOriginal(Number(summary.received_amount), summary.currency)}
+              </div>
+            )}
           </CardContent>
         </Card>
         <Card className={Number(summary.overdue_count) > 0 ? 'border-destructive/40' : undefined}>
@@ -249,6 +269,11 @@ export function PerformanceManager({
                 / {Number(summary.overdue_count)} 单
               </span>
             </div>
+            {summary.currency !== undefined && (
+              <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                = {formatOriginal(Number(summary.outstanding_amount), summary.currency)}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -334,14 +359,16 @@ export function PerformanceManager({
       </div>
 
       <div className="overflow-x-auto rounded-md border">
-        <Table className="min-w-[760px]">
+        <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow>
               <TableHead>{GROUP_COLUMN_LABELS[groupBy]}</TableHead>
               <TableHead className="text-right">订单数</TableHead>
               <TableHead className="text-right">订单总额（原币）</TableHead>
               <TableHead className="text-right">订单总额（CNY）</TableHead>
+              <TableHead className="text-right">已收（原币）</TableHead>
               <TableHead className="text-right">已收（CNY）</TableHead>
+              <TableHead className="text-right">未收（原币）</TableHead>
               <TableHead className="text-right">未收（CNY）</TableHead>
               <TableHead className="text-right">逾期订单</TableHead>
             </TableRow>
@@ -354,16 +381,24 @@ export function PerformanceManager({
                   {Number(row.order_count)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {Number(row.order_total_amount).toLocaleString('zh-CN', {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}
+                  {formatOriginal(Number(row.order_total_amount), row.currency)}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
                   {formatCny(Number(row.order_total_cny))}
                 </TableCell>
                 <TableCell className="text-right tabular-nums text-green-700">
+                  {formatOriginal(Number(row.received_amount), row.currency)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-green-700">
                   {formatCny(Number(row.received_cny))}
+                </TableCell>
+                <TableCell
+                  className={cn(
+                    'text-right tabular-nums',
+                    Number(row.outstanding_cny) > 0.005 && 'text-destructive',
+                  )}
+                >
+                  {formatOriginal(Number(row.outstanding_amount), row.currency)}
                 </TableCell>
                 <TableCell
                   className={cn(
@@ -385,7 +420,7 @@ export function PerformanceManager({
             {groupRows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={9}
                   className="py-12 text-center text-muted-foreground"
                 >
                   暂无符合条件的数据
