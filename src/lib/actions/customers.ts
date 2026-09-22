@@ -21,6 +21,7 @@ function parseCustomer(formData: FormData) {
     contact_person: formData.get('contact_person') || '',
     remarks: formData.get('remarks') || '',
     group_id: formData.get('group_id') || '',
+    tag_color: formData.get('tag_color') || '',
   })
 }
 
@@ -38,6 +39,7 @@ function normalize(data: ReturnType<typeof customerSchema.parse>) {
     contact_person: data.contact_person || null,
     remarks: data.remarks || null,
     group_id: data.group_id ? data.group_id : null,
+    tag_color: data.tag_color || null,
   }
 }
 
@@ -78,6 +80,30 @@ export async function updateCustomer(
 
   revalidatePath('/customers')
   return { ok: true, id }
+}
+
+const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/
+
+export async function updateCustomerTagColor(
+  id: string,
+  tagColor: string | null,
+): Promise<ActionResult & { id?: string; customer?: Customer }> {
+  await requireProfile()
+  if (tagColor !== null && !HEX_COLOR_RE.test(tagColor)) {
+    return { ok: false, error: '颜色格式错误' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('customers')
+    .update({ tag_color: tagColor })
+    .eq('id', id)
+    .select('*')
+    .single()
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/customers')
+  return { ok: true, id, customer: data }
 }
 
 export async function deleteCustomer(id: string): Promise<ActionResult> {

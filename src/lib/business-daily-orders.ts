@@ -45,6 +45,7 @@ export interface BusinessDailyLedgerOrder extends BusinessOrder {
   >
   business_order_payment_allocations?: BusinessOrderPaymentAllocationLite[]
   outstanding_amount: number
+  customer?: { tag_color?: string | null }
 }
 
 /**

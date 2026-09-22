@@ -36,16 +36,15 @@ export default async function CustomersPage({
   if (country) customerQuery = customerQuery.eq('country', country)
   if (isAdmin && owner) customerQuery = customerQuery.eq('created_by', owner)
 
-  const [{ data: customerData }, { data: groupData }, { data: profileData }, { data: countryData }] =
-    await Promise.all([
-      customerQuery,
-      supabase.from('customer_groups').select('*').order('name'),
-      supabase
-        .from('profiles')
-        .select('id, full_name, email, chinese_name, role, status')
-        .order('full_name'),
-      supabase.from('customers').select('country'),
-    ])
+  const [{ data: customerData }, { data: groupData }, { data: profileData }, { data: countryData }] = await Promise.all([
+    customerQuery,
+    supabase.from('customer_groups').select('*').order('name'),
+    supabase
+      .from('profiles')
+      .select('id, full_name, email, chinese_name, role, status')
+      .order('full_name'),
+    supabase.from('customers').select('country'),
+  ])
 
   const customers = (customerData ?? []) as CustomerRow[]
   const groups = (groupData ?? []) as CustomerGroup[]

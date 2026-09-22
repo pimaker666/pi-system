@@ -102,7 +102,11 @@ export function DailyOrderWorkflowList({ workflows }: DailyOrderWorkflowListProp
                   </Link>
                 </TableCell>
                 <TableCell>{displayProfileName(workflow.salesperson, workflow.salesperson_name_snapshot)}</TableCell>
-                <TableCell>{workflow.customer_name_snapshot || '—'}</TableCell>
+                <TableCell
+                  style={{ color: workflow.customer_tag_color ?? undefined }}
+                >
+                  {workflow.customer_name_snapshot || '—'}
+                </TableCell>
                 <TableCell className="text-right">{workflow.order_line_count}</TableCell>
                 <TableCell>
                   <Badge variant={WORKFLOW_STATUS_VARIANTS[workflow.status]}>

@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { BusinessOrderCommissionRow, CommissionCategoryRate, DailyOrderShippingCategory } from '@/types'
+import type {
+  BusinessOrderCommissionRow,
+  CommissionCategoryRate,
+  DailyOrderShippingCategory,
+} from '@/types'
 import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-commission'
 import { displayProfileName } from '@/lib/utils'
 import { COMMISSION_PAGE_SIZE } from '@/lib/business-order-commission'
@@ -45,7 +49,7 @@ function buildOrdersQuery(
   let query = supabase
     .from('business_orders')
     .select(
-      `*, ${itemsEmbed}, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`,
+      `*, ${itemsEmbed}, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), customer:customers!customer_id(tag_color), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`,
     )
     .is('voided_at', null)
     .not('customer_id', 'is', null)
@@ -185,6 +189,13 @@ function getCustomerName(customerSnapshot: unknown): string | null {
   return snapshot.company || snapshot.name || null
 }
 
+function getCustomerTagColor(order: BusinessDailyLedgerOrder): string | null {
+  const liveColor = (order.customer as { tag_color?: string | null } | undefined)?.tag_color
+  if (liveColor) return liveColor
+  if (!order.customer_snapshot || typeof order.customer_snapshot !== 'object') return null
+  return (order.customer_snapshot as { tag_color?: string | null }).tag_color ?? null
+}
+
 function round4(value: number) {
   return Math.round(value * 10000) / 10000
 }
@@ -194,7 +205,11 @@ export async function fetchBusinessOrderCommissions(
   filters: BusinessOrderCommissionFilters,
   page = 1,
   pageSize = COMMISSION_PAGE_SIZE,
-): Promise<{ rows: BusinessOrderCommissionRow[]; totalCount: number; categoryRates: CommissionCategoryRate[] }> {
+): Promise<{
+  rows: BusinessOrderCommissionRow[]
+  totalCount: number
+  categoryRates: CommissionCategoryRate[]
+}> {
   const [allOrders, categoryRates, itemCommissions, orderCommissions] = await Promise.all([
     fetchMatchingOrders(supabase, filters),
     fetchAllCategoryRates(supabase),
@@ -227,6 +242,8 @@ export async function fetchBusinessOrderCommissions(
     const freightProfit = round4(freightReceived - freightCost)
     const freightCommission = round4((freightProfit * freightRate) / 100)
 
+    const tagColor = getCustomerTagColor(order)
+
     const mergedItems = mergeBusinessDailyItems(order)
     const orderRowSpan = mergedItems.length
 
@@ -256,6 +273,7 @@ export async function fetchBusinessOrderCommissions(
         order_number: order.order_number,
         external_order_number: order.external_order_number,
         customer_name: getCustomerName(order.customer_snapshot),
+        customer_tag_color: tagColor,
         shipping_category: category,
         product_name: item.name_snapshot ?? '—',
         product_sku: item.display_sku ?? item.sku_snapshot ?? '',

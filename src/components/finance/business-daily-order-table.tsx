@@ -414,7 +414,14 @@ export function BusinessDailyOrderTable({
                           )}
                           <div className="flex flex-wrap items-center gap-1 text-xs font-normal text-muted-foreground">
                             <CountryFlag country={order.current_customer_country ?? order.customer_snapshot?.country} />
-                            <span>
+                            <span
+                              style={{
+                                color:
+                                  order.customer?.tag_color ??
+                                  order.customer_snapshot?.tag_color ??
+                                  undefined,
+                              }}
+                            >
                               {order.customer_id
                                 ? getBusinessOrderCustomerName(order.customer_snapshot)
                                 : '未绑定客户'}

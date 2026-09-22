@@ -213,6 +213,7 @@ export interface BusinessOrderProductCost {
   order_number: string
   external_order_number: string | null
   customer_name: string | null
+  customer_tag_color: string | null
   payment_account: string | null
   shipping_number: string | null
   shipping_category: DailyOrderShippingCategory | null
@@ -266,6 +267,7 @@ export interface BusinessOrderCommissionRow {
   order_number: string
   external_order_number: string | null
   customer_name: string | null
+  customer_tag_color: string | null
   shipping_category: DailyOrderShippingCategory | null
   product_name: string
   product_sku: string
@@ -420,6 +422,7 @@ export interface DailyOrderWorkflow {
   order_number: string
   customer_id: string | null
   customer_name_snapshot: string | null
+  customer_tag_color: string | null
   total_product_received_amount: number
   total_product_received_currency: CurrencyCode
   total_product_received_overridden: boolean
@@ -1056,6 +1059,7 @@ export interface Customer {
   contact_person: string | null
   remarks: string | null
   group_id: string | null
+  tag_color: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -1072,6 +1076,7 @@ export interface CustomerSnapshot {
   postal_code: string | null
   country: string | null
   contact_person: string | null
+  tag_color: string | null
 }
 
 export interface PiItem {

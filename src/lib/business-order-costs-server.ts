@@ -61,7 +61,7 @@ function buildBaseQuery(
 
   let query = supabase
     .from('business_orders')
-    .select(`*, ${itemsEmbed}, ${LEDGER_TAIL}`)
+    .select(`*, ${itemsEmbed}, customer:customers!customer_id(tag_color), ${LEDGER_TAIL}`)
     .is('voided_at', null)
     .in('fulfillment_status', ['partially_shipped', 'fully_shipped'])
     .eq('business_order_attachments.status', 'active')
@@ -214,6 +214,13 @@ function getCustomerName(customerSnapshot: unknown): string | null {
   return snapshot.company || snapshot.name || null
 }
 
+function getCustomerTagColor(order: BusinessDailyLedgerOrder): string | null {
+  const liveColor = order.customer?.tag_color
+  if (liveColor) return liveColor
+  if (!order.customer_snapshot || typeof order.customer_snapshot !== 'object') return null
+  return (order.customer_snapshot as { tag_color?: string | null }).tag_color ?? null
+}
+
 export async function fetchBusinessOrderProductCosts(
   supabase: SupabaseClient,
   filters: BusinessOrderCostFilters,
@@ -297,6 +304,7 @@ export async function fetchBusinessOrderProductCosts(
         order_number: order.order_number,
         external_order_number: order.external_order_number,
         customer_name: getCustomerName(order.customer_snapshot),
+        customer_tag_color: getCustomerTagColor(order),
         payment_account: order.payment_account,
         shipping_number: order.daily_shipping_number,
         shipping_category: item.daily_shipping_category ?? null,

@@ -313,7 +313,12 @@ export function CustomerTable({
                       aria-label={`选择 ${c.name}`}
                     />
                   </TableCell>
-                  <TableCell className="font-medium">{c.name}</TableCell>
+                  <TableCell
+                    className="font-medium"
+                    style={{ color: c.tag_color ?? undefined }}
+                  >
+                    {c.name}
+                  </TableCell>
                   <TableCell>{c.company ?? '—'}</TableCell>
                   <TableCell>
                     <span className="flex items-center gap-1.5">

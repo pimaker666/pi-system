@@ -51,6 +51,7 @@ function toSnapshot(c: Customer): CustomerSnapshot {
     postal_code: c.postal_code,
     country: c.country,
     contact_person: c.contact_person,
+    tag_color: c.tag_color,
   }
 }
 

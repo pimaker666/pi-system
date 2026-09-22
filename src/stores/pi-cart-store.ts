@@ -273,6 +273,7 @@ export const usePiCartStore = create<PiCartState>()(
                 contact_person: pi.customer_snapshot.contact_person,
                 remarks: null,
                 group_id: null,
+                tag_color: pi.customer_snapshot.tag_color ?? null,
                 created_by: null,
                 created_at: '',
                 updated_at: '',

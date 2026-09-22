@@ -408,8 +408,11 @@ export function CommissionManager({
         <p className="text-sm text-muted-foreground">
           已关联客户的业务订单自动进入本页。产品提成 = 产品实收金额 × 产品提点%；
           运费利润 = 运费实收 − 运费成本；运费提成 = 运费利润 × 运费提点%。
+          产品行单独设置提点的，优先以行内为准；未设置的按发货分类默认值。
         </p>
-        {canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}
+        <div className="flex flex-wrap gap-2">
+          {canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}
+        </div>
       </div>
 
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
@@ -503,7 +506,11 @@ export function CommissionManager({
                             <div className="text-xs font-normal text-muted-foreground">{row.order_number}</div>
                           )}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell
+                          rowSpan={rowSpan}
+                          className={mergedCellClassName}
+                          style={{ color: row.customer_tag_color ?? undefined }}
+                        >
                           {row.customer_name || '—'}
                         </TableCell>
                       </>

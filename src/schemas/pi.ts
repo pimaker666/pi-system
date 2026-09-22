@@ -9,6 +9,13 @@ export const customerSnapshotSchema = z.object({
   address: z.string().trim().optional().nullable(),
   country: z.string().trim().optional().nullable(),
   contact_person: z.string().trim().optional().nullable(),
+  tag_color: z
+    .string()
+    .trim()
+    .regex(/^#[0-9A-Fa-f]{6}$/, '颜色格式错误')
+    .optional()
+    .nullable()
+    .or(z.literal('')),
 })
 
 export const piLineItemSchema = z.object({

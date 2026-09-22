@@ -469,7 +469,10 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                           {row.external_order_number && (
                             <div className="text-xs font-normal text-muted-foreground">{row.order_number}</div>
                           )}
-                          <div className="text-xs font-normal text-muted-foreground">
+                          <div
+                            className="text-xs font-normal"
+                            style={{ color: row.customer_tag_color ?? undefined }}
+                          >
                             {row.customer_name || '—'}
                           </div>
                           <div className="mt-1 space-y-0.5 text-xs font-normal tabular-nums">

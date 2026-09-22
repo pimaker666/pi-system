@@ -40,6 +40,7 @@ interface FormState {
   state: string
   postal_code: string
   remarks: string
+  tag_color: string
 }
 
 export function CustomerFormFields({ customer, groups, onSuccess }: CustomerFormProps) {
@@ -58,6 +59,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
     state: customer?.state ?? '',
     postal_code: customer?.postal_code ?? '',
     remarks: customer?.remarks ?? '',
+    tag_color: customer?.tag_color ?? '',
   })
 
   const [showPaste, setShowPaste] = useState(false)
@@ -267,6 +269,37 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
             onChange={(e) => update('company', e.target.value)}
           />
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="tag_color">客户标记颜色</Label>
+        <input type="hidden" name="tag_color" value={form.tag_color} />
+        <div className="flex flex-wrap items-center gap-2">
+          {['', '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b'].map(
+            (color) => (
+              <button
+                key={color || 'none'}
+                type="button"
+                onClick={() => update('tag_color', color)}
+                className={`h-8 w-8 rounded-full border-2 transition hover:scale-110 ${
+                  form.tag_color === color ? 'border-foreground' : 'border-transparent'
+                }`}
+                style={{ backgroundColor: color || 'transparent' }}
+                title={color ? color : '清除标记'}
+              >
+                {!color && <span className="text-muted-foreground text-xs">无</span>}
+              </button>
+            )
+          )}
+          <input
+            type="color"
+            value={form.tag_color || '#3b82f6'}
+            onChange={(e) => update('tag_color', e.target.value)}
+            className="h-8 w-8 cursor-pointer rounded-full border-0 p-0"
+            aria-label="自定义颜色"
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">选择颜色后，客户名称会在列表和订单视图中显示为该颜色。</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">

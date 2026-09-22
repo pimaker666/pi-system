@@ -226,7 +226,9 @@ export function DailyOrderWorkflowPanel({
             </div>
             <div>
               <span className="text-muted-foreground">客户：</span>
-              {workflow.customer_name_snapshot || '未绑定'}
+              <span style={{ color: workflow.customer_tag_color ?? undefined }}>
+                {workflow.customer_name_snapshot || '未绑定'}
+              </span>
             </div>
             <div>
               <span className="text-muted-foreground">总产品实收金额：</span>

@@ -28,7 +28,7 @@ export default async function FinanceCostsPage({
         .order('order_date', { ascending: false }),
       supabase
         .from('business_orders')
-        .select('id, order_number, customer_snapshot')
+        .select('id, order_number, customer_snapshot, customer:customers!customer_id(tag_color)')
         .in('status', ['approved', 'completed'])
         .is('voided_at', null)
         .order('order_date', { ascending: false }),
@@ -45,14 +45,17 @@ export default async function FinanceCostsPage({
     source: 'finance',
     reference: order.pi_number_snapshot,
     customer: order.customer_name_snapshot,
+    customer_tag_color: null,
   }))
   const businessOrders: CostOrderOption[] = (businessOrdersResult.data ?? []).map((order) => {
-    const customer = order.customer_snapshot as { name?: string | null; company?: string | null }
+    const customer = order.customer_snapshot as { name?: string | null; company?: string | null; tag_color?: string | null }
+    const liveCustomer = order.customer as { tag_color?: string | null } | undefined
     return {
       id: order.id,
       source: 'business',
       reference: order.order_number,
       customer: customer.company || customer.name || null,
+      customer_tag_color: liveCustomer?.tag_color ?? customer.tag_color ?? null,
     }
   })
   const orders = [...businessOrders, ...legacyOrders]

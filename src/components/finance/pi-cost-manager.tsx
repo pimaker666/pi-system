@@ -42,6 +42,7 @@ export interface CostOrderOption {
   source: 'finance' | 'business'
   reference: string
   customer: string | null
+  customer_tag_color: string | null
 }
 
 export interface PiCostManagerProps {
@@ -139,7 +140,12 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
                         value={`${order.source}:${order.id}`}
                       >
                         {order.source === 'business' ? '业务订单' : '历史 PI'} · {order.reference}
-                        {order.customer ? ` · ${order.customer}` : ''}
+                        {order.customer ? (
+                          <span style={{ color: order.customer_tag_color ?? undefined }}>
+                            {' '}
+                            · {order.customer}
+                          </span>
+                        ) : null}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -246,7 +252,10 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
                   <TableCell>{formatDate(cost.incurred_date)}</TableCell>
                   <TableCell>
                     <div className="font-medium">{order?.reference ?? '订单已不可用'}</div>
-                    <div className="text-xs text-muted-foreground">
+                    <div
+                      className="text-xs text-muted-foreground"
+                      style={{ color: order?.customer_tag_color ?? undefined }}
+                    >
                       {order?.customer || '—'}
                     </div>
                   </TableCell>

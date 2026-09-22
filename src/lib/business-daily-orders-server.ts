@@ -14,6 +14,7 @@ export const BUSINESS_DAILY_EXPORT_LIMIT = 2000
 
 const LEDGER_TAIL = `
   salesperson:profiles!salesperson_id(id, chinese_name, full_name, email),
+  customer:customers!customer_id(tag_color),
   business_order_attachments(*),
   business_order_shipments(*, business_order_shipment_items(*)),
   business_order_returns(*, business_order_return_items(*)),
