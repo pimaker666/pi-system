@@ -115,7 +115,7 @@ revoke all on function public.get_business_performance_summary(
 ) from public, anon, authenticated, service_role;
 grant execute on function public.get_business_performance_summary(
   date, date, uuid[], uuid[], text[], text[]
-) to authenticated;
+) to authenticated, service_role;
 
 -- -----------------------------------------------------------------------------
 -- 2. 分组透视 RPC
@@ -608,6 +608,6 @@ revoke all on function public.get_business_performance_by_group(
 ) from public, anon, authenticated, service_role;
 grant execute on function public.get_business_performance_by_group(
   text, date, date, uuid[], uuid[], text[], text[]
-) to authenticated;
+) to authenticated, service_role;
 
 commit;
