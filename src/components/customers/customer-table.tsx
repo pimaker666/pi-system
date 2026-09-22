@@ -308,12 +308,12 @@ export function CustomerTable({
                 <TableHead>客户</TableHead>
                 <TableHead>公司</TableHead>
                 <TableHead>国家</TableHead>
-                <TableHead>分组</TableHead>
+                <TableHead className="whitespace-nowrap">分组</TableHead>
                 <TableHead>联系方式</TableHead>
-                <TableHead className="text-right">近一年下单金额</TableHead>
-                <TableHead>上次下单时间</TableHead>
-                <TableHead className="text-right">定制订单数</TableHead>
-                {isAdmin && <TableHead>归属账号</TableHead>}
+                <TableHead className="whitespace-nowrap text-right">近一年下单金额</TableHead>
+                <TableHead className="whitespace-nowrap">上次下单时间</TableHead>
+                <TableHead className="whitespace-nowrap text-right">定制订单数</TableHead>
+                {isAdmin && <TableHead className="whitespace-nowrap">归属账号</TableHead>}
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
