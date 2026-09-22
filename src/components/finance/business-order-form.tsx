@@ -307,6 +307,13 @@ export function BusinessOrderForm({
   const [selectedProductId, setSelectedProductId] = useState('')
   const [selectedCustomProduct, setSelectedCustomProduct] =
     useState<BusinessCustomProductListItem | null>(null)
+  // 普通产品行的显示名与台账/详情保持一致：维护了财务产品名称时优先显示它。
+  // 只影响展示，name_snapshot 仍由服务端按销售名称写入。
+  const financialNameByProductId = new Map(
+    products
+      .filter((product) => product.financial_product_name)
+      .map((product) => [product.id, product.financial_product_name as string]),
+  )
   const [items, setItems] = useState<EditableItem[]>(
     initialOrder?.business_order_items
       .slice()
@@ -318,7 +325,9 @@ export function BusinessOrderForm({
         product_id: item.product_id,
         custom_product_id: item.custom_product_id,
         custom_product_version_id: item.custom_product_version_id,
-        product_name: item.name_snapshot,
+        product_name:
+          (item.product_id ? financialNameByProductId.get(item.product_id) : null) ??
+          item.name_snapshot,
         sku: item.sku_snapshot,
         description: item.description_snapshot,
         specification: item.specification_snapshot,
@@ -419,7 +428,7 @@ export function BusinessOrderForm({
         product_id: product.id,
         custom_product_id: null,
         custom_product_version_id: null,
-        product_name: product.name,
+        product_name: product.financial_product_name || product.name,
         sku: product.sku,
         description: product.description,
         specification: product.specification,
