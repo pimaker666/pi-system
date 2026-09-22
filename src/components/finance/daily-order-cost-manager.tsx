@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import { Download, Eye, Save, CheckCircle2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -48,9 +48,6 @@ import type {
   DailyOrderShopGroup,
   Profile,
 } from '@/types'
-
-const mergedCellClassName = 'bg-muted/20 align-top'
-const stickyHeaderCellClassName = 'sticky top-0 z-20 bg-background'
 
 function quantityText(value: number) {
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 }).format(value)
@@ -194,10 +191,37 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const [dialogOpen, setDialogOpen] = useState(false)
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
-  const [pinFirst, setPinFirst] = useState(false)
+  const tableRef = useRef<HTMLTableElement>(null)
+  const [pinnedCol, setPinnedCol] = useState<number | null>(null)
   const query = businessOrderCostFilterQuery(filters)
   const currentPage = filters.page
   const totalPages = Math.max(1, Math.ceil(totalCount / COST_PAGE_SIZE))
+
+  // 冻结用户点击「固定」时视口最左侧的那一列，而不是永远固定首列。
+  function togglePin(checked: boolean) {
+    if (!checked) {
+      setPinnedCol(null)
+      return
+    }
+    const table = tableRef.current
+    const container = table?.parentElement
+    const headerRow = table?.tHead?.rows[0]
+    if (!table || !container || !headerRow) return
+    const scrollLeft = container.scrollLeft
+    let target = 0
+    for (let i = 0; i < headerRow.cells.length; i += 1) {
+      if ((headerRow.cells[i] as HTMLElement).offsetLeft <= scrollLeft + 1) target = i
+      else break
+    }
+    setPinnedCol(target)
+  }
+
+  const headCn = (index: number, extra?: string) =>
+    cn('sticky top-0 bg-background', extra, pinnedCol === index ? 'left-0 z-30' : 'z-20')
+  const cellCn = (index: number, extra?: string) =>
+    cn(extra, pinnedCol === index && 'sticky left-0 z-10 bg-background')
+  const mergedCn = (index: number, extra?: string) =>
+    cn('align-top', pinnedCol === index ? 'sticky left-0 z-10 bg-background' : 'bg-muted/20', extra)
 
   const groups = useMemo(() => {
     const map = new Map<string, BusinessOrderProductCost[]>()
@@ -315,10 +339,10 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
         <label className="ml-auto flex items-center gap-1.5 text-sm text-muted-foreground">
           <input
             type="checkbox"
-            checked={pinFirst}
-            onChange={(event) => setPinFirst(event.target.checked)}
+            checked={pinnedCol !== null}
+            onChange={(event) => togglePin(event.target.checked)}
           />
-          固定首列
+          固定当前列
         </label>
       </div>
 
@@ -363,18 +387,13 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
       </form>
 
       <Table
+        ref={tableRef}
         containerClassName="max-h-[70vh] overflow-auto rounded-md border"
         className="min-w-[3000px]"
       >
         <TableHeader>
           <TableRow>
-            <TableHead
-              className={cn(
-                'w-12',
-                stickyHeaderCellClassName,
-                pinFirst && 'left-0 z-30',
-              )}
-            >
+            <TableHead className={headCn(0, 'w-12')}>
               {orderIds.length > 0 && (
                 <input
                   type="checkbox"
@@ -385,13 +404,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
               )}
             </TableHead>
             {BUSINESS_ORDER_COST_COLUMNS.map((label, index) => (
-              <TableHead
-                key={label}
-                className={cn(
-                  stickyHeaderCellClassName,
-                  index === 0 && pinFirst && 'left-12 z-30 w-16',
-                )}
-              >
+              <TableHead key={label} className={headCn(index + 1)}>
                 {label}
               </TableHead>
             ))}
@@ -411,13 +424,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                     className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
                   >
                     {isFirstRow && (
-                      <TableCell
-                        rowSpan={rowSpan}
-                        className={cn(
-                          'align-top',
-                          pinFirst && 'sticky left-0 z-10 bg-background',
-                        )}
-                      >
+                      <TableCell rowSpan={rowSpan} className={cellCn(0, 'align-top')}>
                         <input
                           type="checkbox"
                           aria-label={`选择订单 ${row.order_number}`}
@@ -432,9 +439,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                         />
                       </TableCell>
                     )}
-                    <TableCell
-                      className={cn(pinFirst && 'sticky left-12 z-10 w-16 bg-background')}
-                    >
+                    <TableCell className={cellCn(1)}>
                       <div className="font-medium">
                         {groupIndex + 1}
                         {rowSpan > 1 && (
@@ -445,19 +450,19 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
 
                     {isFirstRow && (
                       <>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(2)}>
                           {row.order_date}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(3)}>
                           <div>{row.shop_name ?? '—'}</div>
                           {row.shop_group_name && (
                             <div className="text-xs text-muted-foreground">{row.shop_group_name}</div>
                           )}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(4)}>
                           {row.salesperson_name}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(5, 'font-medium')}>
                           <Link href={`/finance/daily-orders/${row.order_id}`} className="hover:underline">
                             {displayOrderNumber}
                           </Link>
@@ -484,36 +489,36 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                             )}
                           </div>
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(6)}>
                           {row.shipping_date ?? '—'}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(7)}>
                           {row.payment_account || row.shipping_number || '—'}
                         </TableCell>
                       </>
                     )}
 
-                    <TableCell>
+                    <TableCell className={cellCn(8)}>
                       {row.shipping_category ? SHIPPING_LABELS[row.shipping_category] : '—'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cellCn(9)}>
                       <ImagePreview src={row.image_url} alt={row.product_name} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cellCn(10)}>
                       <div>{row.product_name}</div>
                       {row.product_sku && (
                         <div className="text-xs text-muted-foreground">{row.product_sku}</div>
                       )}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{quantityText(row.quantity)}</TableCell>
-                    <TableCell>
+                    <TableCell className={cellCn(11, 'text-right tabular-nums')}>{quantityText(row.quantity)}</TableCell>
+                    <TableCell className={cellCn(12)}>
                       <CostEditor row={row} />
                     </TableCell>
-                    <TableCell className="tabular-nums">{formatCostValue(row.total_cost)}</TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">{row.shipping_progress}</TableCell>
-                    <TableCell>{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
-                    <TableCell>{formatDailyMoney(row.product_received_amount, row.currency)}</TableCell>
-                    <TableCell>
+                    <TableCell className={cellCn(13, 'tabular-nums')}>{formatCostValue(row.total_cost)}</TableCell>
+                    <TableCell className={cellCn(14, 'whitespace-nowrap tabular-nums')}>{row.shipping_progress}</TableCell>
+                    <TableCell className={cellCn(15)}>{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
+                    <TableCell className={cellCn(16)}>{formatDailyMoney(row.product_received_amount, row.currency)}</TableCell>
+                    <TableCell className={cellCn(17)}>
                       {row.logistics_fee_amount !== null
                         ? formatDailyMoney(row.logistics_fee_amount, row.currency)
                         : '—'}
@@ -521,22 +526,22 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
 
                     {isFirstRow && (
                       <>
-                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(18, 'font-medium')}>
                           {formatDailyMoney(row.order_total_amount, row.currency)}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(19, 'font-medium')}>
                           {formatDailyMoney(row.outstanding_amount, row.currency)}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(20)}>
                           {row.payment_category ? PAYMENT_LABELS[row.payment_category] : '—'}
                         </TableCell>
                         <TableCell
                           rowSpan={rowSpan}
-                          className={`${mergedCellClassName} max-w-64 whitespace-normal`}
+                          className={mergedCn(21, 'max-w-64 whitespace-normal')}
                         >
                           {row.sales_notes || '—'}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(22)}>
                           {row.attachments.length === 0
                             ? '—'
                             : row.attachments.map((attachment, attachmentIndex) => (

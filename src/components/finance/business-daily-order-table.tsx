@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Download, Eye, FileText, Pencil, Truck, UserRoundPlus } from 'lucide-react'
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { CustomerCombobox } from '@/components/customers/customer-combobox'
 import { CountryFlag } from '@/components/shared/country-flag'
@@ -55,8 +55,6 @@ import { DAILY_ORDER_COLUMNS, formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS 
 import { cn, displayProfileName } from '@/lib/utils'
 import type { BusinessOrder, Customer, CustomerGroup, Profile } from '@/types'
 
-const mergedCellClassName = 'bg-muted/20 align-top'
-const stickyHeaderCellClassName = 'sticky top-0 z-20 bg-background'
 const BUSINESS_DAILY_ORDER_COLUMNS = [
   ...DAILY_ORDER_COLUMNS.slice(0, 8),
   '产品图片',
@@ -110,7 +108,34 @@ export function BusinessDailyOrderTable({
   const [customerOrder, setCustomerOrder] = useState<BusinessDailyLedgerOrder | null>(null)
   const [customerDraft, setCustomerDraft] = useState<Customer | null>(null)
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null)
-  const [pinFirst, setPinFirst] = useState(false)
+  const tableRef = useRef<HTMLTableElement>(null)
+  const [pinnedCol, setPinnedCol] = useState<number | null>(null)
+
+  // 冻结用户点击「固定」时视口最左侧的那一列，而不是永远固定首列。
+  function togglePin(checked: boolean) {
+    if (!checked) {
+      setPinnedCol(null)
+      return
+    }
+    const table = tableRef.current
+    const container = table?.parentElement
+    const headerRow = table?.tHead?.rows[0]
+    if (!table || !container || !headerRow) return
+    const scrollLeft = container.scrollLeft
+    let target = 0
+    for (let i = 0; i < headerRow.cells.length; i += 1) {
+      if ((headerRow.cells[i] as HTMLElement).offsetLeft <= scrollLeft + 1) target = i
+      else break
+    }
+    setPinnedCol(target)
+  }
+
+  const headCn = (index: number, extra?: string) =>
+    cn('sticky top-0 bg-background', extra, pinnedCol === index ? 'left-0 z-30' : 'z-20')
+  const cellCn = (index: number, extra?: string) =>
+    cn(extra, pinnedCol === index && 'sticky left-0 z-10 bg-background')
+  const mergedCn = (index: number, extra?: string) =>
+    cn('align-top', pinnedCol === index ? 'sticky left-0 z-10 bg-background' : 'bg-muted/20', extra)
 
   const settledSet = useMemo(() => new Set(settledItemIds), [settledItemIds])
   const isMergedItemSettled = (item: MergedBusinessDailyItem) =>
@@ -254,10 +279,10 @@ export function BusinessDailyOrderTable({
             <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
               <input
                 type="checkbox"
-                checked={pinFirst}
-                onChange={(event) => setPinFirst(event.target.checked)}
+                checked={pinnedCol !== null}
+                onChange={(event) => togglePin(event.target.checked)}
               />
-              固定首列
+              固定当前列
             </label>
             <Button asChild variant="outline" size="sm">
               <a download href={`/api/finance/daily-orders/export/xlsx${exportUrl}`}>
@@ -274,18 +299,13 @@ export function BusinessDailyOrderTable({
       )}
 
       <Table
+        ref={tableRef}
         containerClassName="max-h-[70vh] overflow-auto rounded-md border"
         className="min-w-[2800px]"
       >
         <TableHeader>
           <TableRow>
-            <TableHead
-              className={cn(
-                'w-12',
-                stickyHeaderCellClassName,
-                pinFirst && 'left-0 z-30',
-              )}
-            >
+            <TableHead className={headCn(0, 'w-12')}>
               {selectableOrders.length > 0 && (
                 <input
                   type="checkbox"
@@ -296,13 +316,7 @@ export function BusinessDailyOrderTable({
               )}
             </TableHead>
             {BUSINESS_DAILY_ORDER_COLUMNS.map((label, index) => (
-              <TableHead
-                key={label}
-                className={cn(
-                  stickyHeaderCellClassName,
-                  index === 0 && pinFirst && 'left-12 z-30 w-28',
-                )}
-              >
+              <TableHead key={label} className={headCn(index + 1)}>
                 {label}
               </TableHead>
             ))}
@@ -332,12 +346,7 @@ export function BusinessDailyOrderTable({
                     key={item ? item.id : order.id}
                     className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
                   >
-                    <TableCell
-                      className={cn(
-                        'align-top',
-                        pinFirst && 'sticky left-0 z-10 bg-background',
-                      )}
-                    >
+                    <TableCell className={cellCn(0, 'align-top')}>
                       {isFirstRow && canSelect && (
                         <input
                           type="checkbox"
@@ -347,9 +356,7 @@ export function BusinessDailyOrderTable({
                         />
                       )}
                     </TableCell>
-                    <TableCell
-                      className={cn(pinFirst && 'sticky left-12 z-10 w-28 bg-background')}
-                    >
+                    <TableCell className={cellCn(1)}>
                       <div className="font-medium">
                         {groupIndex + 1}
                         {rowSpan > 1 && (
@@ -382,10 +389,10 @@ export function BusinessDailyOrderTable({
 
                     {isFirstRow && (
                       <>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(2)}>
                           {order.order_date}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(3)}>
                           <div>{order.shop_name_snapshot ?? '—'}</div>
                           {order.shop_group_name_snapshot && (
                             <div className="text-xs text-muted-foreground">
@@ -393,10 +400,10 @@ export function BusinessDailyOrderTable({
                             </div>
                           )}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(4)}>
                           {salesperson}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(5, 'font-medium')}>
                           <Link href={`/finance/daily-orders/${order.id}`} className="hover:underline">
                             {order.external_order_number || order.order_number}
                           </Link>
@@ -452,19 +459,19 @@ export function BusinessDailyOrderTable({
                             )}
                           </div>
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(6)}>
                           {order.daily_shipping_date ?? '—'}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(7)}>
                           {order.daily_shipping_number || order.payment_account || '—'}
                         </TableCell>
                       </>
                     )}
 
-                    <TableCell>
+                    <TableCell className={cellCn(8)}>
                       {item?.daily_shipping_category ? SHIPPING_LABELS[item.daily_shipping_category] : '—'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cellCn(9)}>
                       {item ? (
                         <ImagePreview
                           src={item.image_url_snapshot}
@@ -474,7 +481,7 @@ export function BusinessDailyOrderTable({
                         '—'
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cellCn(10)}>
                       <div>{item ? businessOrderItemDisplayName(item) : '—'}</div>
                       {item && businessOrderItemDisplaySku(item) && (
                         <div className="text-xs text-muted-foreground">
@@ -482,19 +489,19 @@ export function BusinessDailyOrderTable({
                         </div>
                       )}
                     </TableCell>
-                    <TableCell className="tabular-nums">
+                    <TableCell className={cellCn(11, 'tabular-nums')}>
                       {item ? item.quantity.toLocaleString() : '—'}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap tabular-nums">
+                    <TableCell className={cellCn(12, 'whitespace-nowrap tabular-nums')}>
                       {item ? formatMergedBusinessDailyShippingProgress(item) : '—'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cellCn(13)}>
                       {item ? formatDailyMoney(item.unit_price, order.currency) : '—'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cellCn(14)}>
                       {item ? formatDailyMoney(item.product_received_amount, order.currency) : '—'}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className={cellCn(15)}>
                       {item && item.logistics_fee_amount !== null
                         ? formatDailyMoney(item.logistics_fee_amount, order.currency)
                         : '—'}
@@ -502,24 +509,24 @@ export function BusinessDailyOrderTable({
 
                     {isFirstRow && (
                       <>
-                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(16, 'font-medium')}>
                           {formatDailyMoney(Number(order.total_amount), order.currency)}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(17, 'font-medium')}>
                           {formatDailyMoney(order.outstanding_amount, order.currency)}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(18)}>
                           {order.daily_payment_category
                             ? PAYMENT_LABELS[order.daily_payment_category]
                             : '—'}
                         </TableCell>
                         <TableCell
                           rowSpan={rowSpan}
-                          className={`${mergedCellClassName} max-w-64 whitespace-normal`}
+                          className={mergedCn(19, 'max-w-64 whitespace-normal')}
                         >
                           {order.sales_notes || '—'}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(20)}>
                           {attachments.length === 0
                             ? '—'
                             : attachments.map((attachment, attachmentIndex) => (
@@ -539,7 +546,7 @@ export function BusinessDailyOrderTable({
                       </>
                     )}
 
-                    <TableCell className="align-top">
+                    <TableCell className={cellCn(21, 'align-top')}>
                       {item ? (
                         isMergedItemSettled(item) ? (
                           <Badge variant="success">是</Badge>
