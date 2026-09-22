@@ -27,7 +27,7 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /** 截图列的 0 基列号，用于 addImage 定位。 */
-const SCREENSHOT_COLUMN_INDEX = DAILY_ORDER_COLUMNS.length - 1
+const SCREENSHOT_COLUMN_INDEX = DAILY_ORDER_COLUMNS.indexOf('截图')
 
 export async function GET(request: Request) {
   // 每日订单台账对所有已审核角色开放（业务员也要能导出自己可见的订单），
@@ -79,6 +79,7 @@ export async function GET(request: Request) {
 
   let downloadedImageBytes = 0
   for (const exportRow of rows) {
+    const attachments = exportRow.attachments
     const row = sheet.addRow([
       exportRow.sequence,
       exportRow.orderDate,
@@ -98,26 +99,30 @@ export async function GET(request: Request) {
       exportRow.outstandingAmount,
       exportRow.paymentCategory,
       exportRow.remarks,
+      '',
       exportRow.settlementStatus,
       exportRow.commissionClearanceStatus,
-      '',
     ])
-    row.alignment = { vertical: 'middle', wrapText: true }
-    row.eachCell((cell) => {
-      cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }
-    })
+    const imageRows = [row]
+    for (let index = 1; index < attachments.length; index += 1) {
+      imageRows.push(sheet.addRow(Array(DAILY_ORDER_COLUMNS.length).fill('')))
+    }
+    for (const imageRow of imageRows) {
+      imageRow.alignment = { vertical: 'middle', wrapText: true }
+      if (attachments.length) imageRow.height = 72
+      imageRow.eachCell((cell) => {
+        cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }
+      })
+    }
 
-    const attachments = exportRow.attachments
-    const imageRows = Math.ceil(attachments.length / 3)
-    if (attachments.length) row.height = Math.max(56, imageRows * 42)
-    let unavailable = 0
     for (let shotIndex = 0; shotIndex < attachments.length; shotIndex += 1) {
       const attachment = attachments[shotIndex]
+      const imageRow = imageRows[shotIndex]
       const { data, error } = await supabase.storage
         .from('finance-daily-order-screenshots')
         .download(attachment.object_path)
       if (error || !data) {
-        unavailable += 1
+        sheet.getCell(imageRow.number, SCREENSHOT_COLUMN_INDEX + 1).value = '图片不可用'
         continue
       }
       const imageBuffer = Buffer.from(await data.arrayBuffer())
@@ -130,23 +135,15 @@ export async function GET(request: Request) {
       }
       const extension = attachment.mime_type === 'image/png' ? 'png' : 'jpeg'
       if (!(await isRenderableExportImage(imageBuffer))) {
-        unavailable += 1
+        sheet.getCell(imageRow.number, SCREENSHOT_COLUMN_INDEX + 1).value = '图片不可用'
         continue
       }
       const imageId = workbook.addImage({ base64: imageBuffer.toString('base64'), extension })
-      const imageRow = Math.floor(shotIndex / 3)
-      const imageColumnOffset = (shotIndex % 3) * 0.32
       sheet.addImage(imageId, {
-        tl: {
-          col: SCREENSHOT_COLUMN_INDEX + imageColumnOffset,
-          row: row.number - 1 + imageRow / imageRows + 0.02,
-        },
-        ext: { width: 48, height: 48 },
+        tl: { col: SCREENSHOT_COLUMN_INDEX + 0.05, row: imageRow.number - 1 + 0.05 },
+        ext: { width: 180, height: 90 },
         editAs: 'oneCell',
       })
-    }
-    if (unavailable) {
-      sheet.getCell(row.number, DAILY_ORDER_COLUMNS.length).value = `${unavailable} 张图片不可用`
     }
   }
 
