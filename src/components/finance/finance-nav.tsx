@@ -12,6 +12,7 @@ const financeItems = [
   { href: '/finance/costs', label: '订单成本', financeOnly: true },
   { href: '/finance/settled-orders', label: '已结算订单', financeOnly: true },
   { href: '/finance/performance', label: '业务业绩', financeOnly: false },
+  { href: '/finance/commission', label: '业务提成', financeOnly: false },
 ] as const
 
 export function FinanceNav({ role }: { role: UserRole }) {

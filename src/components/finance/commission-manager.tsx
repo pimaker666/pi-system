@@ -1,0 +1,606 @@
+'use client'
+
+import Link from 'next/link'
+import { useMemo, useState, useTransition } from 'react'
+import { Save, SlidersHorizontal } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import { ImagePreview } from '@/components/ui/image-preview'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  saveBusinessOrderCommission,
+  saveBusinessOrderItemCommission,
+  saveCommissionCategoryRates,
+} from '@/lib/actions/commission'
+import {
+  BUSINESS_ORDER_COMMISSION_COLUMNS,
+  COMMISSION_PAGE_SIZE,
+  businessOrderCommissionFilterQuery,
+} from '@/lib/business-order-commission'
+import { formatDailyMoney, SHIPPING_LABELS } from '@/lib/daily-orders'
+import { displayProfileName } from '@/lib/utils'
+import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-commission'
+import type {
+  BusinessOrderCommissionRow,
+  CommissionCategoryRate,
+  DailyOrderShippingCategory,
+  DailyOrderShop,
+  DailyOrderShopGroup,
+  Profile,
+} from '@/types'
+
+const mergedCellClassName = 'bg-muted/20 align-top'
+
+function quantityText(value: number) {
+  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 }).format(value)
+}
+
+function round4(value: number) {
+  return Math.round(value * 10000) / 10000
+}
+
+function RateEditor({ row }: { row: BusinessOrderCommissionRow }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const initialValue = row.product_commission_rate_overridden ? String(row.product_commission_rate) : ''
+  const [draft, setDraft] = useState(initialValue)
+  const normalized = draft.trim()
+  const unchanged = normalized === initialValue
+
+  function save() {
+    const rate = normalized === '' ? null : Number(normalized)
+    if (rate !== null && (!Number.isFinite(rate) || rate < 0 || rate > 100)) {
+      toast.error('提点必须是 0~100 的数字')
+      return
+    }
+    startTransition(async () => {
+      const result = await saveBusinessOrderItemCommission({
+        business_order_item_ids: row.item_ids,
+        rate,
+      })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '产品提点保存失败')
+        return
+      }
+      toast.success(rate === null ? '已恢复分类默认提点' : '产品提点已保存')
+      router.refresh()
+    })
+  }
+
+  const placeholder =
+    row.category_default_rate != null ? `默认 ${row.category_default_rate}` : '未设置'
+
+  return (
+    <div className="flex min-w-36 items-center gap-2">
+      <Input
+        value={draft}
+        type="number"
+        min={0}
+        max={100}
+        step="0.0001"
+        disabled={pending}
+        placeholder={placeholder}
+        title="产品提点（百分数）；留空保存则恢复发货分类默认值"
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !pending && !unchanged) {
+            event.preventDefault()
+            save()
+          }
+        }}
+        className="h-8"
+      />
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="h-8 w-8 shrink-0"
+        disabled={pending || unchanged}
+        onClick={save}
+        aria-label={`保存订单 ${row.order_number} 的产品提点`}
+        title="保存；留空则恢复分类默认提点"
+      >
+        <Save className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}
+
+function FreightEditor({ row, rowSpan }: { row: BusinessOrderCommissionRow; rowSpan: number }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  const initialCost = String(row.freight_cost)
+  const initialRate = String(row.freight_commission_rate)
+  const [costDraft, setCostDraft] = useState(initialCost)
+  const [rateDraft, setRateDraft] = useState(initialRate)
+  const unchanged = costDraft.trim() === initialCost && rateDraft.trim() === initialRate
+
+  const cost = costDraft.trim() === '' ? 0 : Number(costDraft)
+  const rate = rateDraft.trim() === '' ? 0 : Number(rateDraft)
+  const profit = round4(row.freight_received_amount - cost)
+  const commission = round4((profit * rate) / 100)
+
+  function save() {
+    if (!Number.isFinite(cost) || cost < 0) {
+      toast.error('运费成本必须是非负数字')
+      return
+    }
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+      toast.error('运费提点必须是 0~100 的数字')
+      return
+    }
+    startTransition(async () => {
+      const result = await saveBusinessOrderCommission({
+        business_order_id: row.order_id,
+        freight_cost: cost,
+        freight_commission_rate: rate,
+      })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '运费提成保存失败')
+        return
+      }
+      toast.success('运费成本与提点已保存')
+      router.refresh()
+    })
+  }
+
+  return (
+    <>
+      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
+        {formatDailyMoney(row.freight_received_amount, row.currency)}
+      </TableCell>
+      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+        <div className="flex min-w-36 items-center gap-2">
+          <Input
+            value={costDraft}
+            type="number"
+            min={0}
+            step="0.0001"
+            disabled={pending}
+            placeholder="0"
+            title="运费成本（订单币种）"
+            onChange={(event) => setCostDraft(event.target.value)}
+            className="h-8"
+          />
+        </div>
+      </TableCell>
+      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
+        {formatDailyMoney(profit, row.currency)}
+      </TableCell>
+      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+        <div className="flex min-w-36 items-center gap-2">
+          <Input
+            value={rateDraft}
+            type="number"
+            min={0}
+            max={100}
+            step="0.0001"
+            disabled={pending}
+            placeholder="0"
+            title="运费提点（百分数）"
+            onChange={(event) => setRateDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !pending && !unchanged) {
+                event.preventDefault()
+                save()
+              }
+            }}
+            className="h-8"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            disabled={pending || unchanged}
+            onClick={save}
+            aria-label={`保存订单 ${row.order_number} 的运费成本与提点`}
+            title="保存运费成本与提点"
+          >
+            <Save className="h-4 w-4" />
+          </Button>
+        </div>
+      </TableCell>
+      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium tabular-nums`}>
+        {formatDailyMoney(commission, row.currency)}
+      </TableCell>
+    </>
+  )
+}
+
+interface Option {
+  id: string
+  name: string
+}
+
+function MultiSelect({
+  name,
+  label,
+  options,
+  selected,
+}: {
+  name: string
+  label: string
+  options: Option[]
+  selected: string[]
+}) {
+  const selectedSet = new Set(selected)
+  const count = options.filter((o) => selectedSet.has(o.id)).length
+  return (
+    <details className="group relative">
+      <summary className="flex h-10 cursor-pointer items-center justify-between gap-2 rounded-md border bg-background px-3 text-sm [&::-webkit-details-marker]:hidden">
+        <span className="truncate">{count ? `${label} (${count})` : `全部${label}`}</span>
+        <span aria-hidden className="text-xs text-muted-foreground">▼</span>
+      </summary>
+      <div className="absolute z-50 mt-1 max-h-64 w-56 overflow-auto rounded-md border bg-background p-2 shadow-md">
+        {options.map((option) => (
+          <label
+            key={option.id}
+            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted"
+          >
+            <input
+              type="checkbox"
+              name={name}
+              value={option.id}
+              defaultChecked={selectedSet.has(option.id)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <span className="truncate">{option.name}</span>
+          </label>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+const CATEGORY_ORDER: DailyOrderShippingCategory[] = ['stock', 'sample', 'custom', 'purchase']
+
+function CategoryRatesDialog({
+  categoryRates,
+}: {
+  categoryRates: CommissionCategoryRate[]
+}) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [pending, startTransition] = useTransition()
+  const initial = useMemo(() => {
+    const map = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
+    return CATEGORY_ORDER.reduce<Record<string, string>>((acc, category) => {
+      const value = map.get(category)
+      acc[category] = value == null ? '' : String(value)
+      return acc
+    }, {})
+  }, [categoryRates])
+  const [drafts, setDrafts] = useState<Record<string, string>>(initial)
+
+  function save() {
+    const rates = CATEGORY_ORDER.map((category) => {
+      const raw = drafts[category]?.trim()
+      return { category, product_commission_rate: raw === '' || raw == null ? 0 : Number(raw) }
+    })
+    if (rates.some((row) => !Number.isFinite(row.product_commission_rate) || row.product_commission_rate < 0 || row.product_commission_rate > 100)) {
+      toast.error('提点必须是 0~100 的数字')
+      return
+    }
+    startTransition(async () => {
+      const result = await saveCommissionCategoryRates({ rates })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '分类提点保存失败')
+        return
+      }
+      toast.success('发货分类提点已保存，产品行未单独设置的将按此默认')
+      setOpen(false)
+      router.refresh()
+    })
+  }
+
+  return (
+    <>
+      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+        <SlidersHorizontal className="mr-1.5 h-4 w-4" />
+        按发货分类设置提点
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>按发货分类设置产品提点</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              设置后，对应发货分类的产品行会自动套用该提点；单独修改过某行提点的仍以行内为准。
+            </p>
+            {CATEGORY_ORDER.map((category) => (
+              <div key={category} className="flex items-center gap-3">
+                <label className="w-16 text-sm font-medium" htmlFor={`rate-${category}`}>
+                  {SHIPPING_LABELS[category]}
+                </label>
+                <div className="relative flex-1">
+                  <Input
+                    id={`rate-${category}`}
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.0001"
+                    value={drafts[category] ?? ''}
+                    placeholder="0"
+                    onChange={(event) =>
+                      setDrafts((prev) => ({ ...prev, [category]: event.target.value }))
+                    }
+                    className="pr-7"
+                  />
+                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                    %
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              取消
+            </Button>
+            <Button type="button" disabled={pending} onClick={save}>
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+export interface CommissionManagerProps {
+  rows: BusinessOrderCommissionRow[]
+  totalCount: number
+  filters: BusinessOrderCommissionFilters
+  categoryRates: CommissionCategoryRate[]
+  canManageCategoryRates: boolean
+  options: {
+    shops: DailyOrderShop[]
+    groups: DailyOrderShopGroup[]
+    salespeople: Pick<Profile, 'id' | 'full_name' | 'email' | 'chinese_name'>[]
+  }
+}
+
+export function CommissionManager({
+  rows,
+  totalCount,
+  filters,
+  categoryRates,
+  canManageCategoryRates,
+  options,
+}: CommissionManagerProps) {
+  const currentPage = filters.page
+  const totalPages = Math.max(1, Math.ceil(totalCount / COMMISSION_PAGE_SIZE))
+
+  const groups = useMemo(() => {
+    const map = new Map<string, BusinessOrderCommissionRow[]>()
+    for (const row of rows) {
+      const list = map.get(row.order_id) ?? []
+      list.push(row)
+      map.set(row.order_id, list)
+    }
+    return [...map.values()]
+  }, [rows])
+
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <p className="text-sm text-muted-foreground">
+          已关联客户的业务订单自动进入本页。产品提成 = 产品实收金额 × 产品提点%；
+          运费利润 = 运费实收 − 运费成本；运费提成 = 运费利润 × 运费提点%。
+        </p>
+        {canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}
+      </div>
+
+      <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
+        <input type="hidden" name="page" value="1" />
+        <Input
+          name="q"
+          defaultValue={filters.q}
+          placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU"
+          className="xl:col-span-2"
+        />
+        <Input name="dateFrom" type="date" defaultValue={filters.dateFrom} />
+        <Input name="dateTo" type="date" defaultValue={filters.dateTo} />
+        <Input name="month" type="month" defaultValue={filters.month} placeholder="月份" />
+        <MultiSelect
+          name="shops"
+          label="店铺"
+          options={options.shops.map((shop) => ({ id: shop.id, name: shop.name }))}
+          selected={filters.shops}
+        />
+        <MultiSelect
+          name="salespeople"
+          label="业务员"
+          options={options.salespeople.map((person) => ({
+            id: person.id,
+            name: displayProfileName(person),
+          }))}
+          selected={filters.salespeople}
+        />
+        <MultiSelect
+          name="shopGroups"
+          label="店铺分组"
+          options={options.groups.map((group) => ({ id: group.id, name: group.name }))}
+          selected={filters.shopGroups}
+        />
+        <div className="flex flex-wrap gap-2 xl:col-span-9">
+          <Button type="submit">筛选</Button>
+          <Button asChild type="button" variant="outline">
+            <Link href="/finance/commission">清空</Link>
+          </Button>
+        </div>
+      </form>
+
+      <div className="overflow-x-auto rounded-md border">
+        <Table className="min-w-[2600px]">
+          <TableHeader>
+            <TableRow>
+              {BUSINESS_ORDER_COMMISSION_COLUMNS.map((label) => (
+                <TableHead key={label}>{label}</TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {groups.map((group, groupIndex) => {
+              const rowSpan = group.length
+              return group.map((row, rowIndex) => {
+                const isFirstRow = rowIndex === 0
+                const displayOrderNumber = row.external_order_number || row.order_number
+                return (
+                  <TableRow
+                    key={row.item_id}
+                    className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
+                  >
+                    <TableCell>
+                      <div className="font-medium">
+                        {groupIndex + 1}
+                        {rowSpan > 1 && (
+                          <span className="ml-1 text-xs text-muted-foreground">-{rowIndex + 1}</span>
+                        )}
+                      </div>
+                    </TableCell>
+
+                    {isFirstRow && (
+                      <>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          {row.order_date}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          <div>{row.shop_name ?? '—'}</div>
+                          {row.shop_group_name && (
+                            <div className="text-xs text-muted-foreground">{row.shop_group_name}</div>
+                          )}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          {row.salesperson_name}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
+                          <Link href={`/finance/daily-orders/${row.order_id}`} className="hover:underline">
+                            {displayOrderNumber}
+                          </Link>
+                          {row.external_order_number && (
+                            <div className="text-xs font-normal text-muted-foreground">{row.order_number}</div>
+                          )}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                          {row.customer_name || '—'}
+                        </TableCell>
+                      </>
+                    )}
+
+                    <TableCell>
+                      {row.shipping_category ? SHIPPING_LABELS[row.shipping_category] : '—'}
+                    </TableCell>
+                    <TableCell>
+                      <ImagePreview src={row.image_url} alt={row.product_name} />
+                    </TableCell>
+                    <TableCell>
+                      <div>{row.product_name}</div>
+                      {row.product_sku && (
+                        <div className="text-xs text-muted-foreground">{row.product_sku}</div>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">{quantityText(row.quantity)}</TableCell>
+                    <TableCell className="tabular-nums">{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatDailyMoney(row.product_received_amount, row.currency)}
+                    </TableCell>
+                    <TableCell>
+                      <RateEditor row={row} />
+                    </TableCell>
+                    <TableCell className="font-medium tabular-nums">
+                      {formatDailyMoney(row.product_commission_amount, row.currency)}
+                    </TableCell>
+
+                    {isFirstRow && <FreightEditor row={row} rowSpan={rowSpan} />}
+                  </TableRow>
+                )
+              })
+            })}
+            {rows.length === 0 && (
+              <TableRow>
+                <TableCell
+                  colSpan={BUSINESS_ORDER_COMMISSION_COLUMNS.length}
+                  className="py-12 text-center text-muted-foreground"
+                >
+                  没有符合筛选条件的订单
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-muted-foreground">
+            共 {totalCount} 条订单，第 {currentPage}/{totalPages} 页
+          </span>
+          <div className="flex items-center gap-1">
+            {currentPage > 1 && (
+              <Link
+                href={`/finance/commission?${businessOrderCommissionFilterQuery({ ...filters, page: currentPage - 1 })}`}
+                className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
+              >
+                上一页
+              </Link>
+            )}
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+              .reduce<(number | 'ellipsis')[]>((acc, p, i, arr) => {
+                if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('ellipsis')
+                acc.push(p)
+                return acc
+              }, [])
+              .map((item, i) =>
+                item === 'ellipsis' ? (
+                  <span key={`e${i}`} className="px-1 text-muted-foreground">…</span>
+                ) : (
+                  <Link
+                    key={item}
+                    href={`/finance/commission?${businessOrderCommissionFilterQuery({ ...filters, page: item })}`}
+                    className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md text-sm ${
+                      item === currentPage
+                        ? 'bg-primary text-primary-foreground'
+                        : 'border hover:bg-muted'
+                    }`}
+                  >
+                    {item}
+                  </Link>
+                ),
+              )}
+            {currentPage < totalPages && (
+              <Link
+                href={`/finance/commission?${businessOrderCommissionFilterQuery({ ...filters, page: currentPage + 1 })}`}
+                className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
+              >
+                下一页
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
