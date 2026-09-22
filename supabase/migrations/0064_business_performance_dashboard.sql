@@ -109,7 +109,7 @@ begin
         and bo.payment_due_date is not null
         and bo.payment_due_date < v_today
     ),
-    case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+    case when count(distinct bo.currency) = 1 then max(bo.currency)::text end,
     coalesce(sum(
       coalesce(bo.total_sales_amount, 0)
       + case
@@ -254,7 +254,7 @@ begin
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
       ),
-      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      case when count(distinct bo.currency) = 1 then max(bo.currency)::text end,
       coalesce(sum(
         coalesce(bo.total_sales_amount, 0)
         + case
@@ -356,7 +356,7 @@ begin
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
       ),
-      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      case when count(distinct bo.currency) = 1 then max(bo.currency)::text end,
       coalesce(sum(
         coalesce(bo.total_sales_amount, 0)
         + case
@@ -451,7 +451,7 @@ begin
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
       ),
-      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      case when count(distinct bo.currency) = 1 then max(bo.currency)::text end,
       coalesce(sum(
         coalesce(bo.total_sales_amount, 0)
         + case
@@ -546,7 +546,7 @@ begin
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
       ),
-      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      case when count(distinct bo.currency) = 1 then max(bo.currency)::text end,
       coalesce(sum(
         coalesce(bo.total_sales_amount, 0)
         + case
@@ -645,7 +645,7 @@ begin
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
       ),
-      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      case when count(distinct bo.currency) = 1 then max(bo.currency)::text end,
       coalesce(sum(
         coalesce(bo.total_sales_amount, 0)
         + case
@@ -734,7 +734,7 @@ begin
           and bo.payment_due_date is not null
           and bo.payment_due_date < v_today
       ),
-      case when count(distinct bo.currency) = 1 then max(bo.currency) end,
+      case when count(distinct bo.currency) = 1 then max(bo.currency)::text end,
       coalesce(sum(coalesce(i.product_received_amount, 0)), 0),
       coalesce(sum(i.line_amount - coalesce(i.product_received_amount, 0)), 0)
     from items i
