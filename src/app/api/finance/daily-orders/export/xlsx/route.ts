@@ -6,7 +6,12 @@ import {
   buildBusinessDailyExportRows,
   businessDailyExportLimitError,
 } from '@/lib/business-daily-orders'
-import { BUSINESS_DAILY_EXPORT_LIMIT, fetchBusinessDailyLedger } from '@/lib/business-daily-orders-server'
+import {
+  BUSINESS_DAILY_EXPORT_LIMIT,
+  fetchBusinessDailyLedger,
+  fetchConfirmedCommissionItemIdsForOrders,
+  fetchSettledItemIdsForOrders,
+} from '@/lib/business-daily-orders-server'
 import {
   DAILY_ORDER_COLUMNS,
   formatDailyMoney,
@@ -42,17 +47,27 @@ export async function GET(request: Request) {
   const imageLimitError = businessDailyExportLimitError(orders)
   if (imageLimitError) return NextResponse.json({ error: imageLimitError }, { status: 413 })
 
+  const [settledItemIds, confirmedCommissionItemIds] = await Promise.all([
+    fetchSettledItemIdsForOrders(supabase, orders),
+    fetchConfirmedCommissionItemIdsForOrders(supabase, orders),
+  ])
+  const settledSet = new Set(settledItemIds)
+  const confirmedCommissionSet = new Set(confirmedCommissionItemIds)
+
   const rows = buildBusinessDailyExportRows(orders, {
     money: formatDailyMoney,
     shipping: (value) => (value ? SHIPPING_LABELS[value] : ''),
     payment: (value) => (value ? PAYMENT_LABELS[value] : ''),
     salesperson: (order) => displayProfileName(order.salesperson, order.salesperson_name_snapshot),
+    isItemSettled: (item) => item.item_ids.length > 0 && item.item_ids.every((id) => settledSet.has(id)),
+    isCommissionCleared: (item) =>
+      item.item_ids.length > 0 && item.item_ids.every((id) => confirmedCommissionSet.has(id)),
   })
 
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'PI System'
   const sheet = workbook.addWorksheet('每日订单台账', { views: [{ state: 'frozen', ySplit: 1 }] })
-  sheet.columns = [6, 13, 16, 16, 18, 13, 20, 12, 28, 12, 18, 18, 20, 18, 18, 18, 12, 30, 28]
+  sheet.columns = [6, 13, 16, 16, 18, 13, 20, 12, 28, 12, 18, 18, 20, 18, 18, 18, 12, 30, 28, 10, 10]
     .map((width) => ({ width }))
   const header = sheet.addRow([...DAILY_ORDER_COLUMNS])
   header.height = 24
@@ -83,6 +98,8 @@ export async function GET(request: Request) {
       exportRow.outstandingAmount,
       exportRow.paymentCategory,
       exportRow.remarks,
+      exportRow.settlementStatus,
+      exportRow.commissionClearanceStatus,
       '',
     ])
     row.alignment = { vertical: 'middle', wrapText: true }
@@ -133,7 +150,7 @@ export async function GET(request: Request) {
     }
   }
 
-  sheet.autoFilter = { from: 'A1', to: 'S1' }
+  sheet.autoFilter = { from: 'A1', to: 'U1' }
   const buffer = await workbook.xlsx.writeBuffer()
   const body = new Uint8Array(buffer as ArrayBuffer)
   const date = new Date().toISOString().slice(0, 10)

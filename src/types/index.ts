@@ -314,6 +314,26 @@ export interface BusinessOrderCommissionRow {
   is_order_lead_row: boolean
   /** 该订单在当前结果中占据的产品行数（用于运费列 rowspan）。 */
   order_row_span: number
+  /** 该产品行的提成结清状态；未提交时为 null。 */
+  clearance_status: BusinessOrderCommissionClearanceStatus | null
+  /** 提成结清归属年月（YYYY-MM）；未提交时为 null。 */
+  clearance_period: string | null
+}
+
+export type CommissionClearanceStatus = 'pending' | 'confirmed' | 'rejected'
+export type BusinessOrderCommissionClearanceStatus = CommissionClearanceStatus
+
+export interface BusinessOrderCommissionClearance {
+  business_order_item_id: string
+  period: string
+  status: CommissionClearanceStatus
+  submitted_by: string | null
+  submitted_at: string
+  confirmed_by: string | null
+  confirmed_at: string | null
+  rejected_reason: string | null
+  created_at: string
+  updated_at: string
 }
 
 export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'

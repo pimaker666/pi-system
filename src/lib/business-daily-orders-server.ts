@@ -310,3 +310,33 @@ export async function fetchSettledItemIdsForOrders(
   }
   return settled
 }
+
+/**
+ * 读取台账中这批订单已确认结清的提成明细行 id 集合（供“提成”列判断）。
+ * 只有业务员确认（confirmed）的明细才算已结清，pending / rejected 均视为未结清。
+ */
+export async function fetchConfirmedCommissionItemIdsForOrders(
+  supabase: SupabaseClient,
+  orders: BusinessDailyLedgerOrder[],
+): Promise<string[]> {
+  const itemIds = orders.flatMap((order) =>
+    (order.business_order_items ?? []).map((item) => item.id),
+  )
+  if (itemIds.length === 0) return []
+
+  const confirmed: string[] = []
+  const CHUNK = 500
+  for (let i = 0; i < itemIds.length; i += CHUNK) {
+    const chunk = itemIds.slice(i, i + CHUNK)
+    const { data, error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .select('business_order_item_id')
+      .eq('status', 'confirmed')
+      .in('business_order_item_id', chunk)
+    if (error) throw new Error(`提成结清状态读取失败：${error.message}`)
+    for (const row of (data ?? []) as Array<{ business_order_item_id: string }>) {
+      confirmed.push(row.business_order_item_id)
+    }
+  }
+  return confirmed
+}

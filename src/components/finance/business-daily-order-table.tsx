@@ -68,6 +68,7 @@ export interface BusinessDailyOrderTableProps {
   customerGroups: CustomerGroup[]
   filterQuery?: string
   settledItemIds?: string[]
+  confirmedCommissionItemIds?: string[]
 }
 
 function canBulkShipOrder(order: BusinessOrder, actor: Pick<Profile, 'id' | 'role'>) {
@@ -98,6 +99,7 @@ export function BusinessDailyOrderTable({
   customerGroups,
   filterQuery = '',
   settledItemIds = [],
+  confirmedCommissionItemIds = [],
 }: BusinessDailyOrderTableProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -140,6 +142,13 @@ export function BusinessDailyOrderTable({
   const settledSet = useMemo(() => new Set(settledItemIds), [settledItemIds])
   const isMergedItemSettled = (item: MergedBusinessDailyItem) =>
     item.item_ids.length > 0 && item.item_ids.every((id) => settledSet.has(id))
+
+  const confirmedCommissionSet = useMemo(
+    () => new Set(confirmedCommissionItemIds),
+    [confirmedCommissionItemIds],
+  )
+  const isMergedItemCommissionCleared = (item: MergedBusinessDailyItem) =>
+    item.item_ids.length > 0 && item.item_ids.every((id) => confirmedCommissionSet.has(id))
 
   const groups = useMemo(
     () =>
@@ -559,6 +568,17 @@ export function BusinessDailyOrderTable({
                           <Badge variant="success">是</Badge>
                         ) : (
                           <span className="text-muted-foreground">否</span>
+                        )
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell className={cellCn(22, 'align-top')}>
+                      {item ? (
+                        isMergedItemCommissionCleared(item) ? (
+                          <Badge variant="success">已结清</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">未结清</span>
                         )
                       ) : (
                         '—'

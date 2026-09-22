@@ -64,6 +64,39 @@ export type BusinessOrderItemCommissionInput = z.infer<typeof businessOrderItemC
 export type BusinessOrderCommissionInput = z.infer<typeof businessOrderCommissionSchema>
 export type CommissionCategoryRateInput = z.infer<typeof commissionCategoryRateSchema>
 
+/** 提成结清提交：财务选择一组产品行并指定归属年月。 */
+export const businessOrderCommissionClearanceSubmitSchema = z.object({
+  business_order_item_ids: z
+    .array(z.string().uuid('订单明细行 ID 无效'))
+    .min(1, '至少选择一条订单明细行'),
+  period: z.string().regex(/^\d{4}-\d{2}$/, '请选择有效年月'),
+})
+
+/** 业务员确认结清。 */
+export const businessOrderCommissionClearanceConfirmSchema = z.object({
+  business_order_item_ids: z
+    .array(z.string().uuid('订单明细行 ID 无效'))
+    .min(1, '至少选择一条订单明细行'),
+})
+
+/** 业务员驳回结清。 */
+export const businessOrderCommissionClearanceRejectSchema = z.object({
+  business_order_item_ids: z
+    .array(z.string().uuid('订单明细行 ID 无效'))
+    .min(1, '至少选择一条订单明细行'),
+  reason: z.string().trim().min(1, '请填写驳回原因').max(500, '驳回原因不能超过 500 字'),
+})
+
+export type BusinessOrderCommissionClearanceSubmitInput = z.infer<
+  typeof businessOrderCommissionClearanceSubmitSchema
+>
+export type BusinessOrderCommissionClearanceConfirmInput = z.infer<
+  typeof businessOrderCommissionClearanceConfirmSchema
+>
+export type BusinessOrderCommissionClearanceRejectInput = z.infer<
+  typeof businessOrderCommissionClearanceRejectSchema
+>
+
 const hexColor = z
   .string()
   .trim()

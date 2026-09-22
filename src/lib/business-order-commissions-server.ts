@@ -222,6 +222,38 @@ async function fetchAllOrderCommissions(supabase: SupabaseClient) {
   }
 }
 
+interface ClearanceRow {
+  business_order_item_id: string
+  status: import('@/types').CommissionClearanceStatus
+  period: string
+}
+
+async function fetchAllCommissionClearances(supabase: SupabaseClient): Promise<ClearanceRow[]> {
+  const rows: ClearanceRow[] = []
+  const PAGE_SIZE = 1000
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .select('business_order_item_id, status, period')
+      .order('business_order_item_id')
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) throw new Error(`提成结清记录读取失败：${error.message}`)
+    const page = (data ?? []) as Array<{
+      business_order_item_id: string
+      status: import('@/types').CommissionClearanceStatus
+      period: string
+    }>
+    for (const row of page) {
+      rows.push({
+        business_order_item_id: row.business_order_item_id,
+        status: row.status,
+        period: row.period.slice(0, 7),
+      })
+    }
+    if (page.length < PAGE_SIZE) return rows
+  }
+}
+
 function getCustomerName(customerSnapshot: unknown): string | null {
   if (!customerSnapshot || typeof customerSnapshot !== 'object') return null
   const snapshot = customerSnapshot as { name?: string | null; company?: string | null }
@@ -250,18 +282,20 @@ export async function fetchBusinessOrderCommissions(
   categoryRates: CommissionCategoryRate[]
   customerTags: CustomerCommissionTag[]
 }> {
-  const [allOrders, categoryRates, itemCommissions, orderCommissions, customerTags] = await Promise.all([
+  const [allOrders, categoryRates, itemCommissions, orderCommissions, customerTags, clearances] = await Promise.all([
     fetchMatchingOrders(supabase, filters),
     fetchAllCategoryRates(supabase),
     fetchAllItemCommissions(supabase),
     fetchAllOrderCommissions(supabase),
     fetchAllCustomerCommissionTags(supabase),
+    fetchAllCommissionClearances(supabase),
   ])
 
   const categoryRateMap = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
   const itemRateMap = new Map(itemCommissions.map((row) => [row.business_order_item_id, row.commission_rate]))
   const orderFreightMap = new Map(orderCommissions.map((row) => [row.business_order_id, row]))
   const tagMap = new Map(customerTags.map((tag) => [tag.tag_color.toLowerCase(), tag]))
+  const clearanceMap = new Map(clearances.map((row) => [row.business_order_item_id, row]))
 
   const offset = (page - 1) * pageSize
   const pagedOrders = allOrders.slice(offset, offset + pageSize)
@@ -315,6 +349,20 @@ export async function fetchBusinessOrderCommissions(
       const productCommission = round4((productReceived * effectiveRate) / 100)
       const representativeItemId = item.item_ids[0] ?? order.id
 
+      // 合并行中任一明细行有结清记录即视为该合并行已结清；多行状态冲突时取 confirmed > pending > rejected。
+      const itemClearances = item.item_ids
+        .map((id) => clearanceMap.get(id))
+        .filter((value): value is ClearanceRow => value !== undefined)
+      const clearance = itemClearances.reduce<ClearanceRow | undefined>((acc, current) => {
+        if (!acc) return current
+        const priority: Record<import('@/types').CommissionClearanceStatus, number> = {
+          confirmed: 3,
+          pending: 2,
+          rejected: 1,
+        }
+        return priority[current.status] > priority[acc.status] ? current : acc
+      }, undefined)
+
       rows.push({
         order_id: order.id,
         item_id: representativeItemId,
@@ -350,6 +398,8 @@ export async function fetchBusinessOrderCommissions(
         freight_commission_amount: freightCommission,
         is_order_lead_row: index === 0,
         order_row_span: orderRowSpan,
+        clearance_status: clearance?.status ?? null,
+        clearance_period: clearance?.period ?? null,
       })
     })
   }

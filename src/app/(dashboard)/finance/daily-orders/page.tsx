@@ -14,6 +14,7 @@ import {
   BUSINESS_DAILY_EXPORT_LIMIT,
   BUSINESS_DAILY_LEDGER_LIMIT,
   fetchBusinessDailyLedger,
+  fetchConfirmedCommissionItemIdsForOrders,
   fetchSettledItemIdsForOrders,
 } from '@/lib/business-daily-orders-server'
 import { dailyOrderFilterQuery, formatDailyMoney, parseDailyOrderFilters } from '@/lib/daily-orders'
@@ -99,7 +100,10 @@ export default async function DailyOrdersPage({
   ])
   const customerError = customersResult.error || customerGroupsResult.error
   if (customerError) throw new Error(`订单客户数据读取失败：${customerError.message}`)
-  const settledItemIds = await fetchSettledItemIdsForOrders(supabase, orders)
+  const [settledItemIds, confirmedCommissionItemIds] = await Promise.all([
+    fetchSettledItemIdsForOrders(supabase, orders),
+    fetchConfirmedCommissionItemIdsForOrders(supabase, orders),
+  ])
   const query = dailyOrderFilterQuery(filters)
   const canManageShops = profile.role === 'finance' || profile.role === 'admin'
   const canCreate = ['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)
@@ -220,6 +224,7 @@ export default async function DailyOrdersPage({
         customerGroups={(customerGroupsResult.data ?? []) as CustomerGroup[]}
         filterQuery={query}
         settledItemIds={settledItemIds}
+        confirmedCommissionItemIds={confirmedCommissionItemIds}
       />
     </div>
   )

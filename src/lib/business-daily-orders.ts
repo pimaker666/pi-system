@@ -407,6 +407,10 @@ export interface BusinessDailyExportRow {
   remarks: string
   /** 订单截图只挂在该订单的第一行，避免同一订单重复导出图片。 */
   attachments: BusinessOrderAttachment[]
+  /** 产品行成本结算状态：是 / 否。 */
+  settlementStatus: string
+  /** 产品行提成结清状态：已结清 / 未结清。 */
+  commissionClearanceStatus: string
 }
 
 /** 单次导出的截图数量与体积上限，沿用旧台账的阈值。 */
@@ -436,6 +440,8 @@ export function buildBusinessDailyExportRows(
     shipping: (value: BusinessOrderItem['daily_shipping_category']) => string
     payment: (value: BusinessOrder['daily_payment_category']) => string
     salesperson: (order: BusinessDailyLedgerOrder) => string
+    isItemSettled?: (item: MergedBusinessDailyItem) => boolean
+    isCommissionCleared?: (item: MergedBusinessDailyItem) => boolean
   },
 ): BusinessDailyExportRow[] {
   return orders.flatMap((order, orderIndex) => {
@@ -471,6 +477,8 @@ export function buildBusinessDailyExportRows(
           unitPrice: '',
           productReceived: '',
           logisticsFee: '',
+          settlementStatus: '',
+          commissionClearanceStatus: '',
           attachments,
         },
       ]
@@ -492,6 +500,8 @@ export function buildBusinessDailyExportRows(
           item.logistics_fee_amount === null
             ? ''
             : format.money(item.logistics_fee_amount, order.currency),
+        settlementStatus: format.isItemSettled?.(item) ? '是' : '否',
+        commissionClearanceStatus: format.isCommissionCleared?.(item) ? '已结清' : '未结清',
         attachments: itemIndex === 0 ? attachments : [],
       }
     })

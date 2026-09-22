@@ -11,7 +11,11 @@ export default async function FinanceCommissionPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const profile = await requireApproved()
-  const filters = parseBusinessOrderCommissionFilters(await searchParams)
+  const parsedFilters = parseBusinessOrderCommissionFilters(await searchParams)
+  const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
+  const filters = isSalesperson
+    ? { ...parsedFilters, salespeople: [profile.id] }
+    : parsedFilters
   const supabase = await createClient()
 
   const [options, commissions] = await Promise.all([
@@ -39,6 +43,7 @@ export default async function FinanceCommissionPage({
         canManageCategoryRates={canManageCategoryRates}
         isAdmin={isAdmin}
         options={options}
+        actor={profile}
       />
     </div>
   )

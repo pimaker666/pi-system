@@ -2,9 +2,10 @@
 
 import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
-import { Plus, Save, SlidersHorizontal, Tag, Trash2 } from 'lucide-react'
+import { CheckCircle2, Plus, Save, SlidersHorizontal, Tag, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ImagePreview } from '@/components/ui/image-preview'
 import {
@@ -23,11 +24,15 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Textarea } from '@/components/ui/textarea'
 import {
+  confirmBusinessOrderCommissionClearance,
+  rejectBusinessOrderCommissionClearance,
   saveBusinessOrderCommission,
   saveBusinessOrderItemCommission,
   saveCommissionCategoryRates,
   saveCustomerCommissionTags,
+  submitBusinessOrderCommissionClearance,
 } from '@/lib/actions/commission'
 import {
   BUSINESS_ORDER_COMMISSION_COLUMNS,
@@ -38,6 +43,7 @@ import { formatDailyMoney, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { displayProfileName } from '@/lib/utils'
 import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-commission'
 import type {
+  BusinessOrderCommissionClearanceStatus,
   BusinessOrderCommissionRow,
   CommissionCategoryRate,
   CustomerCommissionTag,
@@ -57,7 +63,25 @@ function round4(value: number) {
   return Math.round(value * 10000) / 10000
 }
 
-function RateEditor({ row }: { row: BusinessOrderCommissionRow }) {
+function clearanceLabel(status: BusinessOrderCommissionClearanceStatus | null) {
+  if (status === 'confirmed') return '已结清'
+  if (status === 'pending') return '待确认'
+  if (status === 'rejected') return '已驳回'
+  return '未结清'
+}
+
+function clearanceVariant(status: BusinessOrderCommissionClearanceStatus | null) {
+  if (status === 'confirmed') return 'success'
+  if (status === 'pending') return 'default'
+  if (status === 'rejected') return 'destructive'
+  return 'secondary'
+}
+
+function isClearanceSelectable(row: BusinessOrderCommissionRow) {
+  return row.clearance_status !== 'confirmed'
+}
+
+function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOnly?: boolean }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const initialValue = row.product_commission_rate_overridden ? String(row.product_commission_rate) : ''
@@ -88,6 +112,17 @@ function RateEditor({ row }: { row: BusinessOrderCommissionRow }) {
 
   const placeholder =
     row.category_default_rate != null ? `默认 ${row.category_default_rate}` : '未设置'
+
+  if (readOnly) {
+    return (
+      <div className="text-sm tabular-nums">
+        {row.product_commission_rate}
+        {row.product_commission_rate_overridden && (
+          <span className="ml-1 text-xs text-muted-foreground">(覆盖)</span>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-w-36 items-center gap-2">
@@ -125,7 +160,7 @@ function RateEditor({ row }: { row: BusinessOrderCommissionRow }) {
   )
 }
 
-function FreightEditor({ row, rowSpan }: { row: BusinessOrderCommissionRow; rowSpan: number }) {
+function FreightEditor({ row, rowSpan, readOnly }: { row: BusinessOrderCommissionRow; rowSpan: number; readOnly?: boolean }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const initialCost = String(row.freight_cost)
@@ -162,6 +197,28 @@ function FreightEditor({ row, rowSpan }: { row: BusinessOrderCommissionRow; rowS
       toast.success('运费成本与提点已保存')
       router.refresh()
     })
+  }
+
+  if (readOnly) {
+    return (
+      <>
+        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
+          {formatDailyMoney(row.freight_received_amount, row.currency)}
+        </TableCell>
+        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
+          {formatDailyMoney(row.freight_cost, row.currency)}
+        </TableCell>
+        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
+          {formatDailyMoney(round4(row.freight_received_amount - row.freight_cost), row.currency)}
+        </TableCell>
+        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
+          {row.freight_commission_rate}
+        </TableCell>
+        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium tabular-nums`}>
+          {formatDailyMoney(row.freight_commission_amount, row.currency)}
+        </TableCell>
+      </>
+    )
   }
 
   return (
@@ -582,6 +639,7 @@ export interface CommissionManagerProps {
   customerTags: CustomerCommissionTag[]
   canManageCategoryRates: boolean
   isAdmin: boolean
+  actor: Profile
   options: {
     shops: DailyOrderShop[]
     groups: DailyOrderShopGroup[]
@@ -597,10 +655,23 @@ export function CommissionManager({
   customerTags,
   canManageCategoryRates,
   isAdmin,
+  actor,
   options,
 }: CommissionManagerProps) {
+  const router = useRouter()
   const currentPage = filters.page
   const totalPages = Math.max(1, Math.ceil(totalCount / COMMISSION_PAGE_SIZE))
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
+  const [submitPending, startSubmitTransition] = useTransition()
+  const [confirmPending, startConfirmTransition] = useTransition()
+  const [rejectPending, startRejectTransition] = useTransition()
+  const [rejectingRow, setRejectingRow] = useState<BusinessOrderCommissionRow | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+
+  const isSalespersonView = actor.role === 'sales' || actor.role === 'supervisor'
+  const canConfirmClearance = isSalespersonView
 
   const groups = useMemo(() => {
     const map = new Map<string, BusinessOrderCommissionRow[]>()
@@ -611,6 +682,99 @@ export function CommissionManager({
     }
     return [...map.values()]
   }, [rows])
+
+  const selectableRows = useMemo(() => rows.filter(isClearanceSelectable), [rows])
+  const selectedCount = useMemo(
+    () => rows.filter((row) => row.item_ids.every((id) => selectedItemIds.has(id))).length,
+    [rows, selectedItemIds],
+  )
+  const allSelected =
+    selectableRows.length > 0 &&
+    selectableRows.every((row) => row.item_ids.every((id) => selectedItemIds.has(id)))
+
+  function toggleRow(row: BusinessOrderCommissionRow, checked: boolean) {
+    setSelectedItemIds((previous) => {
+      const next = new Set(previous)
+      for (const id of row.item_ids) {
+        if (checked) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
+
+  function toggleSelectAll(checked: boolean) {
+    setSelectedItemIds(() => {
+      if (!checked) return new Set()
+      const next = new Set<string>()
+      for (const row of selectableRows) {
+        for (const id of row.item_ids) next.add(id)
+      }
+      return next
+    })
+  }
+
+  function confirmSubmitClearance() {
+    const itemIds = [...selectedItemIds]
+    if (itemIds.length === 0) {
+      toast.error('请先勾选产品行')
+      return
+    }
+    startSubmitTransition(async () => {
+      const result = await submitBusinessOrderCommissionClearance({
+        business_order_item_ids: itemIds,
+        period,
+      })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '提交结清失败')
+        return
+      }
+      toast.success(`已提交 ${selectedCount} 个产品行结清至 ${period}`)
+      setSelectedItemIds(new Set())
+      setDialogOpen(false)
+      router.refresh()
+    })
+  }
+
+  function confirmRowClearance(row: BusinessOrderCommissionRow) {
+    startConfirmTransition(async () => {
+      const result = await confirmBusinessOrderCommissionClearance({
+        business_order_item_ids: row.item_ids,
+      })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '确认结清失败')
+        return
+      }
+      toast.success('已确认提成结清')
+      router.refresh()
+    })
+  }
+
+  function submitRowRejection() {
+    if (!rejectingRow) return
+    const reason = rejectReason.trim()
+    if (!reason) {
+      toast.error('请填写驳回原因')
+      return
+    }
+    startRejectTransition(async () => {
+      const result = await rejectBusinessOrderCommissionClearance({
+        business_order_item_ids: rejectingRow.item_ids,
+        reason,
+      })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '驳回结清失败')
+        return
+      }
+      toast.success('已驳回提成结清')
+      setRejectingRow(null)
+      setRejectReason('')
+      router.refresh()
+    })
+  }
 
   return (
     <section className="space-y-4">
@@ -627,6 +791,23 @@ export function CommissionManager({
       </div>
 
       <CustomerTagsLegend customerTags={customerTags} />
+
+      {canManageCategoryRates && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+          <span className="text-sm text-muted-foreground">已选 {selectedCount} 个产品行</span>
+          <Button
+            type="button"
+            disabled={selectedCount === 0 || submitPending}
+            onClick={() => setDialogOpen(true)}
+          >
+            <CheckCircle2 className="mr-1.5 h-4 w-4" />
+            提交结清
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            仅“已收齐且已发货”的产品行可提交；已结清行不可重复选择。
+          </span>
+        </div>
+      )}
 
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
         <input type="hidden" name="page" value="1" />
@@ -645,15 +826,17 @@ export function CommissionManager({
           options={options.shops.map((shop) => ({ id: shop.id, name: shop.name }))}
           selected={filters.shops}
         />
-        <MultiSelect
-          name="salespeople"
-          label="业务员"
-          options={options.salespeople.map((person) => ({
-            id: person.id,
-            name: displayProfileName(person),
-          }))}
-          selected={filters.salespeople}
-        />
+        {!isSalespersonView && (
+          <MultiSelect
+            name="salespeople"
+            label="业务员"
+            options={options.salespeople.map((person) => ({
+              id: person.id,
+              name: displayProfileName(person),
+            }))}
+            selected={filters.salespeople}
+          />
+        )}
         <MultiSelect
           name="shopGroups"
           label="店铺分组"
@@ -669,9 +852,21 @@ export function CommissionManager({
       </form>
 
       <div className="overflow-x-auto rounded-md border">
-        <Table className="min-w-[2600px]">
+        <Table className="min-w-[2700px]">
           <TableHeader>
             <TableRow>
+              {!isSalespersonView && (
+                <TableHead className="w-12">
+                  {selectableRows.length > 0 && (
+                    <input
+                      type="checkbox"
+                      aria-label="全选"
+                      checked={allSelected}
+                      onChange={(event) => toggleSelectAll(event.target.checked)}
+                    />
+                  )}
+                </TableHead>
+              )}
               {BUSINESS_ORDER_COMMISSION_COLUMNS.map((label) => (
                 <TableHead key={label}>{label}</TableHead>
               ))}
@@ -688,6 +883,22 @@ export function CommissionManager({
                     key={row.item_id}
                     className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
                   >
+                    {!isSalespersonView && isFirstRow && (
+                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <input
+                          type="checkbox"
+                          aria-label={`选择产品行 ${row.product_name}`}
+                          checked={row.item_ids.every((id) => selectedItemIds.has(id))}
+                          disabled={!isClearanceSelectable(row)}
+                          title={
+                            isClearanceSelectable(row)
+                              ? '提交该产品行提成结清'
+                              : '已结清的产品行不可重复选择'
+                          }
+                          onChange={(event) => toggleRow(row, event.target.checked)}
+                        />
+                      </TableCell>
+                    )}
                     <TableCell>
                       <div className="font-medium">
                         {groupIndex + 1}
@@ -751,13 +962,54 @@ export function CommissionManager({
                       {formatDailyMoney(row.product_received_amount, row.currency)}
                     </TableCell>
                     <TableCell>
-                      <RateEditor row={row} />
+                      <RateEditor row={row} readOnly={isSalespersonView} />
                     </TableCell>
                     <TableCell className="font-medium tabular-nums">
                       {formatDailyMoney(row.product_commission_amount, row.currency)}
                     </TableCell>
 
-                    {isFirstRow && <FreightEditor row={row} rowSpan={rowSpan} />}
+                    {isFirstRow && <FreightEditor row={row} rowSpan={rowSpan} readOnly={isSalespersonView} />}
+                    {isFirstRow && (
+                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+                        <div className="space-y-1">
+                          <Badge variant={clearanceVariant(row.clearance_status)}>
+                            {clearanceLabel(row.clearance_status)}
+                          </Badge>
+                          {row.clearance_period && (
+                            <div className="text-xs text-muted-foreground">
+                              {row.clearance_period}
+                            </div>
+                          )}
+                          {row.clearance_status === 'pending' && canConfirmClearance && (
+                            <div className="flex items-center gap-1 pt-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs"
+                                disabled={confirmPending}
+                                onClick={() => confirmRowClearance(row)}
+                              >
+                                确认
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-7 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                                disabled={rejectPending}
+                                onClick={() => {
+                                  setRejectingRow(row)
+                                  setRejectReason('')
+                                }}
+                              >
+                                驳回
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                    )}
                   </TableRow>
                 )
               })
@@ -765,7 +1017,7 @@ export function CommissionManager({
             {rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={BUSINESS_ORDER_COMMISSION_COLUMNS.length}
+                  colSpan={BUSINESS_ORDER_COMMISSION_COLUMNS.length + (isSalespersonView ? 0 : 1)}
                   className="py-12 text-center text-muted-foreground"
                 >
                   没有符合筛选条件的订单
@@ -825,6 +1077,88 @@ export function CommissionManager({
           </div>
         </div>
       )}
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>提交提成结清</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              已选择 {selectedCount} 个产品行，请选择结清归属年月后提交。
+            </p>
+            <div>
+              <label htmlFor="clearance-period" className="block text-sm font-medium">
+                结清年月
+              </label>
+              <Input
+                id="clearance-period"
+                type="month"
+                value={period}
+                onChange={(event) => setPeriod(event.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              取消
+            </Button>
+            <Button type="button" disabled={submitPending} onClick={confirmSubmitClearance}>
+              确认提交
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={rejectingRow != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRejectingRow(null)
+            setRejectReason('')
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>驳回提成结清</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              订单 {rejectingRow?.order_number} 的 {rejectingRow?.product_name} 将被驳回，请填写原因。
+            </p>
+            <div>
+              <label htmlFor="reject-reason" className="block text-sm font-medium">
+                驳回原因
+              </label>
+              <Textarea
+                id="reject-reason"
+                value={rejectReason}
+                placeholder="请填写驳回原因"
+                maxLength={500}
+                onChange={(event) => setRejectReason(event.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setRejectingRow(null)
+                setRejectReason('')
+              }}
+            >
+              取消
+            </Button>
+            <Button type="button" disabled={rejectPending} onClick={submitRowRejection}>
+              确认驳回
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

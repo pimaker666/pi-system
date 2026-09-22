@@ -6,7 +6,12 @@ import {
   buildBusinessDailyExportRows,
   businessDailyExportLimitError,
 } from '@/lib/business-daily-orders'
-import { BUSINESS_DAILY_EXPORT_LIMIT, fetchBusinessDailyLedger } from '@/lib/business-daily-orders-server'
+import {
+  BUSINESS_DAILY_EXPORT_LIMIT,
+  fetchBusinessDailyLedger,
+  fetchConfirmedCommissionItemIdsForOrders,
+  fetchSettledItemIdsForOrders,
+} from '@/lib/business-daily-orders-server'
 import { isRenderableExportImage } from '@/lib/export-image-guard'
 import {
   formatDailyMoney,
@@ -38,11 +43,21 @@ export async function GET(request: Request) {
   const imageLimitError = businessDailyExportLimitError(orders)
   if (imageLimitError) return NextResponse.json({ error: imageLimitError }, { status: 413 })
 
+  const [settledItemIds, confirmedCommissionItemIds] = await Promise.all([
+    fetchSettledItemIdsForOrders(supabase, orders),
+    fetchConfirmedCommissionItemIdsForOrders(supabase, orders),
+  ])
+  const settledSet = new Set(settledItemIds)
+  const confirmedCommissionSet = new Set(confirmedCommissionItemIds)
+
   const exportRows = buildBusinessDailyExportRows(orders, {
     money: formatDailyMoney,
     shipping: (value) => (value ? SHIPPING_LABELS[value] : ''),
     payment: (value) => (value ? PAYMENT_LABELS[value] : ''),
     salesperson: (order) => displayProfileName(order.salesperson, order.salesperson_name_snapshot),
+    isItemSettled: (item) => item.item_ids.length > 0 && item.item_ids.every((id) => settledSet.has(id)),
+    isCommissionCleared: (item) =>
+      item.item_ids.length > 0 && item.item_ids.every((id) => confirmedCommissionSet.has(id)),
   })
 
   const rows: DailyOrderPdfRow[] = []
