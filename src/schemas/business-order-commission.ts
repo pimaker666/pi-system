@@ -49,6 +49,10 @@ export const businessOrderCommissionSchema = z.object({
     (value) => (value === '' || value === null || value === undefined ? 0 : Number(value)),
     percentRate,
   ),
+  settlement_exchange_rate_to_cny: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? null : Number(value)),
+    z.number().positive('汇率必须大于 0').max(1000, '汇率超出允许范围').nullable(),
+  ),
 })
 
 /** 按发货分类设置默认产品提点。 */

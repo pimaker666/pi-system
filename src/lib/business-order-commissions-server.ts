@@ -25,6 +25,7 @@ interface OrderCommissionRow {
   business_order_id: string
   freight_cost: number
   freight_commission_rate: number
+  settlement_exchange_rate_to_cny: number | null
 }
 
 function normalizeKeyword(raw: string) {
@@ -202,7 +203,7 @@ async function fetchAllOrderCommissions(supabase: SupabaseClient) {
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
       .from('finance_business_order_commissions')
-      .select('business_order_id, freight_cost, freight_commission_rate')
+      .select('business_order_id, freight_cost, freight_commission_rate, settlement_exchange_rate_to_cny')
       .order('business_order_id')
       .range(from, from + PAGE_SIZE - 1)
     if (error) throw new Error(`订单运费提成读取失败：${error.message}`)
@@ -210,12 +211,16 @@ async function fetchAllOrderCommissions(supabase: SupabaseClient) {
       business_order_id: string
       freight_cost: number | string
       freight_commission_rate: number | string
+      settlement_exchange_rate_to_cny: number | string | null
     }>
     for (const row of page) {
       rows.push({
         business_order_id: row.business_order_id,
         freight_cost: Number(row.freight_cost),
         freight_commission_rate: Number(row.freight_commission_rate),
+        settlement_exchange_rate_to_cny: row.settlement_exchange_rate_to_cny == null
+          ? null
+          : Number(row.settlement_exchange_rate_to_cny),
       })
     }
     if (page.length < PAGE_SIZE) return rows
@@ -396,6 +401,7 @@ export async function fetchBusinessOrderCommissions(
         freight_profit: freightProfit,
         freight_commission_rate: freightRate,
         freight_commission_amount: freightCommission,
+        settlement_exchange_rate_to_cny: freight?.settlement_exchange_rate_to_cny ?? null,
         is_order_lead_row: index === 0,
         order_row_span: orderRowSpan,
         clearance_status: clearance?.status ?? null,

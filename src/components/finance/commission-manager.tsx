@@ -29,6 +29,7 @@ import {
   confirmBusinessOrderCommissionClearance,
   rejectBusinessOrderCommissionClearance,
   saveBusinessOrderCommission,
+  saveBusinessOrderCommissionExchangeRate,
   saveBusinessOrderItemCommission,
   saveCommissionCategoryRates,
   saveCustomerCommissionTags,
@@ -61,6 +62,21 @@ function quantityText(value: number) {
 
 function round4(value: number) {
   return Math.round(value * 10000) / 10000
+}
+
+function settlementExchangeRate(row: BusinessOrderCommissionRow, pageRate: number | null) {
+  if (row.currency !== 'USD') return 1
+  return pageRate ?? row.settlement_exchange_rate_to_cny
+}
+
+function formatCommissionMoney(
+  value: number,
+  row: BusinessOrderCommissionRow,
+  pageRate: number | null,
+) {
+  const rate = settlementExchangeRate(row, pageRate)
+  if (rate == null) return '请填写汇率'
+  return formatDailyMoney(round4(value * rate), 'CNY')
 }
 
 function clearanceLabel(status: BusinessOrderCommissionClearanceStatus | null) {
@@ -160,7 +176,17 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
   )
 }
 
-function FreightEditor({ row, rowSpan, readOnly }: { row: BusinessOrderCommissionRow; rowSpan: number; readOnly?: boolean }) {
+function FreightEditor({
+  row,
+  rowSpan,
+  readOnly,
+  exchangeRate,
+}: {
+  row: BusinessOrderCommissionRow
+  rowSpan: number
+  readOnly?: boolean
+  exchangeRate: number | null
+}) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const initialCost = String(row.freight_cost)
@@ -170,24 +196,31 @@ function FreightEditor({ row, rowSpan, readOnly }: { row: BusinessOrderCommissio
   const unchanged = costDraft.trim() === initialCost && rateDraft.trim() === initialRate
 
   const cost = costDraft.trim() === '' ? 0 : Number(costDraft)
-  const rate = rateDraft.trim() === '' ? 0 : Number(rateDraft)
-  const profit = round4(row.freight_received_amount - cost)
-  const commission = round4((profit * rate) / 100)
+  const freightRate = rateDraft.trim() === '' ? 0 : Number(rateDraft)
+  const rateToCny = settlementExchangeRate(row, exchangeRate)
+  const freightReceived = rateToCny == null ? null : round4(row.freight_received_amount * rateToCny)
+  const profit = freightReceived == null ? null : round4(freightReceived - cost)
+  const commission = profit == null ? null : round4((profit * freightRate) / 100)
 
   function save() {
     if (!Number.isFinite(cost) || cost < 0) {
       toast.error('运费成本必须是非负数字')
       return
     }
-    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+    if (!Number.isFinite(freightRate) || freightRate < 0 || freightRate > 100) {
       toast.error('运费提点必须是 0~100 的数字')
+      return
+    }
+    if (row.currency === 'USD' && rateToCny == null) {
+      toast.error('请先填写美元兑人民币汇率')
       return
     }
     startTransition(async () => {
       const result = await saveBusinessOrderCommission({
         business_order_id: row.order_id,
         freight_cost: cost,
-        freight_commission_rate: rate,
+        freight_commission_rate: freightRate,
+        settlement_exchange_rate_to_cny: row.currency === 'USD' ? rateToCny : null,
       })
       if (!result.ok) {
         const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
@@ -203,19 +236,19 @@ function FreightEditor({ row, rowSpan, readOnly }: { row: BusinessOrderCommissio
     return (
       <>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
-          {formatDailyMoney(row.freight_received_amount, row.currency)}
+          {freightReceived == null ? '请填写汇率' : formatDailyMoney(freightReceived, 'CNY')}
         </TableCell>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
-          {formatDailyMoney(row.freight_cost, row.currency)}
+          {formatDailyMoney(row.freight_cost, 'CNY')}
         </TableCell>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
-          {formatDailyMoney(round4(row.freight_received_amount - row.freight_cost), row.currency)}
+          {profit == null ? '请填写汇率' : formatDailyMoney(profit, 'CNY')}
         </TableCell>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
           {row.freight_commission_rate}
         </TableCell>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium tabular-nums`}>
-          {formatDailyMoney(row.freight_commission_amount, row.currency)}
+          {commission == null ? '请填写汇率' : formatDailyMoney(commission, 'CNY')}
         </TableCell>
       </>
     )
@@ -224,7 +257,7 @@ function FreightEditor({ row, rowSpan, readOnly }: { row: BusinessOrderCommissio
   return (
     <>
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
-        {formatDailyMoney(row.freight_received_amount, row.currency)}
+        {freightReceived == null ? '请填写汇率' : formatDailyMoney(freightReceived, 'CNY')}
       </TableCell>
       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
         <div className="flex min-w-36 items-center gap-2">
@@ -235,14 +268,14 @@ function FreightEditor({ row, rowSpan, readOnly }: { row: BusinessOrderCommissio
             step="0.0001"
             disabled={pending}
             placeholder="0"
-            title="运费成本（订单币种）"
+            title="运费成本（人民币）"
             onChange={(event) => setCostDraft(event.target.value)}
             className="h-8"
           />
         </div>
       </TableCell>
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
-        {formatDailyMoney(profit, row.currency)}
+        {profit == null ? '请填写汇率' : formatDailyMoney(profit, 'CNY')}
       </TableCell>
       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
         <div className="flex min-w-36 items-center gap-2">
@@ -279,7 +312,7 @@ function FreightEditor({ row, rowSpan, readOnly }: { row: BusinessOrderCommissio
         </div>
       </TableCell>
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium tabular-nums`}>
-        {formatDailyMoney(commission, row.currency)}
+        {commission == null ? '请填写汇率' : formatDailyMoney(commission, 'CNY')}
       </TableCell>
     </>
   )
@@ -669,8 +702,18 @@ export function CommissionManager({
   const [rejectPending, startRejectTransition] = useTransition()
   const [rejectingRow, setRejectingRow] = useState<BusinessOrderCommissionRow | null>(null)
   const [rejectReason, setRejectReason] = useState('')
+  const [exchangeRate, setExchangeRate] = useState('')
+  const [exchangeRatePending, startExchangeRateTransition] = useTransition()
 
   const isSalespersonView = actor.role === 'sales' || actor.role === 'supervisor'
+  const currentExchangeRate = useMemo(() => {
+    const value = Number(exchangeRate)
+    return Number.isFinite(value) && value > 0 ? value : null
+  }, [exchangeRate])
+  const usdOrderIds = useMemo(
+    () => [...new Set(rows.filter((row) => row.currency === 'USD').map((row) => row.order_id))],
+    [rows],
+  )
   const canConfirmClearance = isSalespersonView
 
   const groups = useMemo(() => {
@@ -776,6 +819,30 @@ export function CommissionManager({
     })
   }
 
+  function saveExchangeRate() {
+    if (currentExchangeRate == null) {
+      toast.error('请填写大于 0 的美元兑人民币汇率')
+      return
+    }
+    if (usdOrderIds.length === 0) {
+      toast.error('当前页没有美元订单')
+      return
+    }
+    startExchangeRateTransition(async () => {
+      const result = await saveBusinessOrderCommissionExchangeRate({
+        business_order_ids: usdOrderIds,
+        settlement_exchange_rate_to_cny: currentExchangeRate,
+      })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '汇率保存失败')
+        return
+      }
+      toast.success(`已将汇率应用到当前页 ${usdOrderIds.length} 个美元订单`)
+      router.refresh()
+    })
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -788,6 +855,35 @@ export function CommissionManager({
           {isAdmin && <CustomerTagsDialog customerTags={customerTags} />}
           {canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}
         </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card p-4">
+        <label htmlFor="commission-exchange-rate" className="text-sm font-medium">
+          USD→CNY 汇率
+        </label>
+        <Input
+          id="commission-exchange-rate"
+          type="number"
+          min="0"
+          step="0.000001"
+          placeholder="填写后美元金额自动换算为人民币"
+          value={exchangeRate}
+          onChange={(event) => setExchangeRate(event.target.value)}
+          className="w-[260px]"
+        />
+        {!isSalespersonView && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={exchangeRatePending || usdOrderIds.length === 0 || currentExchangeRate == null}
+            onClick={saveExchangeRate}
+          >
+            保存并应用当前页
+          </Button>
+        )}
+        <span className="text-xs text-muted-foreground">
+          美元订单的产品实收、提成和运费实收均按此汇率结算为人民币；运费成本始终填写人民币。
+        </span>
       </div>
 
       <CustomerTagsLegend customerTags={customerTags} />
@@ -957,18 +1053,27 @@ export function CommissionManager({
                       )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">{quantityText(row.quantity)}</TableCell>
-                    <TableCell className="tabular-nums">{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
                     <TableCell className="tabular-nums">
-                      {formatDailyMoney(row.product_received_amount, row.currency)}
+                      {formatCommissionMoney(row.unit_price, row, currentExchangeRate)}
+                    </TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatCommissionMoney(row.product_received_amount, row, currentExchangeRate)}
                     </TableCell>
                     <TableCell>
                       <RateEditor row={row} readOnly={isSalespersonView} />
                     </TableCell>
                     <TableCell className="font-medium tabular-nums">
-                      {formatDailyMoney(row.product_commission_amount, row.currency)}
+                      {formatCommissionMoney(row.product_commission_amount, row, currentExchangeRate)}
                     </TableCell>
 
-                    {isFirstRow && <FreightEditor row={row} rowSpan={rowSpan} readOnly={isSalespersonView} />}
+                    {isFirstRow && (
+                      <FreightEditor
+                        row={row}
+                        rowSpan={rowSpan}
+                        readOnly={isSalespersonView}
+                        exchangeRate={currentExchangeRate}
+                      />
+                    )}
                     {isFirstRow && (
                       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
                         <div className="space-y-1">

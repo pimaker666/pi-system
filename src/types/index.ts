@@ -310,6 +310,8 @@ export interface BusinessOrderCommissionRow {
   freight_commission_rate: number
   /** 运费提成 = 运费利润 × 运费提点% ÷ 100（订单级）。 */
   freight_commission_amount: number
+  /** 美元订单结算时保存的 USD→CNY 汇率；运费成本始终以人民币保存。 */
+  settlement_exchange_rate_to_cny: number | null
   /** 是否为该订单在当前结果中的首行（用于运费列合并渲染）。 */
   is_order_lead_row: boolean
   /** 该订单在当前结果中占据的产品行数（用于运费列 rowspan）。 */

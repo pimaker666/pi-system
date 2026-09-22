@@ -66,6 +66,7 @@ export async function saveBusinessOrderCommission(input: {
   business_order_id: string
   freight_cost: number
   freight_commission_rate: number
+  settlement_exchange_rate_to_cny: number | null
 }): Promise<ActionResult> {
   const profile = await requireApproved()
   const parsed = businessOrderCommissionSchema.safeParse(input)
@@ -79,6 +80,7 @@ export async function saveBusinessOrderCommission(input: {
       business_order_id: parsed.data.business_order_id,
       freight_cost: parsed.data.freight_cost,
       freight_commission_rate: parsed.data.freight_commission_rate,
+      settlement_exchange_rate_to_cny: parsed.data.settlement_exchange_rate_to_cny,
       updated_by: profile.id,
     },
     { onConflict: 'business_order_id' },
@@ -86,6 +88,50 @@ export async function saveBusinessOrderCommission(input: {
   if (error) return { ok: false, error: error.message }
 
   revalidateCommission()
+  return { ok: true }
+}
+
+const commissionExchangeRateSchema = z.object({
+  business_order_ids: z.array(z.string().uuid()).min(1),
+  settlement_exchange_rate_to_cny: z.number().positive('汇率必须大于 0').max(1000, '汇率超出允许范围'),
+})
+
+export async function saveBusinessOrderCommissionExchangeRate(input: {
+  business_order_ids: string[]
+  settlement_exchange_rate_to_cny: number
+}): Promise<ActionResult> {
+  const profile = await requireApproved()
+  const parsed = commissionExchangeRateSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const { data: existing, error: selectError } = await supabase
+    .from('finance_business_order_commissions')
+    .select('business_order_id, freight_cost, freight_commission_rate')
+    .in('business_order_id', parsed.data.business_order_ids)
+  if (selectError) return { ok: false, error: selectError.message }
+
+  const existingMap = new Map((existing ?? []).map((row) => [row.business_order_id, row]))
+  const rows = parsed.data.business_order_ids.map((businessOrderId) => {
+    const commission = existingMap.get(businessOrderId)
+    return {
+      business_order_id: businessOrderId,
+      freight_cost: commission?.freight_cost ?? 0,
+      freight_commission_rate: commission?.freight_commission_rate ?? 0,
+      settlement_exchange_rate_to_cny: parsed.data.settlement_exchange_rate_to_cny,
+      updated_by: profile.id,
+    }
+  })
+  const { error } = await supabase
+    .from('finance_business_order_commissions')
+    .upsert(rows, { onConflict: 'business_order_id' })
+  if (error) return { ok: false, error: error.message }
+
+  revalidateCommission()
+  revalidatePath('/finance/profit')
+  revalidatePath('/finance/performance')
   return { ok: true }
 }
 
