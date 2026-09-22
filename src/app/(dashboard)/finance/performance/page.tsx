@@ -1,31 +1,78 @@
+import { PerformanceManager } from '@/components/finance/performance-manager'
 import {
-  PerformanceManager,
-  type BusinessOrderListRow,
-} from '@/components/finance/performance-manager'
-import { requireApproved } from '@/lib/auth'
-import { fetchCurrentCustomerCountries } from '@/lib/business-daily-orders-server'
-import { PERFORMANCE_PAGE_SIZE } from '@/lib/business-order-cost'
-import { BUSINESS_ORDER_STATUS_LABELS } from '@/lib/business-orders'
+  getBusinessPerformanceByGroup,
+  getBusinessPerformanceSummary,
+} from '@/lib/actions/business-orders'
+import { getBusinessDateKey } from '@/lib/business-orders'
+import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
+import { displayProfileName } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/server'
-import type { BusinessOrderStatus } from '@/types'
+import { requireApproved } from '@/lib/auth'
+import type {
+  BusinessFulfillmentType,
+  BusinessPerformanceGroupBy,
+  DailyOrderShippingCategory,
+} from '@/types'
 
-const ALLOCATION_SELECT =
-  'business_order_payment_allocations(amount, voided_at, transfer:business_customer_transfers!business_order_payment_allocations_transfer_id_fkey(voided_at, exchange_rate_to_cny))'
+function getCurrentMonthRange() {
+  const today = getBusinessDateKey()
+  const [year, month] = today.split('-').map(Number)
+  const start = `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-01`
+  const endDate = new Date(year, month, 0)
+  const end = `${String(endDate.getFullYear()).padStart(4, '0')}-${String(
+    endDate.getMonth() + 1,
+  ).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`
+  return { start, end }
+}
 
-const SALESPERSON_SELECT =
-  'salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)'
+function parseListParam(
+  raw: Record<string, string | string[] | undefined>,
+  key: string,
+): string[] | undefined {
+  const value = raw[key]
+  if (!value) return undefined
+  const list = Array.isArray(value) ? value : value.split(',')
+  const trimmed = list.map((item) => item.trim()).filter(Boolean)
+  return trimmed.length > 0 ? trimmed : undefined
+}
 
 function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
   const scalar = (key: string) => {
-    const v = raw[key]
-    return Array.isArray(v) ? v[0] : v
+    const value = raw[key]
+    return Array.isArray(value) ? value[0] : value
   }
-  const q = (scalar('q') ?? '').trim()
-  const rawStatus = (scalar('status') ?? '').trim()
-  const validStatuses = Object.keys(BUSINESS_ORDER_STATUS_LABELS)
-  const status = rawStatus === 'special_closed' || validStatuses.includes(rawStatus) ? rawStatus : ''
-  const page = Math.max(1, Number(scalar('page') || 1) || 1)
-  return { q, status, page }
+
+  const { start, end } = getCurrentMonthRange()
+  const dateFrom = scalar('dateFrom') || start
+  const dateTo = scalar('dateTo') || end
+
+  const validGroups: BusinessPerformanceGroupBy[] = [
+    'salesperson',
+    'shop',
+    'date',
+    'month',
+    'fulfillment_type',
+    'shipping_category',
+  ]
+  const rawGroup = scalar('groupBy')
+  const groupBy: BusinessPerformanceGroupBy =
+    rawGroup && validGroups.includes(rawGroup as BusinessPerformanceGroupBy)
+      ? (rawGroup as BusinessPerformanceGroupBy)
+      : 'salesperson'
+
+  return {
+    dateFrom,
+    dateTo,
+    salespersonIds: parseListParam(raw, 'salesperson'),
+    shopIds: parseListParam(raw, 'shop'),
+    fulfillmentTypes: parseListParam(raw, 'fulfillment') as
+      | BusinessFulfillmentType[]
+      | undefined,
+    shippingCategories: parseListParam(raw, 'shipping') as
+      | DailyOrderShippingCategory[]
+      | undefined,
+    groupBy,
+  }
 }
 
 export default async function FinancePerformancePage({
@@ -35,56 +82,50 @@ export default async function FinancePerformancePage({
 }) {
   await requireApproved()
   const supabase = await createClient()
-  const { q, status, page } = parseSearchParams(await searchParams)
-  const offset = (page - 1) * PERFORMANCE_PAGE_SIZE
+  const {
+    dateFrom,
+    dateTo,
+    salespersonIds,
+    shopIds,
+    fulfillmentTypes,
+    shippingCategories,
+    groupBy,
+  } = parseSearchParams(await searchParams)
 
-  let ordersQuery = supabase
-    .from('business_orders')
-    .select(`*, ${ALLOCATION_SELECT}, ${SALESPERSON_SELECT}`)
-    .is('voided_at', null)
-    .order('order_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .range(offset, offset + PERFORMANCE_PAGE_SIZE - 1)
+  const [options, summaryResult, groupResult] = await Promise.all([
+    fetchDailyOrderOptions(supabase),
+    getBusinessPerformanceSummary({
+      dateFrom,
+      dateTo,
+      salespersonIds,
+      shopIds,
+      fulfillmentTypes,
+      shippingCategories,
+    }),
+    getBusinessPerformanceByGroup(groupBy, {
+      dateFrom,
+      dateTo,
+      salespersonIds,
+      shopIds,
+      fulfillmentTypes,
+      shippingCategories,
+    }),
+  ])
 
-  let countQuery = supabase
-    .from('business_orders')
-    .select('id', { count: 'exact', head: true })
-    .is('voided_at', null)
-
-  if (status === 'special_closed') {
-    ordersQuery = ordersQuery.not('closed_at', 'is', null)
-    countQuery = countQuery.not('closed_at', 'is', null)
-  } else if (status) {
-    ordersQuery = ordersQuery.eq('status', status as BusinessOrderStatus)
-    countQuery = countQuery.eq('status', status as BusinessOrderStatus)
+  if (!summaryResult.ok || !summaryResult.data) {
+    throw new Error(summaryResult.error || '业绩汇总读取失败')
+  }
+  if (!groupResult.ok || !groupResult.data) {
+    throw new Error(groupResult.error || '业绩分组读取失败')
   }
 
-  if (q) {
-    const orFilter = [
-      `order_number.ilike.%${q}%`,
-      `external_order_number.ilike.%${q}%`,
-      `customer_snapshot.ilike.%${q}%`,
-    ].join(',')
-    ordersQuery = ordersQuery.or(orFilter)
-    countQuery = countQuery.or(orFilter)
-  }
-
-  const [ordersResult, countResult] = await Promise.all([ordersQuery, countQuery])
-
-  if (ordersResult.error) throw new Error(`业务订单读取失败：${ordersResult.error.message}`)
-  if (countResult.error) throw new Error(`业务订单计数读取失败：${countResult.error.message}`)
-
-  const baseOrders = (ordersResult.data ?? []) as BusinessOrderListRow[]
-  const totalCount = countResult.count ?? 0
-
-  // 国旗读实时客户国家（走 security definer RPC），未关联客户时回落到下单快照。
-  const countries = await fetchCurrentCustomerCountries(
-    supabase,
-    baseOrders.map((order) => order.id),
-  )
-  const orders = baseOrders.map((order) => ({
-    ...order,
-    current_customer_country: countries.get(order.id) ?? null,
+  const salespeople = options.salespeople.map((profile) => ({
+    value: profile.id,
+    label: displayProfileName(profile, null),
+  }))
+  const shops = options.shops.map((shop) => ({
+    value: shop.id,
+    label: shop.name,
   }))
 
   return (
@@ -92,15 +133,23 @@ export default async function FinancePerformancePage({
       <div>
         <h1 className="text-2xl font-semibold">业务业绩</h1>
         <p className="text-sm text-muted-foreground">
-          本页为业务订单的只读汇总，数据与每日订单同源；请前往每日订单查看详情或维护订单。
+          按业务、渠道、时间、发货分类等维度汇总业务订单业绩；数据在服务端聚合，与订单级权限一致。
         </p>
       </div>
       <PerformanceManager
-        orders={orders}
-        totalCount={totalCount}
-        currentPage={page}
-        pageSize={PERFORMANCE_PAGE_SIZE}
-        filters={{ q, status }}
+        summary={summaryResult.data}
+        groupRows={groupResult.data}
+        groupBy={groupBy}
+        filters={{
+          dateFrom,
+          dateTo,
+          salespersonIds,
+          shopIds,
+          fulfillmentTypes,
+          shippingCategories,
+        }}
+        salespeople={salespeople}
+        shops={shops}
       />
     </div>
   )

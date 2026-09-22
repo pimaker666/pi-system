@@ -1,21 +1,13 @@
 'use client'
 
-import Link from 'next/link'
-import { useMemo, useState } from 'react'
-import { Eye, Search } from 'lucide-react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Badge } from '@/components/ui/badge'
+import { Check, ChevronsUpDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { CountryFlag } from '@/components/shared/country-flag'
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Table,
   TableBody,
@@ -24,320 +16,385 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import {
-  BUSINESS_FULFILLMENT_LABELS,
-  BUSINESS_FULFILLMENT_STATUS_LABELS,
-  BUSINESS_FULFILLMENT_STATUS_VARIANTS,
-  BUSINESS_ORDER_STATUS_LABELS,
-  BUSINESS_ORDER_STATUS_VARIANTS,
-  BUSINESS_PAYMENT_STATUS_LABELS,
-  BUSINESS_PAYMENT_STATUS_VARIANTS,
-  getBusinessOrderCustomerName,
-  getBusinessOverdueDays,
-} from '@/lib/business-orders'
+import { BUSINESS_FULFILLMENT_LABELS } from '@/lib/business-orders'
+import { SHIPPING_LABELS } from '@/lib/daily-orders'
 import { formatCny } from '@/lib/finance'
-import { displayProfileName, formatCurrency, formatDate } from '@/lib/utils'
-import type { BusinessOrder } from '@/types'
+import { cn } from '@/lib/utils'
+import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
+import type {
+  BusinessFulfillmentType,
+  BusinessPerformanceGroupBy,
+  BusinessPerformanceGroupRow,
+  BusinessPerformanceSummary,
+  DailyOrderShippingCategory,
+} from '@/types'
 
-interface AllocationListRow {
-  amount: number
-  voided_at: string | null
-  transfer: {
-    voided_at: string | null
-    exchange_rate_to_cny: number | null
-  } | null
+interface Option {
+  value: string
+  label: string
 }
 
-export interface BusinessOrderListRow extends BusinessOrder {
-  business_order_payment_allocations: AllocationListRow[]
+interface PerformanceManagerProps {
+  summary: BusinessPerformanceSummary
+  groupRows: BusinessPerformanceGroupRow[]
+  groupBy: BusinessPerformanceGroupBy
+  filters: BusinessPerformanceFilters
+  salespeople: Option[]
+  shops: Option[]
 }
 
-export interface PerformanceManagerProps {
-  orders: BusinessOrderListRow[]
-  totalCount: number
-  currentPage: number
-  pageSize: number
-  filters: { q: string; status: string }
+const GROUP_TABS: { value: BusinessPerformanceGroupBy; label: string }[] = [
+  { value: 'salesperson', label: '业务' },
+  { value: 'shop', label: '渠道' },
+  { value: 'date', label: '日期' },
+  { value: 'month', label: '月份' },
+  { value: 'fulfillment_type', label: '订单属性' },
+  { value: 'shipping_category', label: '发货分类' },
+]
+
+const GROUP_COLUMN_LABELS: Record<BusinessPerformanceGroupBy, string> = {
+  salesperson: '业务',
+  shop: '渠道',
+  date: '日期',
+  month: '月份',
+  fulfillment_type: '订单属性',
+  shipping_category: '发货分类',
 }
 
-function effectiveAllocations(order: BusinessOrderListRow) {
-  return order.business_order_payment_allocations.filter(
-    (allocation) => !allocation.voided_at && allocation.transfer && !allocation.transfer.voided_at,
+const FULFILLMENT_OPTIONS: Option[] = [
+  { value: 'custom', label: BUSINESS_FULFILLMENT_LABELS.custom },
+  { value: 'stock', label: BUSINESS_FULFILLMENT_LABELS.stock },
+]
+
+const SHIPPING_OPTIONS: Option[] = [
+  { value: 'custom', label: SHIPPING_LABELS.custom },
+  { value: 'stock', label: SHIPPING_LABELS.stock },
+  { value: 'sample', label: SHIPPING_LABELS.sample },
+  { value: 'purchase', label: SHIPPING_LABELS.purchase },
+]
+
+function MultiSelect({
+  options,
+  value,
+  onChange,
+  placeholder,
+}: {
+  options: Option[]
+  value: string[]
+  onChange: (value: string[]) => void
+  placeholder: string
+}) {
+  const [open, setOpen] = useState(false)
+  const selectedLabels = options
+    .filter((option) => value.includes(option.value))
+    .map((option) => option.label)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+        >
+          <span className="truncate">
+            {selectedLabels.length > 0 ? selectedLabels.join('、') : placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[240px] p-0">
+        <Command>
+          <CommandInput placeholder="搜索..." />
+          <CommandList>
+            <CommandEmpty>无匹配选项</CommandEmpty>
+            <CommandGroup>
+              {options.map((option) => {
+                const selected = value.includes(option.value)
+                return (
+                  <CommandItem
+                    key={option.value}
+                    value={option.value}
+                    onSelect={() => {
+                      onChange(
+                        selected
+                          ? value.filter((item) => item !== option.value)
+                          : [...value, option.value],
+                      )
+                    }}
+                  >
+                    <div
+                      className={cn(
+                        'mr-2 flex h-4 w-4 items-center justify-center rounded-sm border',
+                        selected && 'bg-primary border-primary',
+                      )}
+                    >
+                      {selected && (
+                        <Check className="h-3 w-3 text-primary-foreground" />
+                      )}
+                    </div>
+                    <span>{option.label}</span>
+                  </CommandItem>
+                )
+              })}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   )
-}
-
-function performanceUrl(q: string, status: string, page: number) {
-  const params = new URLSearchParams()
-  if (q) params.set('q', q)
-  if (status) params.set('status', status)
-  if (page > 1) params.set('page', String(page))
-  const qs = params.toString()
-  return `/finance/performance${qs ? `?${qs}` : ''}`
 }
 
 export function PerformanceManager({
-  orders,
-  totalCount,
-  currentPage,
-  pageSize,
+  summary,
+  groupRows,
+  groupBy,
   filters,
+  salespeople,
+  shops,
 }: PerformanceManagerProps) {
   const router = useRouter()
-  const [query, setQuery] = useState(filters.q)
-  const [status, setStatus] = useState(filters.status || 'all')
-  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  const [pending, startTransition] = useTransition()
 
-  function navigate(q: string, s: string, page: number) {
-    router.push(performanceUrl(q, s === 'all' ? '' : s, page))
-  }
-
-  const summary = useMemo(
-    () =>
-      orders.reduce(
-        (result, order) => {
-          const activeAllocations = effectiveAllocations(order)
-          const received = activeAllocations.reduce(
-            (sum, allocation) => sum + Number(allocation.amount),
-            0,
-          )
-          const receivedCny = activeAllocations.reduce(
-            (sum, allocation) =>
-              sum + Number(allocation.amount) * Number(allocation.transfer?.exchange_rate_to_cny ?? 0),
-            0,
-          )
-          result.orderTotalCny += Number(order.total_cny ?? 0)
-          result.receivedCny += receivedCny
-          result.outstandingCny +=
-            Math.max(Number(order.total_amount) - received, 0) *
-            Number(order.exchange_rate_to_cny ?? 0)
-          if (getBusinessOverdueDays(order.payment_due_date, order.payment_status === 'fully_paid') > 0) {
-            result.overdueCount += 1
-          }
-          return result
-        },
-        { orderTotalCny: 0, receivedCny: 0, outstandingCny: 0, overdueCount: 0 },
-      ),
-    [orders],
+  const [dateFrom, setDateFrom] = useState(filters.dateFrom ?? '')
+  const [dateTo, setDateTo] = useState(filters.dateTo ?? '')
+  const [selectedSalespeople, setSelectedSalespeople] = useState(
+    filters.salespersonIds ?? [],
+  )
+  const [selectedShops, setSelectedShops] = useState(filters.shopIds ?? [])
+  const [selectedFulfillment, setSelectedFulfillment] = useState(
+    filters.fulfillmentTypes ?? [],
+  )
+  const [selectedShipping, setSelectedShipping] = useState(
+    filters.shippingCategories ?? [],
   )
 
+  function buildUrl(overrides: { groupBy?: BusinessPerformanceGroupBy } = {}) {
+    const params = new URLSearchParams()
+    if (dateFrom) params.set('dateFrom', dateFrom)
+    if (dateTo) params.set('dateTo', dateTo)
+    if (selectedSalespeople.length > 0) {
+      params.set('salesperson', selectedSalespeople.join(','))
+    }
+    if (selectedShops.length > 0) {
+      params.set('shop', selectedShops.join(','))
+    }
+    if (selectedFulfillment.length > 0) {
+      params.set('fulfillment', selectedFulfillment.join(','))
+    }
+    if (selectedShipping.length > 0) {
+      params.set('shipping', selectedShipping.join(','))
+    }
+    params.set('groupBy', overrides.groupBy ?? groupBy)
+    const qs = params.toString()
+    return `/finance/performance${qs ? `?${qs}` : ''}`
+  }
+
+  function navigate(url: string) {
+    startTransition(() => {
+      router.push(url)
+    })
+  }
+
+  function clearFilters() {
+    setDateFrom('')
+    setDateTo('')
+    setSelectedSalespeople([])
+    setSelectedShops([])
+    setSelectedFulfillment([])
+    setSelectedShipping([])
+    navigate('/finance/performance')
+  }
+
   return (
-    <div className="space-y-4">
+    <div className={cn('space-y-4', pending && 'opacity-70')}>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">筛选订单</div><div className="mt-1 text-xl font-semibold">{totalCount}</div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">订单总额</div><div className="mt-1 text-xl font-semibold tabular-nums">{formatCny(summary.orderTotalCny)}</div></CardContent></Card>
-        <Card><CardContent className="p-4"><div className="text-xs text-muted-foreground">有效分摊已收</div><div className="mt-1 text-xl font-semibold tabular-nums text-green-700">{formatCny(summary.receivedCny)}</div></CardContent></Card>
-        <Card className={summary.overdueCount > 0 ? 'border-destructive/40' : undefined}><CardContent className="p-4"><div className="text-xs text-muted-foreground">未收 / 逾期订单</div><div className="mt-1 text-xl font-semibold tabular-nums">{formatCny(summary.outstandingCny)} <span className={summary.overdueCount > 0 ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>/ {summary.overdueCount} 单</span></div></CardContent></Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground">筛选订单数</div>
+            <div className="mt-1 text-xl font-semibold tabular-nums">
+              {Number(summary.order_count)}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground">订单总额（CNY）</div>
+            <div className="mt-1 text-xl font-semibold tabular-nums">
+              {formatCny(Number(summary.order_total_cny))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground">已收（CNY）</div>
+            <div className="mt-1 text-xl font-semibold tabular-nums text-green-700">
+              {formatCny(Number(summary.received_cny))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className={Number(summary.overdue_count) > 0 ? 'border-destructive/40' : undefined}>
+          <CardContent className="p-4">
+            <div className="text-xs text-muted-foreground">未收 / 逾期订单</div>
+            <div className="mt-1 text-xl font-semibold tabular-nums">
+              {formatCny(Number(summary.outstanding_cny))}{' '}
+              <span
+                className={
+                  Number(summary.overdue_count) > 0
+                    ? 'text-sm text-destructive'
+                    : 'text-sm text-muted-foreground'
+                }
+              >
+                / {Number(summary.overdue_count)} 单
+              </span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-col gap-2 sm:flex-row">
-          <div className="relative max-w-md flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+      <div className="flex flex-col gap-3 rounded-md border bg-card p-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">开始日期</label>
             <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  navigate(query, status, 1)
-                }
-              }}
-              placeholder="搜索订单号或客户"
-              className="pl-9"
+              type="date"
+              value={dateFrom}
+              onChange={(event) => setDateFrom(event.target.value)}
             />
           </div>
-          <Select
-            value={status}
-            onValueChange={(value) => {
-              setStatus(value)
-              navigate(query, value, 1)
-            }}
-          >
-            <SelectTrigger className="w-full sm:w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">全部状态</SelectItem>
-              <SelectItem value="special_closed">特殊关闭</SelectItem>
-              {Object.entries(BUSINESS_ORDER_STATUS_LABELS).map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button type="button" onClick={() => navigate(query, status, 1)}>筛选</Button>
-          <Button asChild type="button" variant="outline">
-            <Link href="/finance/performance" onClick={() => { setQuery(''); setStatus('all') }}>清空</Link>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">结束日期</label>
+            <Input
+              type="date"
+              value={dateTo}
+              onChange={(event) => setDateTo(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">业务</label>
+            <MultiSelect
+              options={salespeople}
+              value={selectedSalespeople}
+              onChange={setSelectedSalespeople}
+              placeholder="全部业务"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">渠道</label>
+            <MultiSelect
+              options={shops}
+              value={selectedShops}
+              onChange={setSelectedShops}
+              placeholder="全部渠道"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">订单属性</label>
+            <MultiSelect
+              options={FULFILLMENT_OPTIONS}
+              value={selectedFulfillment}
+              onChange={(value) =>
+                setSelectedFulfillment(value as BusinessFulfillmentType[])
+              }
+              placeholder="全部属性"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">发货分类</label>
+            <MultiSelect
+              options={SHIPPING_OPTIONS}
+              value={selectedShipping}
+              onChange={(value) =>
+                setSelectedShipping(value as DailyOrderShippingCategory[])
+              }
+              placeholder="全部分类"
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button onClick={() => navigate(buildUrl())}>筛选</Button>
+          <Button variant="outline" onClick={clearFilters}>
+            清空
           </Button>
         </div>
       </div>
 
+      <div className="flex flex-wrap gap-2">
+        {GROUP_TABS.map((tab) => (
+          <Button
+            key={tab.value}
+            variant={groupBy === tab.value ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => navigate(buildUrl({ groupBy: tab.value }))}
+          >
+            {tab.label}
+          </Button>
+        ))}
+      </div>
+
       <div className="overflow-x-auto rounded-md border">
-        <Table className="min-w-[1120px]">
+        <Table className="min-w-[760px]">
           <TableHeader>
             <TableRow>
-              <TableHead>订单 / 客户</TableHead>
-              <TableHead>日期</TableHead>
-              <TableHead>属性</TableHead>
-              <TableHead>业务员</TableHead>
-              <TableHead className="text-right">订单金额</TableHead>
-              <TableHead className="text-right">已收 / 未收</TableHead>
-              <TableHead>付款 / 发货</TableHead>
-              <TableHead>流程状态</TableHead>
-              <TableHead className="w-16" />
+              <TableHead>{GROUP_COLUMN_LABELS[groupBy]}</TableHead>
+              <TableHead className="text-right">订单数</TableHead>
+              <TableHead className="text-right">订单总额（原币）</TableHead>
+              <TableHead className="text-right">订单总额（CNY）</TableHead>
+              <TableHead className="text-right">已收（CNY）</TableHead>
+              <TableHead className="text-right">未收（CNY）</TableHead>
+              <TableHead className="text-right">逾期订单</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {orders.map((order) => {
-              const received = effectiveAllocations(order).reduce(
-                (sum, allocation) => sum + Number(allocation.amount),
-                0,
-              )
-              const outstanding = Math.max(Number(order.total_amount) - received, 0)
-              const daysOverdue = getBusinessOverdueDays(
-                order.payment_due_date,
-                order.payment_status === 'fully_paid',
-              )
-              const isLegacyCompleted =
-                order.status === 'completed' && order.completion_gate_version < 2
-              return (
-                <TableRow key={order.id}>
-                  <TableCell>
-                    <Link
-                      href={`/finance/daily-orders/${order.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {order.order_number}
-                    </Link>
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <CountryFlag country={order.current_customer_country ?? order.customer_snapshot?.country} />
-                      {getBusinessOrderCustomerName(order.customer_snapshot)}
-                    </div>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap">
-                    <div>{formatDate(order.order_date)}</div>
-                    {order.payment_due_date && (
-                      <div className="text-xs text-muted-foreground">尾款 {formatDate(order.payment_due_date)}</div>
-                    )}
-                    {daysOverdue > 0 && <Badge variant="destructive" className="mt-1">逾期 {daysOverdue} 天</Badge>}
-                  </TableCell>
-                  <TableCell>{BUSINESS_FULFILLMENT_LABELS[order.fulfillment_type]}</TableCell>
-                  <TableCell>
-                    {displayProfileName(
-                      order.salesperson,
-                      order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
-                    )}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-right font-medium">
-                    <div>{formatCurrency(Number(order.total_amount), order.currency)}</div>
-                    <div className="text-xs font-normal text-muted-foreground">
-                      {order.total_cny === null ? '—' : formatCny(Number(order.total_cny))}
-                    </div>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-right tabular-nums">
-                    <div className="text-green-700">{formatCurrency(received, order.currency)}</div>
-                    <div className={outstanding > 0.005 ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'}>
-                      未收 {formatCurrency(outstanding, order.currency)}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col items-start gap-1">
-                      <Badge variant={BUSINESS_PAYMENT_STATUS_VARIANTS[order.payment_status]}>
-                        {BUSINESS_PAYMENT_STATUS_LABELS[order.payment_status]}
-                      </Badge>
-                      <Badge
-                        variant={
-                          isLegacyCompleted
-                            ? 'secondary'
-                            : BUSINESS_FULFILLMENT_STATUS_VARIANTS[order.fulfillment_status]
-                        }
-                      >
-                        {isLegacyCompleted
-                          ? '历史完成·发货未追溯'
-                          : BUSINESS_FULFILLMENT_STATUS_LABELS[order.fulfillment_status]}
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {order.closed_at ? (
-                      <Badge variant="secondary">特殊关闭</Badge>
-                    ) : (
-                      <Badge variant={BUSINESS_ORDER_STATUS_VARIANTS[order.status]}>
-                        {BUSINESS_ORDER_STATUS_LABELS[order.status]}
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Button asChild variant="ghost" size="icon">
-                      <Link href={`/finance/daily-orders/${order.id}`} aria-label="查看订单">
-                        <Eye className="h-4 w-4" />
-                      </Link>
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              )
-            })}
-            {orders.length === 0 && (
+            {groupRows.map((row) => (
+              <TableRow key={row.group_key}>
+                <TableCell className="font-medium">{row.group_label}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {Number(row.order_count)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {Number(row.order_total_amount).toLocaleString('zh-CN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatCny(Number(row.order_total_cny))}
+                </TableCell>
+                <TableCell className="text-right tabular-nums text-green-700">
+                  {formatCny(Number(row.received_cny))}
+                </TableCell>
+                <TableCell
+                  className={cn(
+                    'text-right tabular-nums',
+                    Number(row.outstanding_cny) > 0.005 && 'text-destructive',
+                  )}
+                >
+                  {formatCny(Number(row.outstanding_cny))}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {Number(row.overdue_count) > 0 ? (
+                    <span className="text-destructive">{Number(row.overdue_count)}</span>
+                  ) : (
+                    Number(row.overdue_count)
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+            {groupRows.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="py-12 text-center text-muted-foreground">
-                  暂无符合条件的业务订单
+                <TableCell
+                  colSpan={7}
+                  className="py-12 text-center text-muted-foreground"
+                >
+                  暂无符合条件的数据
                 </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
       </div>
-
-      {totalPages > 1 && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="text-sm text-muted-foreground">
-            共 {totalCount} 条订单，第 {currentPage}/{totalPages} 页
-          </span>
-          <div className="flex items-center gap-1">
-            {currentPage > 1 && (
-              <Link
-                href={performanceUrl(filters.q, filters.status, currentPage - 1)}
-                className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
-              >
-                上一页
-              </Link>
-            )}
-            {Array.from({ length: totalPages }, (_, i) => i + 1)
-              .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
-              .reduce<(number | 'ellipsis')[]>((acc, p, i, arr) => {
-                if (i > 0 && p - (arr[i - 1] as number) > 1) acc.push('ellipsis')
-                acc.push(p)
-                return acc
-              }, [])
-              .map((item, i) =>
-                item === 'ellipsis' ? (
-                  <span key={`e${i}`} className="px-1 text-muted-foreground">…</span>
-                ) : (
-                  <Link
-                    key={item}
-                    href={performanceUrl(filters.q, filters.status, item)}
-                    className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md text-sm ${
-                      item === currentPage
-                        ? 'bg-primary text-primary-foreground'
-                        : 'border hover:bg-muted'
-                    }`}
-                  >
-                    {item}
-                  </Link>
-                ),
-              )}
-            {currentPage < totalPages && (
-              <Link
-                href={performanceUrl(filters.q, filters.status, currentPage + 1)}
-                className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
-              >
-                下一页
-              </Link>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

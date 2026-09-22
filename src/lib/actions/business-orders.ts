@@ -37,6 +37,7 @@ import type {
   BusinessCustomProductLibraryItem,
   BusinessCustomProductListItem,
   BusinessCustomProductVersion,
+  BusinessFulfillmentType,
   BusinessOrderAttachment,
   BusinessOrderEditConstraints,
   BusinessOrderItem,
@@ -47,6 +48,10 @@ import type {
   BusinessOrderShipment,
   BusinessOrderShipmentItem,
   BusinessOrderStatus,
+  BusinessPerformanceGroupBy,
+  BusinessPerformanceGroupRow,
+  BusinessPerformanceSummary,
+  DailyOrderShippingCategory,
   Product,
   ProductFinancial,
   ProductGroup,
@@ -101,6 +106,14 @@ export interface BusinessCustomerPrepaymentResult extends ActionResult {
 
 export interface BusinessOrderSettlementSummaryResult extends ActionResult {
   data?: BusinessOrderSettlementSummary
+}
+
+export interface BusinessPerformanceSummaryResult extends ActionResult {
+  data?: BusinessPerformanceSummary
+}
+
+export interface BusinessPerformanceGroupResult extends ActionResult {
+  data?: BusinessPerformanceGroupRow[]
 }
 
 interface BusinessOrderRpcRow {
@@ -1088,6 +1101,55 @@ export async function getBusinessOrderEditConstraints(
   const constraints = firstRpcRow<BusinessOrderEditConstraints>(data)
   if (!constraints) return { ok: false, error: '订单编辑约束不存在' }
   return { ok: true, data: constraints }
+}
+
+export interface BusinessPerformanceFilters {
+  dateFrom?: string
+  dateTo?: string
+  salespersonIds?: string[]
+  shopIds?: string[]
+  fulfillmentTypes?: BusinessFulfillmentType[]
+  shippingCategories?: DailyOrderShippingCategory[]
+}
+
+export async function getBusinessPerformanceSummary(
+  filters: BusinessPerformanceFilters,
+): Promise<BusinessPerformanceSummaryResult> {
+  await requireApproved()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_business_performance_summary', {
+    p_date_from: filters.dateFrom ?? null,
+    p_date_to: filters.dateTo ?? null,
+    p_salesperson_ids: filters.salespersonIds ?? null,
+    p_shop_ids: filters.shopIds ?? null,
+    p_fulfillment_types: filters.fulfillmentTypes ?? null,
+    p_shipping_categories: filters.shippingCategories ?? null,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '读取业绩汇总失败') }
+
+  const summary = firstRpcRow<BusinessPerformanceSummary>(data)
+  if (!summary) return { ok: false, error: '业绩汇总不存在' }
+  return { ok: true, data: summary }
+}
+
+export async function getBusinessPerformanceByGroup(
+  groupBy: BusinessPerformanceGroupBy,
+  filters: BusinessPerformanceFilters,
+): Promise<BusinessPerformanceGroupResult> {
+  await requireApproved()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_business_performance_by_group', {
+    p_group_by: groupBy,
+    p_date_from: filters.dateFrom ?? null,
+    p_date_to: filters.dateTo ?? null,
+    p_salesperson_ids: filters.salespersonIds ?? null,
+    p_shop_ids: filters.shopIds ?? null,
+    p_fulfillment_types: filters.fulfillmentTypes ?? null,
+    p_shipping_categories: filters.shippingCategories ?? null,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '读取业绩分组失败') }
+
+  return { ok: true, data: (data ?? []) as BusinessPerformanceGroupRow[] }
 }
 
 export async function getBusinessOrderPaymentProofUrl(

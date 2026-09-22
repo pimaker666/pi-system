@@ -19,7 +19,35 @@ export type BusinessOrderStatus =
   | 'approved'
   | 'completed'
 export type BusinessFulfillmentType = 'custom' | 'stock'
+export type BusinessPerformanceGroupBy =
+  | 'salesperson'
+  | 'shop'
+  | 'date'
+  | 'month'
+  | 'fulfillment_type'
+  | 'shipping_category'
 export type BusinessPaymentType = 'full' | 'deposit' | 'balance'
+
+export interface BusinessPerformanceSummary {
+  order_count: number
+  order_total_amount: number
+  order_total_cny: number
+  received_cny: number
+  outstanding_cny: number
+  overdue_count: number
+}
+
+export interface BusinessPerformanceGroupRow {
+  group_key: string
+  group_label: string
+  group_sort_order: number
+  order_count: number
+  order_total_amount: number
+  order_total_cny: number
+  received_cny: number
+  outstanding_cny: number
+  overdue_count: number
+}
 export type BusinessOrderItemSourceType = 'catalog' | 'custom' | 'legacy'
 export type BusinessApprovalStatus = 'draft' | 'submitted' | 'rejected' | 'approved'
 export type BusinessPaymentStatus = 'unpaid' | 'partially_paid' | 'fully_paid'
@@ -189,6 +217,58 @@ export interface BusinessOrderProductCost {
   settled: boolean
   /** 结算归属年月（YYYY-MM）；未结算为 null。 */
   settled_period: string | null
+}
+
+export interface CommissionCategoryRate {
+  category: DailyOrderShippingCategory
+  /** 产品提点（百分数，例如 5 表示 5%）。 */
+  product_commission_rate: number
+}
+
+export interface BusinessOrderCommissionRow {
+  order_id: string
+  item_id: string
+  /** 合并行对应的底层明细行 ID；单行时与 item_id 相同。 */
+  item_ids: string[]
+  order_date: string
+  shipping_date: string | null
+  shop_name: string | null
+  shop_group_name: string | null
+  salesperson_name: string
+  order_number: string
+  external_order_number: string | null
+  customer_name: string | null
+  shipping_category: DailyOrderShippingCategory | null
+  product_name: string
+  product_sku: string
+  image_url: string | null
+  quantity: number
+  unit_price: number
+  product_received_amount: number
+  currency: CurrencyCode
+  order_total_amount: number
+  /** 产品提点（百分数，取行覆盖，否则取发货分类默认，否则 0）。 */
+  product_commission_rate: number
+  /** 该行是否单独设置过产品提点（覆盖）。 */
+  product_commission_rate_overridden: boolean
+  /** 该行发货分类的默认产品提点（百分数），无默认时为 null。 */
+  category_default_rate: number | null
+  /** 产品提成 = 产品实收金额 × 产品提点% ÷ 100。 */
+  product_commission_amount: number
+  /** 运费实收金额（订单级）。 */
+  freight_received_amount: number
+  /** 运费成本（订单级，人工填）。 */
+  freight_cost: number
+  /** 运费利润 = 运费实收 − 运费成本（订单级）。 */
+  freight_profit: number
+  /** 运费提点（百分数，订单级，人工填）。 */
+  freight_commission_rate: number
+  /** 运费提成 = 运费利润 × 运费提点% ÷ 100（订单级）。 */
+  freight_commission_amount: number
+  /** 是否为该订单在当前结果中的首行（用于运费列合并渲染）。 */
+  is_order_lead_row: boolean
+  /** 该订单在当前结果中占据的产品行数（用于运费列 rowspan）。 */
+  order_row_span: number
 }
 
 export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'
