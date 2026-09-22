@@ -70,3 +70,11 @@ export function resolveCountryCode(raw: string | null | undefined): string | nul
   if (canon && COUNTRY_ISO2[canon]) return COUNTRY_ISO2[canon]
   return null
 }
+
+const chineseCountryNames = new Intl.DisplayNames(['zh-CN'], { type: 'region' })
+
+export function formatCountryName(raw: string | null | undefined): string {
+  if (!raw?.trim()) return '—'
+  const code = resolveCountryCode(raw)
+  return code ? chineseCountryNames.of(code.toUpperCase()) ?? raw : raw
+}

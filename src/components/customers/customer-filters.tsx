@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { formatCountryName } from '@/lib/country-flags'
 import type { CustomerGroup } from '@/types'
 import type { OwnerOption } from '@/components/shared/owner-filter'
 
@@ -27,6 +28,10 @@ export function CustomerFilters({
   group,
   country,
   owner,
+  amountMin,
+  amountMax,
+  lastOrderFrom,
+  lastOrderTo,
 }: {
   groups: CustomerGroup[]
   countries: string[]
@@ -36,6 +41,10 @@ export function CustomerFilters({
   group: string
   country: string
   owner: string
+  amountMin: string
+  amountMax: string
+  lastOrderFrom: string
+  lastOrderTo: string
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -60,7 +69,7 @@ export function CustomerFilters({
     setParam('q', keyword.trim())
   }
 
-  const hasFilter = Boolean(q || group || country || owner)
+  const hasFilter = Boolean(q || group || country || owner || amountMin || amountMax || lastOrderFrom || lastOrderTo)
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -99,11 +108,16 @@ export function CustomerFilters({
           <SelectItem value={ALL}>全部国家</SelectItem>
           {countries.map((c) => (
             <SelectItem key={c} value={c}>
-              {c}
+              {formatCountryName(c)}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
+
+      <Input type="number" min="0" defaultValue={amountMin} placeholder="近一年金额最低" className="w-36" onBlur={(event) => setParam('amountMin', event.target.value)} />
+      <Input type="number" min="0" defaultValue={amountMax} placeholder="近一年金额最高" className="w-36" onBlur={(event) => setParam('amountMax', event.target.value)} />
+      <Input type="date" defaultValue={lastOrderFrom} className="w-40" onChange={(event) => setParam('lastOrderFrom', event.target.value)} />
+      <Input type="date" defaultValue={lastOrderTo} className="w-40" onChange={(event) => setParam('lastOrderTo', event.target.value)} />
 
       {isAdmin && (
         <Select value={owner || ALL} onValueChange={(v) => setParam('owner', v)}>

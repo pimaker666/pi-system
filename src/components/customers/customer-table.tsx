@@ -43,6 +43,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { CustomerRowActions } from './customer-row-actions'
 import { CountryFlag } from '@/components/shared/country-flag'
+import { formatCountryName } from '@/lib/country-flags'
+import Link from 'next/link'
 import {
   bulkTransferCustomers,
   bulkCopyCustomers,
@@ -331,13 +333,15 @@ export function CustomerTable({
                     className="font-medium"
                     style={{ color: c.tag_color ?? undefined }}
                   >
-                    {c.name}
+                    <Link href={`/customers/${c.id}`} className="hover:underline">
+                      {c.name}
+                    </Link>
                   </TableCell>
                   <TableCell>{c.company ?? '—'}</TableCell>
                   <TableCell>
                     <span className="flex items-center gap-1.5">
                       <CountryFlag country={c.country} />
-                      {c.country ?? '—'}
+                      {formatCountryName(c.country)}
                     </span>
                   </TableCell>
                   <TableCell>

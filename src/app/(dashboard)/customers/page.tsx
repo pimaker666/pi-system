@@ -13,9 +13,9 @@ import type { CustomerCommissionTag, CustomerGroup, Profile } from '@/types'
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; group?: string; country?: string; owner?: string }>
+  searchParams: Promise<{ q?: string; group?: string; country?: string; owner?: string; amountMin?: string; amountMax?: string; lastOrderFrom?: string; lastOrderTo?: string }>
 }) {
-  const { q, group, country, owner } = await searchParams
+  const { q, group, country, owner, amountMin, amountMax, lastOrderFrom, lastOrderTo } = await searchParams
   const profile = await getCurrentProfile()
   const isAdmin = profile?.role === 'admin'
   const supabase = await createClient()
@@ -51,7 +51,7 @@ export default async function CustomersPage({
       .order('label', { ascending: true }),
   ])
 
-  const customers = (customerData ?? []) as CustomerRow[]
+  let customers = (customerData ?? []) as CustomerRow[]
   const groups = (groupData ?? []) as CustomerGroup[]
   const customerTags: CustomerCommissionTag[] = (
     (tagData ?? []) as Array<{
@@ -89,6 +89,22 @@ export default async function CustomersPage({
       }
     }
   }
+
+  const minAmount = Number(amountMin)
+  const maxAmount = Number(amountMax)
+  customers = customers.filter((customer) => {
+    const stats = statsMap[customer.id]
+    if (Number.isFinite(minAmount) && minAmount > 0 && (stats?.lastYearAmountCny ?? 0) < minAmount) return false
+    if (Number.isFinite(maxAmount) && maxAmount > 0 && (stats?.lastYearAmountCny ?? 0) > maxAmount) return false
+    if (lastOrderFrom && (!stats?.lastOrderDate || stats.lastOrderDate < lastOrderFrom)) return false
+    if (lastOrderTo && (!stats?.lastOrderDate || stats.lastOrderDate > lastOrderTo)) return false
+    return true
+  })
+  customers.sort((left, right) => {
+    const amountDifference = (statsMap[right.id]?.lastYearAmountCny ?? 0) - (statsMap[left.id]?.lastYearAmountCny ?? 0)
+    if (amountDifference !== 0) return amountDifference
+    return (statsMap[right.id]?.lastOrderDate ?? '').localeCompare(statsMap[left.id]?.lastOrderDate ?? '')
+  })
 
   const owners: OwnerOption[] = profiles.map((p) => ({
     id: p.id,
@@ -130,6 +146,10 @@ export default async function CustomersPage({
         group={group ?? ''}
         country={country ?? ''}
         owner={owner ?? ''}
+        amountMin={amountMin ?? ''}
+        amountMax={amountMax ?? ''}
+        lastOrderFrom={lastOrderFrom ?? ''}
+        lastOrderTo={lastOrderTo ?? ''}
       />
 
       <CustomerTable
