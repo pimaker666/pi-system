@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { BusinessOrderActions, BusinessOrderFinancePanel } from '@/components/finance/business-order-actions'
+import { ImagePreview } from '@/components/ui/image-preview'
 import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
 import { BusinessOrderItemAdjustments } from '@/components/finance/business-order-item-adjustments'
 import { BusinessLifecycleStatus } from '@/components/finance/business-lifecycle-status'
@@ -689,24 +690,25 @@ export default async function BusinessOrderDetailPage({
 
           <Card>
             <CardHeader><CardTitle className="text-base">订单截图</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
+            <CardContent className="space-y-3 text-sm">
               {attachmentLinks.length === 0 && (
                 <div className="text-muted-foreground">暂无截图，可在订单编辑页补传。</div>
               )}
               {attachmentLinks.map(({ attachment, url }, index) =>
                 url ? (
-                  <div key={attachment.id}>
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary underline underline-offset-4"
-                    >
-                      查看截图 {index + 1}
-                    </a>
-                    <span className="ml-2 text-muted-foreground">
-                      {attachment.original_name || attachment.mime_type}
-                    </span>
+                  <div key={attachment.id} className="flex items-center gap-3">
+                    <ImagePreview
+                      src={url}
+                      alt={attachment.original_name || `截图 ${index + 1}`}
+                      size="h-20 w-20"
+                      sizes="80px"
+                      rawSrc
+                    />
+                    <div className="min-w-0">
+                      <div className="truncate text-muted-foreground">
+                        {attachment.original_name || attachment.mime_type}
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div key={attachment.id} className="text-destructive">

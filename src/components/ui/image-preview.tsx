@@ -17,6 +17,8 @@ interface ImagePreviewProps {
   fallback?: React.ReactNode
   /** Additional className for the container */
   className?: string
+  /** Use src as-is without toImageSrc transformation (for signed URLs). */
+  rawSrc?: boolean
 }
 
 /**
@@ -30,9 +32,10 @@ export function ImagePreview({
   sizes = '40px',
   fallback,
   className,
+  rawSrc = false,
 }: ImagePreviewProps) {
   const [open, setOpen] = React.useState(false)
-  const imgSrc = toImageSrc(src)
+  const imgSrc = rawSrc ? (src ?? '') : toImageSrc(src)
 
   return (
     <>
