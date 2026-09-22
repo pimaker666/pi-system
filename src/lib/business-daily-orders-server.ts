@@ -194,6 +194,24 @@ function applyBalanceStatusFilter(
 }
 
 /**
+ * 结算状态后过滤：结算按明细行记录（finance_business_order_item_settlements）。
+ * 订单级判定——该订单本次读到的所有明细行都已结算才算“已结算”。`all` 或缺省不过滤。
+ */
+async function applySettlementFilter(
+  supabase: SupabaseClient,
+  orders: BusinessDailyLedgerOrder[],
+  settlementStatus: DailyOrderFilters['settlementStatus'],
+): Promise<BusinessDailyLedgerOrder[]> {
+  if (!settlementStatus || settlementStatus === 'all') return orders
+  const settledSet = new Set(await fetchSettledItemIdsForOrders(supabase, orders))
+  const isOrderSettled = (order: BusinessDailyLedgerOrder) => {
+    const itemIds = (order.business_order_items ?? []).map((item) => item.id)
+    return itemIds.length > 0 && itemIds.every((id) => settledSet.has(id))
+  }
+  return orders.filter((order) => isOrderSettled(order) === (settlementStatus === 'settled'))
+}
+
+/**
  * 读取每日订单台账。PostgREST 不支持跨表 or()，所以关键字搜索拆成两次查询：
  * 一次匹配订单号 / 平台订单号 / 发货单号 / 收款账户，一次匹配产品名称与 SKU，再按同一排序合并去重。
  * 表头命中的结果保留完整明细，优先于产品命中的结果。
@@ -210,15 +228,19 @@ export async function fetchBusinessDailyLedger(
   if (ids && ids.length > 0 || !keyword) {
     const { data, error } = await buildLedgerQuery(supabase, filters, effectiveLimit, false, ids)
     if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
-    const orders = applyBalanceStatusFilter(
-      applyCompletionFilter(
-        await attachOutstandingAmounts(
-          supabase,
-          (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+    const orders = await applySettlementFilter(
+      supabase,
+      applyBalanceStatusFilter(
+        applyCompletionFilter(
+          await attachOutstandingAmounts(
+            supabase,
+            (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+          ),
+          filters.completion,
         ),
-        filters.completion,
+        filters.balanceStatus,
       ),
-      filters.balanceStatus,
+      filters.settlementStatus,
     )
     return attachCurrentCustomerCountry(supabase, await attachItemDisplayLabels(supabase, orders))
   }
@@ -242,15 +264,19 @@ export async function fetchBusinessDailyLedger(
     supabase,
     await attachItemDisplayLabels(
       supabase,
-      applyBalanceStatusFilter(
-        applyCompletionFilter(
-          await attachOutstandingAmounts(
-            supabase,
-            [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+      await applySettlementFilter(
+        supabase,
+        applyBalanceStatusFilter(
+          applyCompletionFilter(
+            await attachOutstandingAmounts(
+              supabase,
+              [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
+            ),
+            filters.completion,
           ),
-          filters.completion,
+          filters.balanceStatus,
         ),
-        filters.balanceStatus,
+        filters.settlementStatus,
       ),
     ),
   )
