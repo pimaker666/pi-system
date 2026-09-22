@@ -54,6 +54,36 @@ export async function signup(_prev: AuthState, formData: FormData): Promise<Auth
   return { error: undefined }
 }
 
+export async function changeOwnPassword(input: {
+  currentPassword: string
+  newPassword: string
+}): Promise<{ ok: boolean; error?: string }> {
+  if (input.newPassword.length < 6) {
+    return { ok: false, error: '新密码至少需要 6 位' }
+  }
+  if (input.currentPassword === input.newPassword) {
+    return { ok: false, error: '新密码不能与当前密码相同' }
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user?.email) return { ok: false, error: '登录状态已失效，请重新登录' }
+
+  const { error: verifyError } = await supabase.auth.signInWithPassword({
+    email: user.email,
+    password: input.currentPassword,
+  })
+  if (verifyError) return { ok: false, error: '当前密码不正确' }
+
+  const { error } = await supabase.auth.updateUser({ password: input.newPassword })
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/', 'layout')
+  return { ok: true }
+}
+
 export async function logout(): Promise<void> {
   const supabase = await createClient()
   await supabase.auth.signOut()

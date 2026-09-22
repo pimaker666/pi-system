@@ -2,6 +2,7 @@ import { requireProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { CompanyForm } from '@/components/settings/company-form'
 import { CompanyProfileManager } from '@/components/settings/company-profile-manager'
+import { ChangePasswordForm } from '@/components/settings/change-password-form'
 import type { CompanyProfile, CompanySettings } from '@/types'
 
 export default async function SettingsPage() {
@@ -30,6 +31,14 @@ export default async function SettingsPage() {
       </div>
 
       <CompanyProfileManager profiles={profiles} defaultCompany={defaultCompany} />
+
+      <div className="space-y-3 border-t pt-8">
+        <div>
+          <h2 className="text-lg font-medium">修改密码</h2>
+          <p className="text-sm text-muted-foreground">请输入当前密码后设置新的登录密码。</p>
+        </div>
+        <ChangePasswordForm />
+      </div>
 
       {profile.role === 'admin' && (
         <div className="space-y-3 border-t pt-8">
