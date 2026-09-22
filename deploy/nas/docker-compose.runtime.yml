@@ -1,7 +1,7 @@
 services:
   pi-app:
     build:
-      context: /home/Jessie/deploy-adf9480
+      context: /home/Jessie/deploy-0dba720
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
@@ -53,8 +53,7 @@ services:
     container_name: pi-caddy
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
