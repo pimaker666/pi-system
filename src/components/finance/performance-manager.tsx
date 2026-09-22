@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, ChevronsUpDown } from 'lucide-react'
@@ -18,6 +19,7 @@ import {
 } from '@/components/ui/table'
 import { SHIPPING_LABELS } from '@/lib/daily-orders'
 import { formatCny } from '@/lib/finance'
+import type { BusinessOrderProfitRow } from '@/lib/actions/business-order-profit'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
 import type {
@@ -40,6 +42,8 @@ interface PerformanceManagerProps {
   salespeople: Option[]
   shops: Option[]
   productGroups: Option[]
+  profitRows: BusinessOrderProfitRow[]
+  canViewProfit: boolean
 }
 
 const GROUP_TABS: { value: BusinessPerformanceGroupBy; label: string }[] = [
@@ -152,6 +156,8 @@ export function PerformanceManager({
   salespeople,
   shops,
   productGroups,
+  profitRows,
+  canViewProfit,
 }: PerformanceManagerProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -238,6 +244,25 @@ export function PerformanceManager({
     summary.order_total_usd > 0 ||
     summary.received_usd > 0 ||
     summary.outstanding_usd > 0
+
+  const profitSummary = useMemo(() => {
+    const initial = {
+      CNY: { orderCount: 0, received: 0, deductions: 0, profit: 0 },
+      USD: { orderCount: 0, received: 0, deductions: 0, profit: 0 },
+    }
+    return profitRows.reduce((result, row) => {
+      const target = result[row.currency]
+      target.orderCount += 1
+      target.received += row.received_amount
+      target.deductions += row.product_cost + row.freight_cost + row.commission_amount + row.fee_amount
+      target.profit += row.profit_amount
+      return result
+    }, initial)
+  }, [profitRows])
+  const consolidatedProfit = rate
+    ? profitSummary.CNY.profit + profitSummary.USD.profit * rate
+    : null
+  const hasProfitUsd = profitSummary.USD.orderCount > 0
 
   return (
     <div className={cn('space-y-4', pending && 'opacity-70')}>
@@ -350,6 +375,42 @@ export function PerformanceManager({
           </CardContent>
         </Card>
       </div>
+
+      {canViewProfit && (
+        <Card>
+          <CardContent className="flex flex-col gap-2 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-xs text-muted-foreground">双结清订单利润</div>
+              {rate ? (
+                <div className="mt-1 text-xl font-semibold tabular-nums">
+                  {formatCny(consolidatedProfit ?? 0)}
+                </div>
+              ) : (
+                <>
+                  <div className="mt-1 text-xl font-semibold tabular-nums">
+                    {formatCny(profitSummary.CNY.profit)}
+                  </div>
+                  {hasProfitUsd && (
+                    <div className="mt-0.5 text-sm font-medium tabular-nums">
+                      {formatUsd(profitSummary.USD.profit)}
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="mt-1 text-sm text-muted-foreground">
+                {profitSummary.CNY.orderCount + profitSummary.USD.orderCount} 单 · 实收{' '}
+                {formatCny(profitSummary.CNY.received)}
+                {hasProfitUsd && ` / ${formatUsd(profitSummary.USD.received)}`} · 扣减{' '}
+                {formatCny(profitSummary.CNY.deductions)}
+                {hasProfitUsd && ` / ${formatUsd(profitSummary.USD.deductions)}`}
+              </div>
+            </div>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/finance/profit">进入利润核算</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="flex flex-col gap-3 rounded-md border bg-card p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">

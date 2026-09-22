@@ -22,6 +22,20 @@ export interface BusinessOrderProfitRow {
   profit_amount: number
 }
 
+function normalizeProfitRows(data: unknown): BusinessOrderProfitRow[] {
+  const rows = (data ?? []) as BusinessOrderProfitRow[]
+  return rows.map((row) => ({
+    ...row,
+    profit_period: String(row.profit_period).slice(0, 7),
+    received_amount: Number(row.received_amount),
+    product_cost: Number(row.product_cost),
+    freight_cost: Number(row.freight_cost),
+    commission_amount: Number(row.commission_amount),
+    fee_amount: Number(row.fee_amount),
+    profit_amount: Number(row.profit_amount),
+  }))
+}
+
 export async function getBusinessOrderProfitRows(input: {
   period?: string
   salespersonIds?: string[]
@@ -35,17 +49,29 @@ export async function getBusinessOrderProfitRows(input: {
     p_shop_ids: input.shopIds?.length ? input.shopIds : null,
   })
   if (error) throw new Error(`利润核算读取失败：${error.message}`)
-  const rows = (data ?? []) as BusinessOrderProfitRow[]
-  return rows.map((row) => ({
-    ...row,
-    profit_period: String(row.profit_period).slice(0, 7),
-    received_amount: Number(row.received_amount),
-    product_cost: Number(row.product_cost),
-    freight_cost: Number(row.freight_cost),
-    commission_amount: Number(row.commission_amount),
-    fee_amount: Number(row.fee_amount),
-    profit_amount: Number(row.profit_amount),
-  })) as BusinessOrderProfitRow[]
+  return normalizeProfitRows(data)
+}
+
+export async function getBusinessOrderProfitRowsForPerformance(input: {
+  dateFrom?: string
+  dateTo?: string
+  salespersonIds?: string[]
+  shopIds?: string[]
+  productGroupIds?: string[]
+  shippingCategories?: string[]
+}): Promise<BusinessOrderProfitRow[]> {
+  await requireFinanceAccess()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_business_order_profit_rows_filtered', {
+    p_period_from: input.dateFrom ? `${input.dateFrom.slice(0, 7)}-01` : null,
+    p_period_to: input.dateTo ? `${input.dateTo.slice(0, 7)}-01` : null,
+    p_salesperson_ids: input.salespersonIds?.length ? input.salespersonIds : null,
+    p_shop_ids: input.shopIds?.length ? input.shopIds : null,
+    p_product_group_ids: input.productGroupIds?.length ? input.productGroupIds : null,
+    p_shipping_categories: input.shippingCategories?.length ? input.shippingCategories : null,
+  })
+  if (error) throw new Error(`利润核算读取失败：${error.message}`)
+  return normalizeProfitRows(data)
 }
 
 const feeSchema = z.object({
@@ -68,5 +94,6 @@ export async function saveBusinessOrderProfitFee(input: {
   })
   if (error) return { ok: false, error: error.message }
   revalidatePath('/finance/profit')
+  revalidatePath('/finance/performance')
   return { ok: true }
 }

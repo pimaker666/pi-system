@@ -3,6 +3,7 @@ import {
   getBusinessPerformanceByGroup,
   getBusinessPerformanceSummary,
 } from '@/lib/actions/business-orders'
+import { getBusinessOrderProfitRowsForPerformance } from '@/lib/actions/business-order-profit'
 import { getBusinessDateKey } from '@/lib/business-orders'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { displayProfileName } from '@/lib/utils'
@@ -78,7 +79,7 @@ export default async function FinancePerformancePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireApproved()
+  const profile = await requireApproved()
   const supabase = await createClient()
   const {
     dateFrom,
@@ -90,7 +91,8 @@ export default async function FinancePerformancePage({
     groupBy,
   } = parseSearchParams(await searchParams)
 
-  const [options, productGroupsResult, summaryResult, groupResult] = await Promise.all([
+  const canViewProfit = profile.role === 'admin' || profile.role === 'finance'
+  const [options, productGroupsResult, summaryResult, groupResult, profitRows] = await Promise.all([
     fetchDailyOrderOptions(supabase),
     supabase.from('product_groups').select('id, name, sort_order').order('sort_order'),
     getBusinessPerformanceSummary({
@@ -109,6 +111,16 @@ export default async function FinancePerformancePage({
       productGroupIds,
       shippingCategories,
     }),
+    canViewProfit
+      ? getBusinessOrderProfitRowsForPerformance({
+          dateFrom,
+          dateTo,
+          salespersonIds,
+          shopIds,
+          productGroupIds,
+          shippingCategories,
+        })
+      : Promise.resolve([]),
   ])
 
   if (!summaryResult.ok || !summaryResult.data) {
@@ -158,6 +170,8 @@ export default async function FinancePerformancePage({
         salespeople={salespeople}
         shops={shops}
         productGroups={productGroups}
+        profitRows={profitRows}
+        canViewProfit={canViewProfit}
       />
     </div>
   )
