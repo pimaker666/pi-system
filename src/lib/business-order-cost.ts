@@ -2,7 +2,7 @@ import type { BusinessOrderCostFilters } from '@/schemas/business-order-cost'
 
 export const BUSINESS_ORDER_COST_COLUMNS = [
   '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '收款账户', '发货分类',
-  '产品名称', '数量', '成本(元)', '总成本(元)', '发货进度', '销售单价', '产品实收金额', '运费实收金额',
+  '产品图片', '产品名称', '数量', '成本(元)', '总成本(元)', '发货进度', '销售单价', '产品实收金额', '运费实收金额',
   '订单总金额', '未收尾款', '收款分类', '备注', '截图',
 ] as const
 

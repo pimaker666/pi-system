@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ImagePreview } from '@/components/ui/image-preview'
 import {
   Dialog,
   DialogContent,
@@ -460,6 +461,9 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
 
                     <TableCell>
                       {row.shipping_category ? SHIPPING_LABELS[row.shipping_category] : '—'}
+                    </TableCell>
+                    <TableCell>
+                      <ImagePreview src={row.image_url} alt={row.product_name} />
                     </TableCell>
                     <TableCell>
                       <div>{row.product_name}</div>

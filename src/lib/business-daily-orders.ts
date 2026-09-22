@@ -145,6 +145,7 @@ export interface MergedBusinessDailyItem {
   custom_product_id: string | null
   sku_snapshot: string
   name_snapshot: string
+  image_url_snapshot: string | null
   display_name?: string | null
   display_sku?: string | null
   daily_shipping_category: DailyOrderShippingCategory | null
@@ -230,6 +231,7 @@ export function mergeBusinessDailyItems(
       custom_product_id: first.custom_product_id,
       sku_snapshot: first.sku_snapshot,
       name_snapshot: first.name_snapshot,
+      image_url_snapshot: first.image_url_snapshot,
       display_name: (first as { display_name?: string | null }).display_name,
       display_sku: (first as { display_sku?: string | null }).display_sku,
       daily_shipping_category: first.daily_shipping_category,

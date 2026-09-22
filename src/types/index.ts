@@ -162,6 +162,7 @@ export interface BusinessOrderProductCost {
   shipping_category: DailyOrderShippingCategory | null
   product_name: string
   product_sku: string
+  image_url: string | null
   quantity: number
   shipping_progress: string
   unit_price: number

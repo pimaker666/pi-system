@@ -9,6 +9,7 @@ import { CustomerCombobox } from '@/components/customers/customer-combobox'
 import { CountryFlag } from '@/components/shared/country-flag'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ImagePreview } from '@/components/ui/image-preview'
 import {
   Dialog,
   DialogContent,
@@ -55,6 +56,11 @@ import { displayProfileName } from '@/lib/utils'
 import type { BusinessOrder, Customer, CustomerGroup, Profile } from '@/types'
 
 const mergedCellClassName = 'bg-muted/20 align-top'
+const BUSINESS_DAILY_ORDER_COLUMNS = [
+  ...DAILY_ORDER_COLUMNS.slice(0, 8),
+  '产品图片',
+  ...DAILY_ORDER_COLUMNS.slice(8),
+]
 
 export interface BusinessDailyOrderTableProps {
   orders: BusinessDailyLedgerOrder[]
@@ -271,7 +277,7 @@ export function BusinessDailyOrderTable({
                   />
                 )}
               </TableHead>
-              {DAILY_ORDER_COLUMNS.map((label) => (
+              {BUSINESS_DAILY_ORDER_COLUMNS.map((label) => (
                 <TableHead key={label}>{label}</TableHead>
               ))}
             </TableRow>
@@ -426,6 +432,16 @@ export function BusinessDailyOrderTable({
                       {item?.daily_shipping_category ? SHIPPING_LABELS[item.daily_shipping_category] : '—'}
                     </TableCell>
                     <TableCell>
+                      {item ? (
+                        <ImagePreview
+                          src={item.image_url_snapshot}
+                          alt={businessOrderItemDisplayName(item)}
+                        />
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell>
                       <div>{item ? businessOrderItemDisplayName(item) : '—'}</div>
                       {item && businessOrderItemDisplaySku(item) && (
                         <div className="text-xs text-muted-foreground">
@@ -507,7 +523,7 @@ export function BusinessDailyOrderTable({
             })}
             {orders.length === 0 && (
               <TableRow>
-                <TableCell colSpan={DAILY_ORDER_COLUMNS.length + 1} className="py-12 text-center text-muted-foreground">
+                <TableCell colSpan={BUSINESS_DAILY_ORDER_COLUMNS.length + 1} className="py-12 text-center text-muted-foreground">
                   没有符合筛选条件的订单
                 </TableCell>
               </TableRow>

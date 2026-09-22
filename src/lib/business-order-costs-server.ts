@@ -301,6 +301,7 @@ export async function fetchBusinessOrderProductCosts(
         shipping_category: item.daily_shipping_category ?? null,
         product_name: item.name_snapshot ?? '—',
         product_sku: item.display_sku ?? item.sku_snapshot ?? '',
+        image_url: item.image_url_snapshot,
         quantity,
         shipping_progress: formatMergedBusinessDailyShippingProgress(item),
         unit_price: Number(item.unit_price),
