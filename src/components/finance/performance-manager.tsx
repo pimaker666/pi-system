@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, ChevronsUpDown } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,7 @@ import {
 import { BUSINESS_FULFILLMENT_LABELS } from '@/lib/business-orders'
 import { SHIPPING_LABELS } from '@/lib/daily-orders'
 import { formatCny } from '@/lib/finance'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
 import type {
   BusinessFulfillmentType,
@@ -28,17 +28,6 @@ import type {
   BusinessPerformanceSummary,
   DailyOrderShippingCategory,
 } from '@/types'
-
-function formatOriginal(amount: number, currency: string | null) {
-  const formatted = amount.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
-  if (currency) {
-    return `${currency} ${formatted}`
-  }
-  return `${formatted} (多币种)`
-}
 
 interface Option {
   value: string
@@ -83,6 +72,10 @@ const SHIPPING_OPTIONS: Option[] = [
   { value: 'sample', label: SHIPPING_LABELS.sample },
   { value: 'purchase', label: SHIPPING_LABELS.purchase },
 ]
+
+function formatUsd(amount: number) {
+  return formatCurrency(amount, 'USD')
+}
 
 function MultiSelect({
   options,
@@ -180,6 +173,12 @@ export function PerformanceManager({
   const [selectedShipping, setSelectedShipping] = useState(
     filters.shippingCategories ?? [],
   )
+  const [exchangeRate, setExchangeRate] = useState('')
+
+  const rate = useMemo(() => {
+    const value = Number(exchangeRate)
+    return Number.isFinite(value) && value > 0 ? value : null
+  }, [exchangeRate])
 
   function buildUrl(overrides: { groupBy?: BusinessPerformanceGroupBy } = {}) {
     const params = new URLSearchParams()
@@ -218,8 +217,53 @@ export function PerformanceManager({
     navigate('/finance/performance')
   }
 
+  const consolidatedOrderTotal = rate
+    ? summary.order_total_cny_native + summary.order_total_usd * rate
+    : null
+  const consolidatedReceived = rate
+    ? summary.received_cny_native + summary.received_usd * rate
+    : null
+  const consolidatedOutstanding = rate
+    ? summary.outstanding_cny_native + summary.outstanding_usd * rate
+    : null
+
+  const sortedRows = useMemo(() => {
+    return [...groupRows].sort((a, b) => {
+      const aTotal = rate
+        ? a.order_total_cny_native + a.order_total_usd * rate
+        : a.order_total_cny
+      const bTotal = rate
+        ? b.order_total_cny_native + b.order_total_usd * rate
+        : b.order_total_cny
+      return bTotal - aTotal
+    })
+  }, [groupRows, rate])
+
+  const hasUsd =
+    summary.order_total_usd > 0 ||
+    summary.received_usd > 0 ||
+    summary.outstanding_usd > 0
+
   return (
     <div className={cn('space-y-4', pending && 'opacity-70')}>
+      <div className="flex items-center gap-3 rounded-md border bg-card p-4">
+        <label className="text-sm font-medium text-muted-foreground">
+          USD→CNY 汇率
+        </label>
+        <Input
+          type="number"
+          step="0.0001"
+          min="0"
+          placeholder="填写后美金按此汇率折算为人民币"
+          value={exchangeRate}
+          onChange={(event) => setExchangeRate(event.target.value)}
+          className="w-[240px]"
+        />
+        {rate && (
+          <span className="text-sm text-muted-foreground">当前汇率：{rate}</span>
+        )}
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardContent className="p-4">
@@ -232,48 +276,81 @@ export function PerformanceManager({
         <Card>
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground">订单总额</div>
-            <div className="mt-1 text-xl font-semibold tabular-nums">
-              {formatCny(Number(summary.order_total_cny))}
-            </div>
-            {summary.currency !== undefined && summary.currency !== 'CNY' && (
-              <div className="mt-0.5 text-sm font-medium tabular-nums">
-                {formatOriginal(Number(summary.order_total_amount), summary.currency)}
+            {rate ? (
+              <div className="mt-1 text-xl font-semibold tabular-nums">
+                {formatCny(Number(consolidatedOrderTotal))}
               </div>
+            ) : (
+              <>
+                <div className="mt-1 text-xl font-semibold tabular-nums">
+                  {formatCny(Number(summary.order_total_cny_native))}
+                </div>
+                {hasUsd && (
+                  <div className="mt-0.5 text-sm font-medium tabular-nums">
+                    {formatUsd(Number(summary.order_total_usd))}
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground">已收</div>
-            <div className="mt-1 text-xl font-semibold tabular-nums text-green-700">
-              {formatCny(Number(summary.received_cny))}
-            </div>
-            {summary.currency !== undefined && summary.currency !== 'CNY' && (
-              <div className="mt-0.5 text-sm font-medium tabular-nums text-green-700">
-                {formatOriginal(Number(summary.received_amount), summary.currency)}
+            {rate ? (
+              <div className="mt-1 text-xl font-semibold tabular-nums text-green-700">
+                {formatCny(Number(consolidatedReceived))}
               </div>
+            ) : (
+              <>
+                <div className="mt-1 text-xl font-semibold tabular-nums text-green-700">
+                  {formatCny(Number(summary.received_cny_native))}
+                </div>
+                {hasUsd && (
+                  <div className="mt-0.5 text-sm font-medium tabular-nums text-green-700">
+                    {formatUsd(Number(summary.received_usd))}
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
         <Card className={Number(summary.overdue_count) > 0 ? 'border-destructive/40' : undefined}>
           <CardContent className="p-4">
             <div className="text-xs text-muted-foreground">未收 / 逾期订单</div>
-            <div className="mt-1 text-xl font-semibold tabular-nums">
-              {formatCny(Number(summary.outstanding_cny))}{' '}
-              <span
-                className={
-                  Number(summary.overdue_count) > 0
-                    ? 'text-sm text-destructive'
-                    : 'text-sm text-muted-foreground'
-                }
-              >
-                / {Number(summary.overdue_count)} 单
-              </span>
-            </div>
-            {summary.currency !== undefined && summary.currency !== 'CNY' && (
-              <div className="mt-0.5 text-sm font-medium tabular-nums">
-                {formatOriginal(Number(summary.outstanding_amount), summary.currency)}
+            {rate ? (
+              <div className="mt-1 text-xl font-semibold tabular-nums">
+                {formatCny(Number(consolidatedOutstanding))}{' '}
+                <span
+                  className={
+                    Number(summary.overdue_count) > 0
+                      ? 'text-sm text-destructive'
+                      : 'text-sm text-muted-foreground'
+                  }
+                >
+                  / {Number(summary.overdue_count)} 单
+                </span>
               </div>
+            ) : (
+              <>
+                <div className="mt-1 text-xl font-semibold tabular-nums">
+                  {formatCny(Number(summary.outstanding_cny_native))}{' '}
+                  <span
+                    className={
+                      Number(summary.overdue_count) > 0
+                        ? 'text-sm text-destructive'
+                        : 'text-sm text-muted-foreground'
+                    }
+                  >
+                    / {Number(summary.overdue_count)} 单
+                  </span>
+                </div>
+                {hasUsd && (
+                  <div className="mt-0.5 text-sm font-medium tabular-nums">
+                    {formatUsd(Number(summary.outstanding_usd))}
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -365,63 +442,105 @@ export function PerformanceManager({
             <TableRow>
               <TableHead>{GROUP_COLUMN_LABELS[groupBy]}</TableHead>
               <TableHead className="text-right">订单数</TableHead>
-              <TableHead className="text-right">订单总额</TableHead>
-              <TableHead className="text-right">订单总额（CNY）</TableHead>
-              <TableHead className="text-right">已收</TableHead>
-              <TableHead className="text-right">已收（CNY）</TableHead>
-              <TableHead className="text-right">未收</TableHead>
-              <TableHead className="text-right">未收（CNY）</TableHead>
+              {rate ? (
+                <>
+                  <TableHead className="text-right">订单总额（CNY）</TableHead>
+                  <TableHead className="text-right">已收（CNY）</TableHead>
+                  <TableHead className="text-right">未收（CNY）</TableHead>
+                </>
+              ) : (
+                <>
+                  <TableHead className="text-right">订单总额（CNY）</TableHead>
+                  <TableHead className="text-right">订单总额（USD）</TableHead>
+                  <TableHead className="text-right">已收（CNY）</TableHead>
+                  <TableHead className="text-right">已收（USD）</TableHead>
+                  <TableHead className="text-right">未收（CNY）</TableHead>
+                  <TableHead className="text-right">未收（USD）</TableHead>
+                </>
+              )}
               <TableHead className="text-right">逾期订单</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {groupRows.map((row) => (
-              <TableRow key={row.group_key}>
-                <TableCell className="font-medium">{row.group_label}</TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {Number(row.order_count)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatOriginal(Number(row.order_total_amount), row.currency)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {formatCny(Number(row.order_total_cny))}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-green-700">
-                  {formatOriginal(Number(row.received_amount), row.currency)}
-                </TableCell>
-                <TableCell className="text-right tabular-nums text-green-700">
-                  {formatCny(Number(row.received_cny))}
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    'text-right tabular-nums',
-                    Number(row.outstanding_cny) > 0.005 && 'text-destructive',
-                  )}
-                >
-                  {formatOriginal(Number(row.outstanding_amount), row.currency)}
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    'text-right tabular-nums',
-                    Number(row.outstanding_cny) > 0.005 && 'text-destructive',
-                  )}
-                >
-                  {formatCny(Number(row.outstanding_cny))}
-                </TableCell>
-                <TableCell className="text-right tabular-nums">
-                  {Number(row.overdue_count) > 0 ? (
-                    <span className="text-destructive">{Number(row.overdue_count)}</span>
+            {sortedRows.map((row) => {
+              const rowOrderTotal = rate
+                ? row.order_total_cny_native + row.order_total_usd * rate
+                : null
+              const rowReceived = rate
+                ? row.received_cny_native + row.received_usd * rate
+                : null
+              const rowOutstanding = rate
+                ? row.outstanding_cny_native + row.outstanding_usd * rate
+                : null
+              return (
+                <TableRow key={row.group_key}>
+                  <TableCell className="font-medium">{row.group_label}</TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {Number(row.order_count)}
+                  </TableCell>
+                  {rate ? (
+                    <>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCny(Number(rowOrderTotal))}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-green-700">
+                        {formatCny(Number(rowReceived))}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right tabular-nums',
+                          Number(rowOutstanding) > 0.005 && 'text-destructive',
+                        )}
+                      >
+                        {formatCny(Number(rowOutstanding))}
+                      </TableCell>
+                    </>
                   ) : (
-                    Number(row.overdue_count)
+                    <>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCny(Number(row.order_total_cny_native))}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatUsd(Number(row.order_total_usd))}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-green-700">
+                        {formatCny(Number(row.received_cny_native))}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-green-700">
+                        {formatUsd(Number(row.received_usd))}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right tabular-nums',
+                          Number(row.outstanding_cny) > 0.005 && 'text-destructive',
+                        )}
+                      >
+                        {formatCny(Number(row.outstanding_cny_native))}
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right tabular-nums',
+                          Number(row.outstanding_cny) > 0.005 && 'text-destructive',
+                        )}
+                      >
+                        {formatUsd(Number(row.outstanding_usd))}
+                      </TableCell>
+                    </>
                   )}
-                </TableCell>
-              </TableRow>
-            ))}
-            {groupRows.length === 0 && (
+                  <TableCell className="text-right tabular-nums">
+                    {Number(row.overdue_count) > 0 ? (
+                      <span className="text-destructive">{Number(row.overdue_count)}</span>
+                    ) : (
+                      Number(row.overdue_count)
+                    )}
+                  </TableCell>
+                </TableRow>
+              )
+            })}
+            {sortedRows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={9}
+                  colSpan={rate ? 6 : 9}
                   className="py-12 text-center text-muted-foreground"
                 >
                   暂无符合条件的数据

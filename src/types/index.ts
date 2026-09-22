@@ -30,17 +30,25 @@ export type BusinessPaymentType = 'full' | 'deposit' | 'balance'
 
 export interface BusinessPerformanceSummary {
   order_count: number
-  order_total_amount: number
+  /** 全部订单按各自订单汇率折算后的订单总额（CNY）。 */
   order_total_cny: number
+  /** USD 订单的订单总额（USD 原币）。 */
+  order_total_usd: number
+  /** CNY 订单的订单总额（CNY 原币）。 */
+  order_total_cny_native: number
+  /** 全部订单按各自订单汇率折算后的已收金额（CNY）。 */
   received_cny: number
+  /** USD 订单的已收金额（USD 原币）。 */
+  received_usd: number
+  /** CNY 订单的已收金额（CNY 原币）。 */
+  received_cny_native: number
+  /** 全部订单按各自订单汇率折算后的未收金额（CNY）。 */
   outstanding_cny: number
+  /** USD 订单的未收金额（USD 原币）。 */
+  outstanding_usd: number
+  /** CNY 订单的未收金额（CNY 原币）。 */
+  outstanding_cny_native: number
   overdue_count: number
-  /** 当所有订单币种一致时返回该币种，否则为 null（多币种）。 */
-  currency: string | null
-  /** 已收金额（原币口径）。 */
-  received_amount: number
-  /** 未收金额（原币口径）。 */
-  outstanding_amount: number
 }
 
 export interface BusinessPerformanceGroupRow {
@@ -48,17 +56,25 @@ export interface BusinessPerformanceGroupRow {
   group_label: string
   group_sort_order: number
   order_count: number
-  order_total_amount: number
+  /** 全部订单按各自订单汇率折算后的订单总额（CNY）。 */
   order_total_cny: number
+  /** USD 订单的订单总额（USD 原币）。 */
+  order_total_usd: number
+  /** CNY 订单的订单总额（CNY 原币）。 */
+  order_total_cny_native: number
+  /** 全部订单按各自订单汇率折算后的已收金额（CNY）。 */
   received_cny: number
+  /** USD 订单的已收金额（USD 原币）。 */
+  received_usd: number
+  /** CNY 订单的已收金额（CNY 原币）。 */
+  received_cny_native: number
+  /** 全部订单按各自订单汇率折算后的未收金额（CNY）。 */
   outstanding_cny: number
+  /** USD 订单的未收金额（USD 原币）。 */
+  outstanding_usd: number
+  /** CNY 订单的未收金额（CNY 原币）。 */
+  outstanding_cny_native: number
   overdue_count: number
-  /** 当该分组下所有订单币种一致时返回该币种，否则为 null（多币种）。 */
-  currency: string | null
-  /** 已收金额（原币口径）。 */
-  received_amount: number
-  /** 未收金额（原币口径）。 */
-  outstanding_amount: number
 }
 export type BusinessOrderItemSourceType = 'catalog' | 'custom' | 'legacy'
 export type BusinessApprovalStatus = 'draft' | 'submitted' | 'rejected' | 'approved'
