@@ -17,6 +17,33 @@ export interface CreateOrderProductResult extends ActionResult {
   product?: Product
 }
 
+const AUTO_SKU_PREFIX = 'P'
+
+/**
+ * 全局自动编排的 SKU：统一前缀 `P` + 零填充流水号（如 P000123）。
+ * 扫描库内已有的 `P<数字>` 取最大值 +1；位数不足 6 位时补零，超过则自然增长。
+ * 历史前缀（MASK- 等）不匹配该正则，不会参与计算，也不会与之冲突。
+ */
+async function nextGlobalSku(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+): Promise<string> {
+  const { data } = await supabase
+    .from('products')
+    .select('sku')
+    .like('sku', `${AUTO_SKU_PREFIX}%`)
+
+  let max = 0
+  const pattern = new RegExp(`^${AUTO_SKU_PREFIX}(\\d+)$`)
+  for (const row of data ?? []) {
+    const match = pattern.exec(row.sku as string)
+    if (match) {
+      const n = Number(match[1])
+      if (n > max) max = n
+    }
+  }
+  return `${AUTO_SKU_PREFIX}${String(max + 1).padStart(6, '0')}`
+}
+
 /**
  * Create a catalog product straight from an order screen. It is stored unlisted so it never
  * shows up when issuing a PI, while business orders can still select it freely.
@@ -31,28 +58,36 @@ export async function createOrderScopedProduct(
   }
 
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('products')
-    .insert({
-      ...parsed.data,
-      description: parsed.data.description || null,
-      specification: parsed.data.specification || null,
-      weight_g: parsed.data.weight_g ?? null,
-      image_url: parsed.data.image_url || null,
-      category: parsed.data.category || null,
-      group_id: parsed.data.group_id || null,
-      is_active: false,
-      created_by: profile.id,
-    })
-    .select('*')
-    .single()
-
-  if (error) {
-    return { ok: false, error: error.code === '23505' ? 'SKU 已存在' : error.message }
+  const base = {
+    ...parsed.data,
+    description: parsed.data.description || null,
+    specification: parsed.data.specification || null,
+    weight_g: parsed.data.weight_g ?? null,
+    image_url: parsed.data.image_url || null,
+    category: parsed.data.category || null,
+    group_id: parsed.data.group_id || null,
+    is_active: false,
+    created_by: profile.id,
   }
 
-  revalidatePath('/products')
-  return { ok: true, product: data as Product }
+  // SKU 由服务端自动编排；并发/残留冲突时重算，最多重试 5 次。
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const sku = await nextGlobalSku(supabase)
+    const { data, error } = await supabase
+      .from('products')
+      .insert({ ...base, sku })
+      .select('*')
+      .single()
+
+    if (!error && data) {
+      revalidatePath('/products')
+      return { ok: true, product: data as Product }
+    }
+    if (error && error.code !== '23505') {
+      return { ok: false, error: error.message }
+    }
+  }
+  return { ok: false, error: 'SKU 自动编排冲突，请稍后重试' }
 }
 
 /** Save finance-only product fields. Both the action and table RLS enforce access. */
@@ -94,8 +129,8 @@ export async function updateProductFinancials(
 }
 
 function parseProduct(formData: FormData) {
+  // SKU 不来自表单：新建时服务端自动编排，编辑时保留原值。
   return productSchema.safeParse({
-    sku: formData.get('sku'),
     name: formData.get('name'),
     description: formData.get('description') || '',
     specification: formData.get('specification') || '',
@@ -118,7 +153,7 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
   }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('products').insert({
+  const base = {
     ...parsed.data,
     description: parsed.data.description || null,
     specification: parsed.data.specification || null,
@@ -127,13 +162,21 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
     category: parsed.data.category || null,
     group_id: parsed.data.group_id || null,
     created_by: profile.id,
-  })
-  if (error) {
-    return { ok: false, error: error.code === '23505' ? 'SKU 已存在' : error.message }
   }
 
-  revalidatePath('/products')
-  return { ok: true }
+  // SKU 自动编排，冲突重试最多 5 次。
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const sku = await nextGlobalSku(supabase)
+    const { error } = await supabase.from('products').insert({ ...base, sku })
+    if (!error) {
+      revalidatePath('/products')
+      return { ok: true }
+    }
+    if (error.code !== '23505') {
+      return { ok: false, error: error.message }
+    }
+  }
+  return { ok: false, error: 'SKU 自动编排冲突，请稍后重试' }
 }
 
 export async function updateProduct(id: string, formData: FormData): Promise<ActionResult> {
@@ -143,11 +186,14 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
   }
 
+  // 编辑不改动 SKU（自动编排后视为不可变标识）。
+  const rest = { ...parsed.data }
+  delete rest.sku
   const supabase = await createClient()
   const { error } = await supabase
     .from('products')
     .update({
-      ...parsed.data,
+      ...rest,
       description: parsed.data.description || null,
       specification: parsed.data.specification || null,
       weight_g: parsed.data.weight_g ?? null,

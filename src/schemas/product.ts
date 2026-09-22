@@ -21,11 +21,13 @@ export const KNOWN_CATEGORIES = [
 ] as const
 
 export const productSchema = z.object({
+  // SKU 在上架/新建时由服务端自动编排（统一前缀 + 全局流水号），前端不再手工填写。
   sku: z
     .string()
     .trim()
-    .min(1, 'SKU 不能为空')
-    .max(64, 'SKU 过长'),
+    .max(64, 'SKU 过长')
+    .optional()
+    .or(z.literal('')),
   name: z
     .string()
     .trim()

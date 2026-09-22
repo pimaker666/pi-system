@@ -48,7 +48,6 @@ export function ProductForm({
   } = useForm<ProductInput>({
     resolver: zodResolver(productSchema),
     defaultValues: {
-      sku: product?.sku ?? '',
       name: product?.name ?? '',
       description: product?.description ?? '',
       specification: product?.specification ?? '',
@@ -101,21 +100,15 @@ export function ProductForm({
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-2xl space-y-6">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="sku">SKU</Label>
-          <Input id="sku" {...register('sku')} />
-          {errors.sku && <p className="text-sm text-destructive">{errors.sku.message}</p>}
+          <Label htmlFor="name">产品名称</Label>
+          <Input id="name" {...register('name')} />
+          {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
         </div>
         <div className="space-y-2">
           <Label htmlFor="unit">单位</Label>
           <Input id="unit" {...register('unit')} />
           {errors.unit && <p className="text-sm text-destructive">{errors.unit.message}</p>}
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <Label htmlFor="name">产品名称</Label>
-        <Input id="name" {...register('name')} />
-        {errors.name && <p className="text-sm text-destructive">{errors.name.message}</p>}
       </div>
 
       <div className="space-y-2">

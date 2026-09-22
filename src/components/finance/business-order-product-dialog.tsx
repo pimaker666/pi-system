@@ -73,7 +73,6 @@ export function BusinessOrderProductDialog({
 }: BusinessOrderProductDialogProps) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
-  const [sku, setSku] = useState('')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [specification, setSpecification] = useState('')
@@ -92,7 +91,6 @@ export function BusinessOrderProductDialog({
   })
 
   function resetForm() {
-    setSku('')
     setName('')
     setDescription('')
     setSpecification('')
@@ -183,7 +181,6 @@ export function BusinessOrderProductDialog({
     startTransition(async () => {
       try {
         const result = await createOrderScopedProduct({
-          sku,
           name,
           description,
           specification,
@@ -235,16 +232,6 @@ export function BusinessOrderProductDialog({
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="order_product_sku">SKU</Label>
-              <Input
-                id="order_product_sku"
-                value={sku}
-                onChange={(event) => setSku(event.target.value)}
-                maxLength={64}
-                required
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="order_product_unit">单位</Label>
               <Input
                 id="order_product_unit"
@@ -254,7 +241,7 @@ export function BusinessOrderProductDialog({
                 required
               />
             </div>
-            <div className="space-y-2 sm:col-span-2">
+            <div className="space-y-2">
               <Label htmlFor="order_product_name">产品名称</Label>
               <Input
                 id="order_product_name"
