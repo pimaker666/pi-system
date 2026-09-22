@@ -86,6 +86,9 @@ export default async function PiHistoryPage({
     .select('pi_id')
     .eq('user_id', profile?.id ?? '')
   const favoriteIds = new Set((favData ?? []).map((f) => f.pi_id as string))
+  const oneYearAgo = new Date()
+  oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1)
+  const oneYearAgoIso = oneYearAgo.toISOString()
 
   let query = supabase
     .from('proforma_invoices')
@@ -109,10 +112,15 @@ export default async function PiHistoryPage({
   if (cust?.trim()) {
     query = query.eq('customer_snapshot->>name', cust.trim())
   }
-  if (onlyFav) {
+  if (piView === 'active') {
     const favArr = Array.from(favoriteIds)
-    // Empty favorites → force an impossible filter to return nothing.
-    query = query.in('id', favArr.length > 0 ? favArr : ['00000000-0000-0000-0000-000000000000'])
+    if (onlyFav) {
+      query = query.in('id', favArr.length > 0 ? favArr : ['00000000-0000-0000-0000-000000000000'])
+    } else if (favArr.length > 0) {
+      query = query.or(`created_at.gte.${oneYearAgoIso},id.in.(${favArr.join(',')})`)
+    } else {
+      query = query.gte('created_at', oneYearAgoIso)
+    }
   }
 
   // Distinct customer names for the filter dropdown, scoped to the same
@@ -155,9 +163,14 @@ export default async function PiHistoryPage({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">
-          {piView === 'trash' ? '回收站' : 'PI 历史'}
-        </h1>
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h1 className="text-2xl font-semibold">
+            {piView === 'trash' ? '回收站' : 'PI 历史'}
+          </h1>
+          {piView === 'active' && (
+            <p className="text-sm text-muted-foreground">历史非收藏 PI 只保留一年，重要的 PI 请点收藏</p>
+          )}
+        </div>
         <HistoryTabs view={view} params={{ q, owner, fav, cust }} />
       </div>
 
