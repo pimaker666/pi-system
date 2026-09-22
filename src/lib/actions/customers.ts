@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { requireProfile } from '@/lib/auth'
+import { requireAdmin, requireProfile } from '@/lib/auth'
 import { customerSchema } from '@/schemas/customer'
 import type { Customer } from '@/types'
 import type { ActionResult } from './products'
@@ -21,7 +21,6 @@ function parseCustomer(formData: FormData) {
     contact_person: formData.get('contact_person') || '',
     remarks: formData.get('remarks') || '',
     group_id: formData.get('group_id') || '',
-    tag_color: formData.get('tag_color') || '',
   })
 }
 
@@ -39,7 +38,6 @@ function normalize(data: ReturnType<typeof customerSchema.parse>) {
     contact_person: data.contact_person || null,
     remarks: data.remarks || null,
     group_id: data.group_id ? data.group_id : null,
-    tag_color: data.tag_color || null,
   }
 }
 
@@ -84,16 +82,31 @@ export async function updateCustomer(
 
 const HEX_COLOR_RE = /^#[0-9A-Fa-f]{6}$/
 
+/**
+ * 指派客户标记。仅管理员可操作，且颜色必须来自预定义标记库
+ * （finance_customer_commission_tags），传 null 表示清除标记。
+ */
 export async function updateCustomerTagColor(
   id: string,
   tagColor: string | null,
 ): Promise<ActionResult & { id?: string; customer?: Customer }> {
-  await requireProfile()
+  await requireAdmin()
   if (tagColor !== null && !HEX_COLOR_RE.test(tagColor)) {
     return { ok: false, error: '颜色格式错误' }
   }
 
   const supabase = await createClient()
+
+  if (tagColor !== null) {
+    const { data: tag, error: tagError } = await supabase
+      .from('finance_customer_commission_tags')
+      .select('tag_color')
+      .eq('tag_color', tagColor)
+      .maybeSingle()
+    if (tagError) return { ok: false, error: tagError.message }
+    if (!tag) return { ok: false, error: '标记不存在，请从预定义标记中选择' }
+  }
+
   const { data, error } = await supabase
     .from('customers')
     .update({ tag_color: tagColor })

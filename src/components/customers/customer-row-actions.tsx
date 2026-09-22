@@ -32,7 +32,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { CustomerFormFields } from './customer-form-fields'
 import { deleteCustomer, transferCustomer, copyCustomer, updateCustomerTagColor } from '@/lib/actions/customers'
-import type { Customer, CustomerGroup } from '@/types'
+import type { Customer, CustomerGroup, CustomerCommissionTag } from '@/types'
 import type { OwnerOption } from '@/components/shared/owner-filter'
 
 export function CustomerRowActions({
@@ -40,11 +40,13 @@ export function CustomerRowActions({
   groups,
   isAdmin = false,
   owners = [],
+  customerTags = [],
 }: {
   customer: Customer
   groups: CustomerGroup[]
   isAdmin?: boolean
   owners?: OwnerOption[]
+  customerTags?: CustomerCommissionTag[]
 }) {
   const router = useRouter()
   const [editOpen, setEditOpen] = useState(false)
@@ -136,18 +138,20 @@ export function CustomerRowActions({
           </Button>
         </>
       )}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8"
-        title="客户标记"
-        onClick={() => {
-          setTagColor(customer.tag_color ?? '')
-          setTagOpen(true)
-        }}
-      >
-        <Tag className="h-4 w-4" style={{ color: customer.tag_color ?? undefined }} />
-      </Button>
+      {isAdmin && (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="客户标记"
+          onClick={() => {
+            setTagColor(customer.tag_color ?? '')
+            setTagOpen(true)
+          }}
+        >
+          <Tag className="h-4 w-4" style={{ color: customer.tag_color ?? undefined }} />
+        </Button>
+      )}
       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditOpen(true)}>
         <Pencil className="h-4 w-4" />
       </Button>
@@ -183,39 +187,55 @@ export function CustomerRowActions({
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              为「{customer.name}」选择标记颜色，订单提成与成本视图会同步显示该颜色。
+              为「{customer.name}」选择预定义标记，订单提成会优先按标记对应的产品提点计算。
             </p>
-            <div className="flex flex-wrap items-center gap-2">
-              {['', '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#64748b'].map(
-                (color) => (
+            {customerTags.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                暂无预定义标记，请先在「业务提成」页配置标记库。
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={() => setTagColor('')}
+                  className={`flex w-full items-center gap-2 rounded-md border-2 px-3 py-2 text-left text-sm transition hover:bg-accent ${
+                    tagColor === '' ? 'border-foreground' : 'border-transparent'
+                  }`}
+                >
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full border text-[10px] text-muted-foreground">
+                    无
+                  </span>
+                  <span>清除标记</span>
+                </button>
+                {customerTags.map((tag) => (
                   <button
-                    key={color || 'none'}
+                    key={tag.tag_color}
                     type="button"
-                    onClick={() => setTagColor(color)}
-                    className={`flex h-8 w-8 items-center justify-center rounded-full border-2 transition hover:scale-110 ${
-                      tagColor === color ? 'border-foreground' : 'border-transparent'
+                    onClick={() => setTagColor(tag.tag_color)}
+                    className={`flex w-full items-center gap-2 rounded-md border-2 px-3 py-2 text-left text-sm transition hover:bg-accent ${
+                      tagColor === tag.tag_color ? 'border-foreground' : 'border-transparent'
                     }`}
-                    style={{ backgroundColor: color || 'transparent' }}
-                    title={color ? color : '清除标记'}
                   >
-                    {!color && <span className="text-xs text-muted-foreground">无</span>}
+                    <span
+                      className="h-5 w-5 rounded-full border"
+                      style={{ backgroundColor: tag.tag_color }}
+                    />
+                    <span className="flex-1" style={{ color: tag.tag_color }}>
+                      {tag.label}
+                    </span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {tag.product_commission_rate}%
+                    </span>
                   </button>
-                )
-              )}
-              <input
-                type="color"
-                value={tagColor || '#3b82f6'}
-                onChange={(e) => setTagColor(e.target.value)}
-                className="h-8 w-8 cursor-pointer rounded-full border-0 p-0"
-                aria-label="自定义颜色"
-              />
-            </div>
+                ))}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setTagOpen(false)}>
               取消
             </Button>
-            <Button onClick={handleTagSave} disabled={pending}>
+            <Button onClick={handleTagSave} disabled={pending || customerTags.length === 0}>
               {pending ? '保存中…' : '保存'}
             </Button>
           </DialogFooter>

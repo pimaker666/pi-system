@@ -50,7 +50,7 @@ import {
   bulkModifyCustomers,
   bulkUpdateGroupCustomers,
 } from '@/lib/actions/customers'
-import type { Customer, CustomerGroup } from '@/types'
+import type { Customer, CustomerGroup, CustomerCommissionTag } from '@/types'
 import type { OwnerOption } from '@/components/shared/owner-filter'
 
 export interface CustomerRow extends Customer {
@@ -81,6 +81,7 @@ export function CustomerTable({
   transferOwners = [],
   isAdmin = false,
   stats = {},
+  customerTags = [],
 }: {
   customers: CustomerRow[]
   groups: CustomerGroup[]
@@ -88,6 +89,7 @@ export function CustomerTable({
   transferOwners?: OwnerOption[]
   isAdmin?: boolean
   stats?: CustomerOrderStatsMap
+  customerTags?: CustomerCommissionTag[]
 }) {
   const router = useRouter()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -232,6 +234,18 @@ export function CustomerTable({
 
   return (
     <div className="space-y-3">
+      {customerTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md border bg-muted/30 px-4 py-2 text-sm">
+          <span className="text-muted-foreground">客户标记说明：</span>
+          {customerTags.map((tag) => (
+            <span key={tag.tag_color} className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded-full border" style={{ backgroundColor: tag.tag_color }} />
+              <span style={{ color: tag.tag_color }}>{tag.label}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
       {selected.size > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border bg-muted/40 px-4 py-2">
           <span className="text-sm font-medium">已选 {selected.size} 项</span>
@@ -358,6 +372,7 @@ export function CustomerTable({
                       groups={groups}
                       isAdmin={isAdmin}
                       owners={transferOwners}
+                      customerTags={customerTags}
                     />
                   </TableCell>
                 </TableRow>

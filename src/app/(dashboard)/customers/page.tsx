@@ -8,7 +8,7 @@ import { NewCustomerButton } from '@/components/customers/new-customer-button'
 import { CustomerFilters } from '@/components/customers/customer-filters'
 import { CustomerTable, type CustomerRow, type CustomerOrderStatsMap } from '@/components/customers/customer-table'
 import type { OwnerOption } from '@/components/shared/owner-filter'
-import type { CustomerGroup, Profile } from '@/types'
+import type { CustomerCommissionTag, CustomerGroup, Profile } from '@/types'
 
 export default async function CustomersPage({
   searchParams,
@@ -36,7 +36,7 @@ export default async function CustomersPage({
   if (country) customerQuery = customerQuery.eq('country', country)
   if (isAdmin && owner) customerQuery = customerQuery.eq('created_by', owner)
 
-  const [{ data: customerData }, { data: groupData }, { data: profileData }, { data: countryData }] = await Promise.all([
+  const [{ data: customerData }, { data: groupData }, { data: profileData }, { data: countryData }, { data: tagData }] = await Promise.all([
     customerQuery,
     supabase.from('customer_groups').select('*').order('name'),
     supabase
@@ -44,10 +44,28 @@ export default async function CustomersPage({
       .select('id, full_name, email, chinese_name, role, status')
       .order('full_name'),
     supabase.from('customers').select('country'),
+    supabase
+      .from('finance_customer_commission_tags')
+      .select('tag_color, label, product_commission_rate, sort_order')
+      .order('sort_order', { ascending: true })
+      .order('label', { ascending: true }),
   ])
 
   const customers = (customerData ?? []) as CustomerRow[]
   const groups = (groupData ?? []) as CustomerGroup[]
+  const customerTags: CustomerCommissionTag[] = (
+    (tagData ?? []) as Array<{
+      tag_color: string
+      label: string
+      product_commission_rate: number | string
+      sort_order: number | string
+    }>
+  ).map((row) => ({
+    tag_color: row.tag_color,
+    label: row.label,
+    product_commission_rate: Number(row.product_commission_rate),
+    sort_order: Number(row.sort_order),
+  }))
   const profiles = (profileData ?? []) as Pick<
     Profile,
     'id' | 'full_name' | 'email' | 'chinese_name' | 'role' | 'status'
@@ -121,6 +139,7 @@ export default async function CustomersPage({
         transferOwners={transferOwners}
         isAdmin={isAdmin}
         stats={statsMap}
+        customerTags={customerTags}
       />
     </div>
   )

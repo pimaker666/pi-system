@@ -13,13 +13,6 @@ export const customerSchema = z.object({
   contact_person: z.string().trim().max(200).optional().or(z.literal('')),
   remarks: z.string().trim().max(2000).optional().or(z.literal('')),
   group_id: z.string().uuid().optional().nullable().or(z.literal('')),
-  tag_color: z
-    .string()
-    .trim()
-    .regex(/^#[0-9A-Fa-f]{6}$/, '颜色格式错误')
-    .optional()
-    .nullable()
-    .or(z.literal('')),
 })
 
 export const customerGroupSchema = z.object({
