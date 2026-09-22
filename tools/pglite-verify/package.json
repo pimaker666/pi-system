@@ -6,7 +6,9 @@
   "scripts": {
     "replay": "node replay-migrations.mjs",
     "verify:0040": "node verify-0040.mjs",
-    "verify:0041": "node verify-0041.mjs"
+    "verify:0041": "node verify-0041.mjs",
+    "verify:0062": "node verify-0062.mjs",
+    "verify:0063": "node verify-0063.mjs"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8"

@@ -102,6 +102,7 @@ export function BusinessDailyOrderTable({
   const [shippedAt, setShippedAt] = useState(() => toDateTimeLocalValue(new Date()))
   const [customerOrder, setCustomerOrder] = useState<BusinessDailyLedgerOrder | null>(null)
   const [customerDraft, setCustomerDraft] = useState<Customer | null>(null)
+  const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null)
 
   const settledSet = useMemo(() => new Set(settledItemIds), [settledItemIds])
   const isMergedItemSettled = (item: MergedBusinessDailyItem) =>
@@ -145,7 +146,7 @@ export function BusinessDailyOrderTable({
   function viewAttachment(attachmentId: string) {
     startTransition(async () => {
       const result = await getBusinessOrderAttachmentUrl(attachmentId)
-      if (result.url) window.open(result.url, '_blank', 'noopener,noreferrer')
+      if (result.url) setAttachmentUrl(result.url)
       else toast.error(result.error ?? '无法查看截图')
     })
   }
@@ -155,21 +156,21 @@ export function BusinessDailyOrderTable({
     setCustomerDraft(customers.find((customer) => customer.id === order.customer_id) ?? null)
   }
 
-  function saveCustomer() {
-    if (!customerOrder || !customerDraft) {
+  function saveCustomer(customer: Customer | null) {
+    if (!customerOrder || customer === null && !customerOrder.customer_id) {
       toast.error('请选择客户')
       return
     }
     startCustomerTransition(async () => {
       const result = await setBusinessOrderCustomer({
         order_id: customerOrder.id,
-        customer_id: customerDraft.id,
+        customer_id: customer?.id ?? null,
       })
       if (!result.ok) {
         toast.error(result.error ?? '设置订单客户失败')
         return
       }
-      toast.success('订单客户已同步')
+      toast.success(customer ? '订单客户已同步' : '订单客户已取消绑定')
       setCustomerOrder(null)
       setCustomerDraft(null)
       router.refresh()
@@ -367,7 +368,11 @@ export function BusinessDailyOrderTable({
                           )}
                           <div className="flex flex-wrap items-center gap-1 text-xs font-normal text-muted-foreground">
                             <CountryFlag country={order.current_customer_country ?? order.customer_snapshot?.country} />
-                            <span>{getBusinessOrderCustomerName(order.customer_snapshot)}</span>
+                            <span>
+                              {order.customer_id
+                                ? getBusinessOrderCustomerName(order.customer_snapshot)
+                                : '未绑定客户'}
+                            </span>
                             {canSetCustomer && (
                               <Button
                                 type="button"
@@ -546,14 +551,37 @@ export function BusinessDailyOrderTable({
             >
               取消
             </Button>
+            {customerOrder?.customer_id && (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={customerPending}
+                onClick={() => saveCustomer(null)}
+              >
+                取消绑定
+              </Button>
+            )}
             <Button
               type="button"
               disabled={customerPending || !customerDraft}
-              onClick={saveCustomer}
+              onClick={() => saveCustomer(customerDraft)}
             >
               {customerPending ? '保存中…' : '保存客户'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(attachmentUrl)} onOpenChange={(open) => !open && setAttachmentUrl(null)}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>订单截图</DialogTitle>
+          </DialogHeader>
+          {attachmentUrl && (
+            // Signed Storage URLs cannot be optimized by next/image.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={attachmentUrl} alt="订单截图" className="max-h-[75vh] w-full object-contain" />
+          )}
         </DialogContent>
       </Dialog>
     </div>

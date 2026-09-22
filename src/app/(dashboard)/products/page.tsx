@@ -102,6 +102,7 @@ export default async function ProductsPage({
         financials={financials}
         canManage={true}
         canDelete={isAdmin}
+        canManageStatus={canManageFinancials}
         canManageFinancials={canManageFinancials}
       />
     </div>

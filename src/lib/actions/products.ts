@@ -166,10 +166,22 @@ export async function updateProduct(id: string, formData: FormData): Promise<Act
 }
 
 export async function toggleProductActive(id: string, isActive: boolean): Promise<ActionResult> {
-  await requireProfile()
+  await requireFinanceAccess()
   const supabase = await createClient()
   const { error } = await supabase.from('products').update({ is_active: isActive }).eq('id', id)
   if (error) return { ok: false, error: error.message }
+  revalidatePath('/products')
+  return { ok: true }
+}
+
+export async function bulkDeactivateProducts(ids: string[]): Promise<ActionResult> {
+  await requireFinanceAccess()
+  if (!ids.length) return { ok: false, error: '未选择任何产品' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.from('products').update({ is_active: false }).in('id', ids)
+  if (error) return { ok: false, error: error.message }
+
   revalidatePath('/products')
   return { ok: true }
 }

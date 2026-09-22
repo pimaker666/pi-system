@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, Trash2, FolderInput, DollarSign, Save, Settings2 } from 'lucide-react'
+import { Archive, Pencil, Trash2, FolderInput, DollarSign, Save, Settings2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -49,6 +49,7 @@ import {
   bulkUpdatePrice,
   bulkUpdateProducts,
   bulkDeleteProducts,
+  bulkDeactivateProducts,
   updateProductFinancials,
   updateProductInline,
 } from '@/lib/actions/products'
@@ -267,6 +268,7 @@ export function ProductTable({
   financials,
   canManage,
   canDelete,
+  canManageStatus,
   canManageFinancials,
 }: {
   products: Product[]
@@ -274,6 +276,7 @@ export function ProductTable({
   financials: ProductFinancial[]
   canManage: boolean
   canDelete: boolean
+  canManageStatus: boolean
   canManageFinancials: boolean
 }) {
   const router = useRouter()
@@ -282,6 +285,7 @@ export function ProductTable({
 
   const [groupOpen, setGroupOpen] = useState(false)
   const [priceOpen, setPriceOpen] = useState(false)
+  const [deactivateOpen, setDeactivateOpen] = useState(false)
   const [delOpen, setDelOpen] = useState(false)
   const [groupValue, setGroupValue] = useState(NO_GROUP)
   const [priceValue, setPriceValue] = useState('')
@@ -381,6 +385,20 @@ export function ProductTable({
     })
   }
 
+  function handleDeactivate() {
+    startTransition(async () => {
+      const result = await bulkDeactivateProducts(ids)
+      if (result.ok) {
+        toast.success(`已下架 ${ids.length} 个产品`)
+        setDeactivateOpen(false)
+        setSelected(new Set())
+        router.refresh()
+      } else {
+        toast.error(result.error ?? '下架失败')
+      }
+    })
+  }
+
   function handleDelete() {
     startTransition(async () => {
       const result = await bulkDeleteProducts(ids)
@@ -431,6 +449,16 @@ export function ProductTable({
               <DollarSign className="h-3.5 w-3.5" />
               调整单价
             </Button>
+            {canManageStatus && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDeactivateOpen(true)}
+              >
+                <Archive className="h-3.5 w-3.5" />
+                下架
+              </Button>
+            )}
             {canDelete && (
               <Button
                 size="sm"
@@ -705,6 +733,30 @@ export function ProductTable({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 批量下架 */}
+      <AlertDialog open={deactivateOpen} onOpenChange={setDeactivateOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>下架所选 {selected.size} 个产品？</AlertDialogTitle>
+            <AlertDialogDescription>
+              下架后产品不会出现在常规产品选择列表，已有订单不受影响。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault()
+                handleDeactivate()
+              }}
+              disabled={pending}
+            >
+              {pending ? '下架中…' : '确认下架'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* 批量删除 */}
       <AlertDialog open={delOpen} onOpenChange={setDelOpen}>

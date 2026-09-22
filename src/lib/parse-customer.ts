@@ -393,6 +393,18 @@ export function parseCustomerText(text: string): ParsedCustomer {
     if (m) result.email = m[0]
   }
 
+  // Chinese shipping details are often pasted without any delimiters, such as
+  // "陈先生13417600614广东省揭阳市普宁市锦江商务城21楼21a".
+  const compactChinese = text.replace(/[\s,，;；|、]/g, '')
+  const compactChineseMatch = compactChinese.match(
+    /^([\u4e00-\u9fff]{2,20}?)(1[3-9]\d{9})([\u4e00-\u9fff].+)$/,
+  )
+  if (compactChineseMatch) {
+    if (!result.name) result.name = compactChineseMatch[1]
+    if (!result.phone) result.phone = compactChineseMatch[2]
+    if (!result.address) result.address = compactChineseMatch[3]
+  }
+
   // From remaining leftovers, classify each line precisely so that countries and
   // payment methods never leak into the name/company fields.
   const remaining = leftovers.filter((l) => {

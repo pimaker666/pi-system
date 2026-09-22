@@ -608,7 +608,7 @@ export const businessOrderShipmentInputSchema = z
 export const businessOrderCustomerInputSchema = z
   .object({
     order_id: z.string().uuid('订单 ID 不合法'),
-    customer_id: z.string().uuid('请选择有效客户'),
+    customer_id: z.string().uuid('请选择有效客户').nullable(),
   })
   .strict()
 
