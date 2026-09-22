@@ -40,7 +40,7 @@ import {
   BUSINESS_ORDER_STATUS_VARIANTS,
 } from '@/lib/business-orders'
 import { formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
-import { displayProfileName } from '@/lib/utils'
+import { cn, displayProfileName } from '@/lib/utils'
 import type { BusinessOrderCostFilters } from '@/schemas/business-order-cost'
 import type {
   BusinessOrderProductCost,
@@ -50,6 +50,7 @@ import type {
 } from '@/types'
 
 const mergedCellClassName = 'bg-muted/20 align-top'
+const stickyHeaderCellClassName = 'sticky top-0 z-20 bg-background'
 
 function quantityText(value: number) {
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 }).format(value)
@@ -193,6 +194,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const [dialogOpen, setDialogOpen] = useState(false)
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
+  const [pinFirst, setPinFirst] = useState(false)
   const query = businessOrderCostFilterQuery(filters)
   const currentPage = filters.page
   const totalPages = Math.max(1, Math.ceil(totalCount / COST_PAGE_SIZE))
@@ -310,6 +312,14 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
         <span className="text-xs text-muted-foreground">
           结算后所选订单的产品行将移入“已结算订单”，不再显示在此页。
         </span>
+        <label className="ml-auto flex items-center gap-1.5 text-sm text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={pinFirst}
+            onChange={(event) => setPinFirst(event.target.checked)}
+          />
+          固定首列
+        </label>
       </div>
 
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
@@ -352,26 +362,42 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
         </div>
       </form>
 
-      <div className="overflow-x-auto rounded-md border">
-        <Table className="min-w-[3000px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12">
-                {orderIds.length > 0 && (
-                  <input
-                    type="checkbox"
-                    aria-label="全选"
-                    checked={allSelected}
-                    onChange={(event) => toggleSelectAll(event.target.checked)}
-                  />
+      <Table
+        containerClassName="max-h-[70vh] overflow-auto rounded-md border"
+        className="min-w-[3000px]"
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead
+              className={cn(
+                'w-12',
+                stickyHeaderCellClassName,
+                pinFirst && 'left-0 z-30',
+              )}
+            >
+              {orderIds.length > 0 && (
+                <input
+                  type="checkbox"
+                  aria-label="全选"
+                  checked={allSelected}
+                  onChange={(event) => toggleSelectAll(event.target.checked)}
+                />
+              )}
+            </TableHead>
+            {BUSINESS_ORDER_COST_COLUMNS.map((label, index) => (
+              <TableHead
+                key={label}
+                className={cn(
+                  stickyHeaderCellClassName,
+                  index === 0 && pinFirst && 'left-12 z-30 w-16',
                 )}
+              >
+                {label}
               </TableHead>
-              {BUSINESS_ORDER_COST_COLUMNS.map((label) => (
-                <TableHead key={label}>{label}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
             {groups.map((group, groupIndex) => {
               const rowSpan = group.length
               return group.map((row, rowIndex) => {
@@ -385,7 +411,13 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                     className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
                   >
                     {isFirstRow && (
-                      <TableCell rowSpan={rowSpan} className="align-top">
+                      <TableCell
+                        rowSpan={rowSpan}
+                        className={cn(
+                          'align-top',
+                          pinFirst && 'sticky left-0 z-10 bg-background',
+                        )}
+                      >
                         <input
                           type="checkbox"
                           aria-label={`选择订单 ${row.order_number}`}
@@ -400,7 +432,9 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                         />
                       </TableCell>
                     )}
-                    <TableCell>
+                    <TableCell
+                      className={cn(pinFirst && 'sticky left-12 z-10 w-16 bg-background')}
+                    >
                       <div className="font-medium">
                         {groupIndex + 1}
                         {rowSpan > 1 && (
@@ -537,7 +571,6 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
             )}
           </TableBody>
         </Table>
-      </div>
 
       {totalPages > 1 && (
         <div className="flex flex-wrap items-center justify-between gap-3">

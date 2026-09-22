@@ -52,10 +52,11 @@ import {
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
 import { DAILY_ORDER_COLUMNS, formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
-import { displayProfileName } from '@/lib/utils'
+import { cn, displayProfileName } from '@/lib/utils'
 import type { BusinessOrder, Customer, CustomerGroup, Profile } from '@/types'
 
 const mergedCellClassName = 'bg-muted/20 align-top'
+const stickyHeaderCellClassName = 'sticky top-0 z-20 bg-background'
 const BUSINESS_DAILY_ORDER_COLUMNS = [
   ...DAILY_ORDER_COLUMNS.slice(0, 8),
   '产品图片',
@@ -109,6 +110,7 @@ export function BusinessDailyOrderTable({
   const [customerOrder, setCustomerOrder] = useState<BusinessDailyLedgerOrder | null>(null)
   const [customerDraft, setCustomerDraft] = useState<Customer | null>(null)
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null)
+  const [pinFirst, setPinFirst] = useState(false)
 
   const settledSet = useMemo(() => new Set(settledItemIds), [settledItemIds])
   const isMergedItemSettled = (item: MergedBusinessDailyItem) =>
@@ -248,7 +250,15 @@ export function BusinessDailyOrderTable({
               </Button>
             </>
           )}
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex items-center gap-2">
+            <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                checked={pinFirst}
+                onChange={(event) => setPinFirst(event.target.checked)}
+              />
+              固定首列
+            </label>
             <Button asChild variant="outline" size="sm">
               <a download href={`/api/finance/daily-orders/export/xlsx${exportUrl}`}>
                 <Download className="h-4 w-4" />XLSX
@@ -263,26 +273,42 @@ export function BusinessDailyOrderTable({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-md border">
-        <Table className="min-w-[2800px]">
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-12">
-                {selectableOrders.length > 0 && (
-                  <input
-                    type="checkbox"
-                    aria-label="全选"
-                    checked={allSelected}
-                    onChange={(event) => toggleSelectAll(event.target.checked)}
-                  />
+      <Table
+        containerClassName="max-h-[70vh] overflow-auto rounded-md border"
+        className="min-w-[2800px]"
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead
+              className={cn(
+                'w-12',
+                stickyHeaderCellClassName,
+                pinFirst && 'left-0 z-30',
+              )}
+            >
+              {selectableOrders.length > 0 && (
+                <input
+                  type="checkbox"
+                  aria-label="全选"
+                  checked={allSelected}
+                  onChange={(event) => toggleSelectAll(event.target.checked)}
+                />
+              )}
+            </TableHead>
+            {BUSINESS_DAILY_ORDER_COLUMNS.map((label, index) => (
+              <TableHead
+                key={label}
+                className={cn(
+                  stickyHeaderCellClassName,
+                  index === 0 && pinFirst && 'left-12 z-30 w-28',
                 )}
+              >
+                {label}
               </TableHead>
-              {BUSINESS_DAILY_ORDER_COLUMNS.map((label) => (
-                <TableHead key={label}>{label}</TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
             {groups.map(({ order, items, attachments }, groupIndex) => {
               // 历史业务订单没有明细时也要占一行，否则订单会在台账里凭空消失。
               const rows = items.length > 0 ? items : [null]
@@ -306,7 +332,12 @@ export function BusinessDailyOrderTable({
                     key={item ? item.id : order.id}
                     className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
                   >
-                    <TableCell className="align-top">
+                    <TableCell
+                      className={cn(
+                        'align-top',
+                        pinFirst && 'sticky left-0 z-10 bg-background',
+                      )}
+                    >
                       {isFirstRow && canSelect && (
                         <input
                           type="checkbox"
@@ -316,7 +347,9 @@ export function BusinessDailyOrderTable({
                         />
                       )}
                     </TableCell>
-                    <TableCell>
+                    <TableCell
+                      className={cn(pinFirst && 'sticky left-12 z-10 w-28 bg-background')}
+                    >
                       <div className="font-medium">
                         {groupIndex + 1}
                         {rowSpan > 1 && (
@@ -530,7 +563,6 @@ export function BusinessDailyOrderTable({
             )}
           </TableBody>
         </Table>
-      </div>
 
       <Dialog
         open={Boolean(customerOrder)}
