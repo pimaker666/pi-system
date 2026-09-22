@@ -19,7 +19,7 @@ import {
 import { BUSINESS_FULFILLMENT_LABELS } from '@/lib/business-orders'
 import { SHIPPING_LABELS } from '@/lib/daily-orders'
 import { formatCny } from '@/lib/finance'
-import { cn, formatCurrency } from '@/lib/utils'
+import { cn } from '@/lib/utils'
 import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
 import type {
   BusinessFulfillmentType,
@@ -30,13 +30,14 @@ import type {
 } from '@/types'
 
 function formatOriginal(amount: number, currency: string | null) {
-  if (currency) {
-    return formatCurrency(amount, currency)
-  }
-  return `${amount.toLocaleString('zh-CN', {
+  const formatted = amount.toLocaleString('zh-CN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })} (多币种)`
+  })
+  if (currency) {
+    return `${currency} ${formatted}`
+  }
+  return `${formatted} (多币种)`
 }
 
 interface Option {
@@ -230,26 +231,26 @@ export function PerformanceManager({
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground">订单总额（CNY）</div>
+            <div className="text-xs text-muted-foreground">订单总额</div>
             <div className="mt-1 text-xl font-semibold tabular-nums">
               {formatCny(Number(summary.order_total_cny))}
             </div>
-            {summary.currency !== undefined && (
-              <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                = {formatOriginal(Number(summary.order_total_amount), summary.currency)}
+            {summary.currency !== undefined && summary.currency !== 'CNY' && (
+              <div className="mt-0.5 text-sm font-medium tabular-nums">
+                {formatOriginal(Number(summary.order_total_amount), summary.currency)}
               </div>
             )}
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground">已收（CNY）</div>
+            <div className="text-xs text-muted-foreground">已收</div>
             <div className="mt-1 text-xl font-semibold tabular-nums text-green-700">
               {formatCny(Number(summary.received_cny))}
             </div>
-            {summary.currency !== undefined && (
-              <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                = {formatOriginal(Number(summary.received_amount), summary.currency)}
+            {summary.currency !== undefined && summary.currency !== 'CNY' && (
+              <div className="mt-0.5 text-sm font-medium tabular-nums text-green-700">
+                {formatOriginal(Number(summary.received_amount), summary.currency)}
               </div>
             )}
           </CardContent>
@@ -269,9 +270,9 @@ export function PerformanceManager({
                 / {Number(summary.overdue_count)} 单
               </span>
             </div>
-            {summary.currency !== undefined && (
-              <div className="mt-0.5 text-xs text-muted-foreground tabular-nums">
-                = {formatOriginal(Number(summary.outstanding_amount), summary.currency)}
+            {summary.currency !== undefined && summary.currency !== 'CNY' && (
+              <div className="mt-0.5 text-sm font-medium tabular-nums">
+                {formatOriginal(Number(summary.outstanding_amount), summary.currency)}
               </div>
             )}
           </CardContent>
@@ -364,11 +365,11 @@ export function PerformanceManager({
             <TableRow>
               <TableHead>{GROUP_COLUMN_LABELS[groupBy]}</TableHead>
               <TableHead className="text-right">订单数</TableHead>
-              <TableHead className="text-right">订单总额（原币）</TableHead>
+              <TableHead className="text-right">订单总额</TableHead>
               <TableHead className="text-right">订单总额（CNY）</TableHead>
-              <TableHead className="text-right">已收（原币）</TableHead>
+              <TableHead className="text-right">已收</TableHead>
               <TableHead className="text-right">已收（CNY）</TableHead>
-              <TableHead className="text-right">未收（原币）</TableHead>
+              <TableHead className="text-right">未收</TableHead>
               <TableHead className="text-right">未收（CNY）</TableHead>
               <TableHead className="text-right">逾期订单</TableHead>
             </TableRow>
