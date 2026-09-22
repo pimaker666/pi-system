@@ -21,6 +21,19 @@ import { roundToScale } from '@/lib/utils'
  * 数据源只有 business_orders / business_order_items / business_order_attachments，
  * 旧 finance_daily_* 表仍保持 0031 的冻结状态，仅在“历史台账”页只读查询。
  */
+/**
+ * 收款分摊（含订单转账）的精简投影，只取合并/汇总所需字段。
+ * allocation_target: 'item' 落到具体产品行（order_item_id），'shipping' 落到订单运费，
+ * 'order' 为 0047 之前的整单历史分摊（不归属到具体产品行）。
+ */
+export interface BusinessOrderPaymentAllocationLite {
+  order_item_id: string | null
+  allocation_target: 'order' | 'item' | 'shipping'
+  amount: number | string
+  voided_at?: string | null
+  transfer?: { voided_at?: string | null } | null
+}
+
 export interface BusinessDailyLedgerOrder extends BusinessOrder {
   business_order_items: BusinessOrderItem[]
   business_order_attachments?: BusinessOrderAttachment[]
@@ -30,7 +43,35 @@ export interface BusinessDailyLedgerOrder extends BusinessOrder {
   business_order_returns?: Array<
     BusinessOrderReturn & { business_order_return_items?: BusinessOrderReturnItem[] }
   >
+  business_order_payment_allocations?: BusinessOrderPaymentAllocationLite[]
   outstanding_amount: number
+}
+
+/**
+ * 生效分摊 = 分摊未作废且所属转账未作废。把生效分摊拆成三份：
+ * itemById（按产品行 order_item_id 汇总）、shippingTotal（订单运费）、orderTotal（历史整单）。
+ * 后续新增收款补齐运费 / 产品实收时，实收显示以「静态列 + 生效分摊」为准，全站口径一致。
+ */
+export function businessOrderAllocationBreakdown(order: {
+  business_order_payment_allocations?: BusinessOrderPaymentAllocationLite[]
+}): { itemById: Map<string, number>; shippingTotal: number; orderTotal: number } {
+  const itemById = new Map<string, number>()
+  let shippingTotal = 0
+  let orderTotal = 0
+  for (const alloc of order.business_order_payment_allocations ?? []) {
+    if (alloc.voided_at) continue
+    if (alloc.transfer?.voided_at) continue
+    const amount = Number(alloc.amount)
+    if (!Number.isFinite(amount) || amount === 0) continue
+    if (alloc.allocation_target === 'item' && alloc.order_item_id) {
+      itemById.set(alloc.order_item_id, (itemById.get(alloc.order_item_id) ?? 0) + amount)
+    } else if (alloc.allocation_target === 'shipping') {
+      shippingTotal += amount
+    } else {
+      orderTotal += amount
+    }
+  }
+  return { itemById, shippingTotal, orderTotal }
 }
 
 export type BusinessDailyTotalField =
@@ -62,21 +103,37 @@ export function businessDailyItemAmounts(item: BusinessOrderItem) {
 /**
  * 表头三项金额。每日订单直接取 0034 新增的三个总额列；
  * 历史业务订单回落到 items_subtotal / shipping_fee / total_amount，保证台账汇总不丢金额。
+ * 若订单带有收款分摊，则把生效分摊并入实收（产品实收/运费实收/销售总额），
+ * 差额按「应收 - 销售总额」计算，与产品行「静态列 + 分摊」的口径保持一致。
  */
-export function businessDailyOrderTotals(order: BusinessOrder) {
+export function businessDailyOrderTotals(
+  order: BusinessOrder & {
+    business_order_payment_allocations?: BusinessOrderPaymentAllocationLite[]
+  },
+) {
   const receivable = Number(order.total_amount)
-  const salesTotal =
+  const declaredSalesTotal =
     order.total_sales_amount === null ? receivable : Number(order.total_sales_amount)
+  const declaredProductReceived =
+    order.total_product_received_amount === null
+      ? Number(order.items_subtotal)
+      : Number(order.total_product_received_amount)
+  const declaredShippingReceived =
+    order.total_shipping_received_amount === null
+      ? Number(order.shipping_fee)
+      : Number(order.total_shipping_received_amount)
+
+  const { itemById, shippingTotal } = businessOrderAllocationBreakdown(order)
+  const itemAllocated = [...itemById.values()].reduce((sum, value) => sum + value, 0)
+
+  const productReceived = roundToScale(declaredProductReceived + itemAllocated, 2)
+  const shippingReceived = roundToScale(declaredShippingReceived + shippingTotal, 2)
+  const salesTotal = roundToScale(declaredSalesTotal + itemAllocated + shippingTotal, 2)
+
   return {
     receivable,
-    productReceived:
-      order.total_product_received_amount === null
-        ? Number(order.items_subtotal)
-        : Number(order.total_product_received_amount),
-    shippingReceived:
-      order.total_shipping_received_amount === null
-        ? Number(order.shipping_fee)
-        : Number(order.total_shipping_received_amount),
+    productReceived,
+    shippingReceived,
     salesTotal,
     difference: Math.round((receivable - salesTotal) * 100) / 100,
   }
@@ -182,12 +239,20 @@ export function mergeBusinessDailyItems(
     else groups.set(key, [item])
   }
 
+  const { itemById, shippingTotal } = businessOrderAllocationBreakdown(order)
+
   return [...groups.values()].map((group, index) => {
     const first = group[0]
     const quantity = roundToScale(
       group.reduce((sum, item) => sum + Number(item.quantity), 0),
       4,
     )
+    const groupItemAllocated = group.reduce(
+      (sum, item) => sum + (itemById.get(item.id) ?? 0),
+      0,
+    )
+    // 运费分摊按用户约定「全部计入某一行」：整单运费分摊落到首行（index === 0）。
+    const groupShippingAllocated = index === 0 ? shippingTotal : 0
     const productReceived = roundToScale(
       group.reduce(
         (sum, item) =>
@@ -196,18 +261,22 @@ export function mergeBusinessDailyItems(
             ? Number(item.line_amount)
             : Number(item.product_received_amount)),
         0,
-      ),
+      ) + groupItemAllocated,
       2,
     )
     const logisticsFees = group.map((item) =>
       item.logistics_fee_amount === null ? null : Number(item.logistics_fee_amount),
     )
-    const logisticsFee = logisticsFees.some((value) => value !== null)
+    const declaredLogisticsFee = logisticsFees.some((value) => value !== null)
       ? roundToScale(
           logisticsFees.reduce<number>((sum, value) => sum + (value ?? 0), 0),
           2,
         )
       : null
+    const logisticsFee =
+      groupShippingAllocated !== 0
+        ? roundToScale((declaredLogisticsFee ?? 0) + groupShippingAllocated, 2)
+        : declaredLogisticsFee
     const salesTotal = roundToScale(
       group.reduce(
         (sum, item) =>
@@ -216,7 +285,7 @@ export function mergeBusinessDailyItems(
             ? Number(item.line_amount)
             : Number(item.sales_total_amount)),
         0,
-      ),
+      ) + groupItemAllocated + groupShippingAllocated,
       2,
     )
     const netShipped = group.reduce(

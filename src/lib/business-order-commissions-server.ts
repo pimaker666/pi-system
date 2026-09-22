@@ -4,6 +4,7 @@ import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-co
 import { displayProfileName } from '@/lib/utils'
 import { COMMISSION_PAGE_SIZE } from '@/lib/business-order-commission'
 import {
+  businessOrderAllocationBreakdown,
   mergeBusinessDailyItems,
   type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
@@ -44,7 +45,7 @@ function buildOrdersQuery(
   let query = supabase
     .from('business_orders')
     .select(
-      `*, ${itemsEmbed}, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)`,
+      `*, ${itemsEmbed}, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`,
     )
     .is('voided_at', null)
     .not('customer_id', 'is', null)
@@ -216,9 +217,11 @@ export async function fetchBusinessOrderCommissions(
       order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
     )
     const freight = orderFreightMap.get(order.id)
-    const freightReceived = order.total_shipping_received_amount == null
+    const { shippingTotal } = businessOrderAllocationBreakdown(order)
+    const declaredFreightReceived = order.total_shipping_received_amount == null
       ? 0
       : Number(order.total_shipping_received_amount)
+    const freightReceived = round4(declaredFreightReceived + shippingTotal)
     const freightCost = freight ? freight.freight_cost : 0
     const freightRate = freight ? freight.freight_commission_rate : 0
     const freightProfit = round4(freightReceived - freightCost)

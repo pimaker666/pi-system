@@ -32,7 +32,8 @@ const LEDGER_TAIL = `
   salesperson:profiles!salesperson_id(id, chinese_name, full_name, email),
   business_order_attachments(*),
   business_order_shipments(*, business_order_shipment_items(*)),
-  business_order_returns(*, business_order_return_items(*))
+  business_order_returns(*, business_order_return_items(*)),
+  business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))
 `
 
 function normalizeKeyword(raw: string) {

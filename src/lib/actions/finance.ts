@@ -242,7 +242,7 @@ export async function updateBusinessOrderItemCostOverride(input: {
   const { data: order, error: orderError } = await supabase
     .from('business_orders')
     .select(
-      'id, status, voided_at, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*))',
+      'id, status, voided_at, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))',
     )
     .eq('id', orderId)
     .maybeSingle()
@@ -314,7 +314,7 @@ export async function settleBusinessOrderItems(input: {
   const { data: orders, error: orderError } = await supabase
     .from('business_orders')
     .select(
-      'id, status, voided_at, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*))',
+      'id, status, voided_at, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))',
     )
     .in('id', orderIds)
   if (orderError) return { ok: false, error: orderError.message }

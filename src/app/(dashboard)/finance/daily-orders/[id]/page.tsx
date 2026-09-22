@@ -547,6 +547,10 @@ export default async function BusinessOrderDetailPage({
                   {itemRows.map(({ item, showProduct }) => {
                     // 分摊到本行的有效收款并入实收展示，与收款管理同口径。
                     const allocated = itemAllocatedByItem.get(item.id) ?? 0
+                    // 运费分摊按约定「全部计入某一行」：整单运费分摊落到首行。
+                    const shipping =
+                      item.id === (order.business_order_items[0]?.id ?? null) ? shippingAllocated : 0
+                    const rowAllocated = allocated + shipping
                     return (
                     <TableRow key={item.id}>
                       <TableCell>
@@ -602,17 +606,27 @@ export default async function BusinessOrderDetailPage({
                             )}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {item.logistics_fee_amount === null
+                            {item.logistics_fee_amount === null && shipping === 0
                               ? '—'
-                              : formatCurrency(Number(item.logistics_fee_amount), order.currency)}
+                              : formatCurrency(
+                                  (item.logistics_fee_amount === null
+                                    ? 0
+                                    : Number(item.logistics_fee_amount)) + shipping,
+                                  order.currency,
+                                )}
+                            {shipping > 0.005 && (
+                              <div className="text-xs text-muted-foreground">
+                                含分摊 {formatCurrency(shipping, order.currency)}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-right tabular-nums">
-                            {item.sales_total_amount === null && allocated === 0
+                            {item.sales_total_amount === null && rowAllocated === 0
                               ? '—'
                               : formatCurrency(
                                   (item.sales_total_amount === null
                                     ? 0
-                                    : Number(item.sales_total_amount)) + allocated,
+                                    : Number(item.sales_total_amount)) + rowAllocated,
                                   order.currency,
                                 )}
                           </TableCell>
