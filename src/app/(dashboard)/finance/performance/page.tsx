@@ -9,9 +9,9 @@ import { displayProfileName } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/server'
 import { requireApproved } from '@/lib/auth'
 import type {
-  BusinessFulfillmentType,
   BusinessPerformanceGroupBy,
   DailyOrderShippingCategory,
+  ProductGroup,
 } from '@/types'
 
 function getCurrentMonthRange() {
@@ -51,7 +51,7 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
     'shop',
     'date',
     'month',
-    'fulfillment_type',
+    'product_group',
     'shipping_category',
   ]
   const rawGroup = scalar('groupBy')
@@ -65,9 +65,7 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
     dateTo,
     salespersonIds: parseListParam(raw, 'salesperson'),
     shopIds: parseListParam(raw, 'shop'),
-    fulfillmentTypes: parseListParam(raw, 'fulfillment') as
-      | BusinessFulfillmentType[]
-      | undefined,
+    productGroupIds: parseListParam(raw, 'productGroup'),
     shippingCategories: parseListParam(raw, 'shipping') as
       | DailyOrderShippingCategory[]
       | undefined,
@@ -87,19 +85,20 @@ export default async function FinancePerformancePage({
     dateTo,
     salespersonIds,
     shopIds,
-    fulfillmentTypes,
+    productGroupIds,
     shippingCategories,
     groupBy,
   } = parseSearchParams(await searchParams)
 
-  const [options, summaryResult, groupResult] = await Promise.all([
+  const [options, productGroupsResult, summaryResult, groupResult] = await Promise.all([
     fetchDailyOrderOptions(supabase),
+    supabase.from('product_groups').select('id, name, sort_order').order('sort_order'),
     getBusinessPerformanceSummary({
       dateFrom,
       dateTo,
       salespersonIds,
       shopIds,
-      fulfillmentTypes,
+      productGroupIds,
       shippingCategories,
     }),
     getBusinessPerformanceByGroup(groupBy, {
@@ -107,7 +106,7 @@ export default async function FinancePerformancePage({
       dateTo,
       salespersonIds,
       shopIds,
-      fulfillmentTypes,
+      productGroupIds,
       shippingCategories,
     }),
   ])
@@ -119,6 +118,10 @@ export default async function FinancePerformancePage({
     throw new Error(groupResult.error || '业绩分组读取失败')
   }
 
+  if (productGroupsResult.error) {
+    throw new Error(`产品分组读取失败：${productGroupsResult.error.message}`)
+  }
+
   const salespeople = options.salespeople.map((profile) => ({
     value: profile.id,
     label: displayProfileName(profile, null),
@@ -126,6 +129,10 @@ export default async function FinancePerformancePage({
   const shops = options.shops.map((shop) => ({
     value: shop.id,
     label: shop.name,
+  }))
+  const productGroups = (productGroupsResult.data ?? [] as ProductGroup[]).map((group) => ({
+    value: group.id,
+    label: group.name,
   }))
 
   return (
@@ -145,11 +152,12 @@ export default async function FinancePerformancePage({
           dateTo,
           salespersonIds,
           shopIds,
-          fulfillmentTypes,
+          productGroupIds,
           shippingCategories,
         }}
         salespeople={salespeople}
         shops={shops}
+        productGroups={productGroups}
       />
     </div>
   )

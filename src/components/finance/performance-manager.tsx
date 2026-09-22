@@ -16,13 +16,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { BUSINESS_FULFILLMENT_LABELS } from '@/lib/business-orders'
 import { SHIPPING_LABELS } from '@/lib/daily-orders'
 import { formatCny } from '@/lib/finance'
 import { cn, formatCurrency } from '@/lib/utils'
 import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
 import type {
-  BusinessFulfillmentType,
   BusinessPerformanceGroupBy,
   BusinessPerformanceGroupRow,
   BusinessPerformanceSummary,
@@ -41,6 +39,7 @@ interface PerformanceManagerProps {
   filters: BusinessPerformanceFilters
   salespeople: Option[]
   shops: Option[]
+  productGroups: Option[]
 }
 
 const GROUP_TABS: { value: BusinessPerformanceGroupBy; label: string }[] = [
@@ -48,7 +47,7 @@ const GROUP_TABS: { value: BusinessPerformanceGroupBy; label: string }[] = [
   { value: 'shop', label: '渠道' },
   { value: 'date', label: '日期' },
   { value: 'month', label: '月份' },
-  { value: 'fulfillment_type', label: '订单属性' },
+  { value: 'product_group', label: '产品分组' },
   { value: 'shipping_category', label: '发货分类' },
 ]
 
@@ -57,14 +56,9 @@ const GROUP_COLUMN_LABELS: Record<BusinessPerformanceGroupBy, string> = {
   shop: '渠道',
   date: '日期',
   month: '月份',
-  fulfillment_type: '订单属性',
+  product_group: '产品分组',
   shipping_category: '发货分类',
 }
-
-const FULFILLMENT_OPTIONS: Option[] = [
-  { value: 'custom', label: BUSINESS_FULFILLMENT_LABELS.custom },
-  { value: 'stock', label: BUSINESS_FULFILLMENT_LABELS.stock },
-]
 
 const SHIPPING_OPTIONS: Option[] = [
   { value: 'custom', label: SHIPPING_LABELS.custom },
@@ -157,6 +151,7 @@ export function PerformanceManager({
   filters,
   salespeople,
   shops,
+  productGroups,
 }: PerformanceManagerProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -167,8 +162,8 @@ export function PerformanceManager({
     filters.salespersonIds ?? [],
   )
   const [selectedShops, setSelectedShops] = useState(filters.shopIds ?? [])
-  const [selectedFulfillment, setSelectedFulfillment] = useState(
-    filters.fulfillmentTypes ?? [],
+  const [selectedProductGroups, setSelectedProductGroups] = useState(
+    filters.productGroupIds ?? [],
   )
   const [selectedShipping, setSelectedShipping] = useState(
     filters.shippingCategories ?? [],
@@ -190,8 +185,8 @@ export function PerformanceManager({
     if (selectedShops.length > 0) {
       params.set('shop', selectedShops.join(','))
     }
-    if (selectedFulfillment.length > 0) {
-      params.set('fulfillment', selectedFulfillment.join(','))
+    if (selectedProductGroups.length > 0) {
+      params.set('productGroup', selectedProductGroups.join(','))
     }
     if (selectedShipping.length > 0) {
       params.set('shipping', selectedShipping.join(','))
@@ -212,7 +207,7 @@ export function PerformanceManager({
     setDateTo('')
     setSelectedSalespeople([])
     setSelectedShops([])
-    setSelectedFulfillment([])
+    setSelectedProductGroups([])
     setSelectedShipping([])
     navigate('/finance/performance')
   }
@@ -393,14 +388,12 @@ export function PerformanceManager({
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">订单属性</label>
+            <label className="text-xs font-medium text-muted-foreground">产品分组</label>
             <MultiSelect
-              options={FULFILLMENT_OPTIONS}
-              value={selectedFulfillment}
-              onChange={(value) =>
-                setSelectedFulfillment(value as BusinessFulfillmentType[])
-              }
-              placeholder="全部属性"
+              options={productGroups}
+              value={selectedProductGroups}
+              onChange={setSelectedProductGroups}
+              placeholder="全部分组"
             />
           </div>
           <div className="space-y-1.5">

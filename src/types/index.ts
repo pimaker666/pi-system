@@ -24,7 +24,7 @@ export type BusinessPerformanceGroupBy =
   | 'shop'
   | 'date'
   | 'month'
-  | 'fulfillment_type'
+  | 'product_group'
   | 'shipping_category'
 export type BusinessPaymentType = 'full' | 'deposit' | 'balance'
 

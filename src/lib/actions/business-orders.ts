@@ -37,7 +37,6 @@ import type {
   BusinessCustomProductLibraryItem,
   BusinessCustomProductListItem,
   BusinessCustomProductVersion,
-  BusinessFulfillmentType,
   BusinessOrderAttachment,
   BusinessOrderEditConstraints,
   BusinessOrderItem,
@@ -1108,7 +1107,7 @@ export interface BusinessPerformanceFilters {
   dateTo?: string
   salespersonIds?: string[]
   shopIds?: string[]
-  fulfillmentTypes?: BusinessFulfillmentType[]
+  productGroupIds?: string[]
   shippingCategories?: DailyOrderShippingCategory[]
 }
 
@@ -1122,7 +1121,7 @@ export async function getBusinessPerformanceSummary(
     p_date_to: filters.dateTo ?? null,
     p_salesperson_ids: filters.salespersonIds ?? null,
     p_shop_ids: filters.shopIds ?? null,
-    p_fulfillment_types: filters.fulfillmentTypes ?? null,
+    p_product_group_ids: filters.productGroupIds ?? null,
     p_shipping_categories: filters.shippingCategories ?? null,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '读取业绩汇总失败') }
@@ -1144,7 +1143,7 @@ export async function getBusinessPerformanceByGroup(
     p_date_to: filters.dateTo ?? null,
     p_salesperson_ids: filters.salespersonIds ?? null,
     p_shop_ids: filters.shopIds ?? null,
-    p_fulfillment_types: filters.fulfillmentTypes ?? null,
+    p_product_group_ids: filters.productGroupIds ?? null,
     p_shipping_categories: filters.shippingCategories ?? null,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '读取业绩分组失败') }
