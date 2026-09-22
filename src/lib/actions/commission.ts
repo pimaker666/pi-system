@@ -106,4 +106,3 @@ export async function saveCommissionCategoryRates(input: {
   revalidateCommission()
   return { ok: true }
 }
-

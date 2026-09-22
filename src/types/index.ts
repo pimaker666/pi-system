@@ -277,7 +277,7 @@ export interface BusinessOrderCommissionRow {
   product_received_amount: number
   currency: CurrencyCode
   order_total_amount: number
-  /** 产品提点（百分数，取行覆盖，否则取发货分类默认，否则 0）。 */
+  /** 产品提点（百分数，优先级：手动逐行覆盖 > 发货分类默认 > 0）。 */
   product_commission_rate: number
   /** 该行是否单独设置过产品提点（覆盖）。 */
   product_commission_rate_overridden: boolean
