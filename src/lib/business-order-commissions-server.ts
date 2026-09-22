@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   BusinessOrderCommissionRow,
   CommissionCategoryRate,
+  CustomerCommissionTag,
   DailyOrderShippingCategory,
 } from '@/types'
 import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-commission'
@@ -139,6 +140,44 @@ async function fetchAllCategoryRates(supabase: SupabaseClient): Promise<Commissi
   )
 }
 
+async function fetchAllCustomerCommissionTags(
+  supabase: SupabaseClient,
+): Promise<CustomerCommissionTag[]> {
+  const { data, error } = await supabase
+    .from('finance_customer_commission_tags')
+    .select('tag_color, label, product_commission_rate, sort_order')
+    .order('sort_order', { ascending: true })
+    .order('label', { ascending: true })
+  if (error) throw new Error(`客户标记提点读取失败：${error.message}`)
+  return ((data ?? []) as Array<{
+    tag_color: string
+    label: string
+    product_commission_rate: number | string
+    sort_order: number | string
+  }>).map((row) => ({
+    tag_color: row.tag_color,
+    label: row.label,
+    product_commission_rate: Number(row.product_commission_rate),
+    sort_order: Number(row.sort_order),
+  }))
+}
+
+async function fetchCustomOrderCounts(
+  supabase: SupabaseClient,
+  customerIds: string[],
+): Promise<Map<string, number>> {
+  const counts = new Map<string, number>()
+  if (customerIds.length === 0) return counts
+  const { data, error } = await supabase.rpc('get_customer_order_stats', {
+    p_customer_ids: customerIds,
+  })
+  if (error) throw new Error(`客户定制订单数读取失败：${error.message}`)
+  for (const row of (data ?? []) as Array<{ customer_id: string; custom_order_count: number | null }>) {
+    counts.set(row.customer_id, Number(row.custom_order_count ?? 0))
+  }
+  return counts
+}
+
 async function fetchAllItemCommissions(supabase: SupabaseClient) {
   const rows: ItemCommissionRow[] = []
   const PAGE_SIZE = 1000
@@ -209,20 +248,32 @@ export async function fetchBusinessOrderCommissions(
   rows: BusinessOrderCommissionRow[]
   totalCount: number
   categoryRates: CommissionCategoryRate[]
+  customerTags: CustomerCommissionTag[]
 }> {
-  const [allOrders, categoryRates, itemCommissions, orderCommissions] = await Promise.all([
+  const [allOrders, categoryRates, itemCommissions, orderCommissions, customerTags] = await Promise.all([
     fetchMatchingOrders(supabase, filters),
     fetchAllCategoryRates(supabase),
     fetchAllItemCommissions(supabase),
     fetchAllOrderCommissions(supabase),
+    fetchAllCustomerCommissionTags(supabase),
   ])
 
   const categoryRateMap = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
   const itemRateMap = new Map(itemCommissions.map((row) => [row.business_order_item_id, row.commission_rate]))
   const orderFreightMap = new Map(orderCommissions.map((row) => [row.business_order_id, row]))
+  const tagMap = new Map(customerTags.map((tag) => [tag.tag_color.toLowerCase(), tag]))
 
   const offset = (page - 1) * pageSize
   const pagedOrders = allOrders.slice(offset, offset + pageSize)
+
+  const customerIds = [
+    ...new Set(
+      pagedOrders
+        .map((order) => order.customer_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  ]
+  const customOrderCounts = await fetchCustomOrderCounts(supabase, customerIds)
 
   const rows: BusinessOrderCommissionRow[] = []
 
@@ -243,6 +294,9 @@ export async function fetchBusinessOrderCommissions(
     const freightCommission = round4((freightProfit * freightRate) / 100)
 
     const tagColor = getCustomerTagColor(order)
+    const tag = tagColor ? tagMap.get(tagColor.toLowerCase()) ?? null : null
+    const tagRate = tag ? tag.product_commission_rate : null
+    const customOrderCount = order.customer_id ? customOrderCounts.get(order.customer_id) ?? 0 : 0
 
     const mergedItems = mergeBusinessDailyItems(order)
     const orderRowSpan = mergedItems.length
@@ -256,7 +310,7 @@ export async function fetchBusinessOrderCommissions(
       const uniqueOverrides = new Set(overrideRates)
       const overriddenRate =
         overrideRates.length > 0 && uniqueOverrides.size === 1 ? overrideRates[0] : undefined
-      const effectiveRate = overriddenRate ?? categoryDefault ?? 0
+      const effectiveRate = overriddenRate ?? tagRate ?? categoryDefault ?? 0
       const productReceived = Number(item.product_received_amount)
       const productCommission = round4((productReceived * effectiveRate) / 100)
       const representativeItemId = item.item_ids[0] ?? order.id
@@ -274,6 +328,8 @@ export async function fetchBusinessOrderCommissions(
         external_order_number: order.external_order_number,
         customer_name: getCustomerName(order.customer_snapshot),
         customer_tag_color: tagColor,
+        customer_tag_label: tag ? tag.label : null,
+        custom_order_count: customOrderCount,
         shipping_category: category,
         product_name: item.name_snapshot ?? '—',
         product_sku: item.display_sku ?? item.sku_snapshot ?? '',
@@ -298,5 +354,5 @@ export async function fetchBusinessOrderCommissions(
     })
   }
 
-  return { rows, totalCount: allOrders.length, categoryRates }
+  return { rows, totalCount: allOrders.length, categoryRates, customerTags }
 }

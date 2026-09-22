@@ -1,7 +1,7 @@
 import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-commission'
 
 export const BUSINESS_ORDER_COMMISSION_COLUMNS = [
-  '序号', '下单日期', '店铺', '业务员', '订单号', '客户', '发货分类', '产品图片', '产品名称',
+  '序号', '下单日期', '店铺', '业务员', '订单号', '客户', '定制订单数', '发货分类', '产品图片', '产品名称',
   '数量', '销售单价', '产品实收金额', '产品提点(%)', '产品提成',
   '运费实收金额', '运费成本', '运费利润', '运费提点(%)', '运费提成',
 ] as const

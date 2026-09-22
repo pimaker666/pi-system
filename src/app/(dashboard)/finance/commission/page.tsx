@@ -20,6 +20,7 @@ export default async function FinanceCommissionPage({
   ])
 
   const canManageCategoryRates = profile.role === 'admin' || profile.role === 'finance'
+  const isAdmin = profile.role === 'admin'
 
   return (
     <div className="space-y-6">
@@ -34,7 +35,9 @@ export default async function FinanceCommissionPage({
         totalCount={commissions.totalCount}
         filters={filters}
         categoryRates={commissions.categoryRates}
+        customerTags={commissions.customerTags}
         canManageCategoryRates={canManageCategoryRates}
+        isAdmin={isAdmin}
         options={options}
       />
     </div>

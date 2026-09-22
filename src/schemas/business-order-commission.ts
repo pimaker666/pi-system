@@ -63,3 +63,39 @@ export const commissionCategoryRateSchema = z.object({
 export type BusinessOrderItemCommissionInput = z.infer<typeof businessOrderItemCommissionSchema>
 export type BusinessOrderCommissionInput = z.infer<typeof businessOrderCommissionSchema>
 export type CommissionCategoryRateInput = z.infer<typeof commissionCategoryRateSchema>
+
+const hexColor = z
+  .string()
+  .trim()
+  .regex(/^#[0-9A-Fa-f]{6}$/, '颜色格式错误（应为 #RRGGBB）')
+
+/** 客户标记提点定义：颜色 + 含义 + 产品提点（百分数）。 */
+export const customerCommissionTagSchema = z.object({
+  tag_color: hexColor,
+  label: z.string().trim().min(1, '请填写标记含义').max(50, '标记含义不能超过 50 字'),
+  product_commission_rate: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? 0 : Number(value)),
+    percentRate,
+  ),
+  sort_order: z.coerce.number().int().min(0).max(9999).optional().default(0),
+})
+
+export const customerCommissionTagsSchema = z
+  .array(customerCommissionTagSchema)
+  .max(50, '标记数量不能超过 50 个')
+  .superRefine((tags, ctx) => {
+    const seen = new Set<string>()
+    tags.forEach((tag, index) => {
+      const key = tag.tag_color.toLowerCase()
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '同一颜色只能有一个标记',
+          path: [index, 'tag_color'],
+        })
+      }
+      seen.add(key)
+    })
+  })
+
+export type CustomerCommissionTagInput = z.infer<typeof customerCommissionTagSchema>

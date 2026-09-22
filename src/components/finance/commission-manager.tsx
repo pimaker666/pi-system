@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
-import { Save, SlidersHorizontal } from 'lucide-react'
+import { Plus, Save, SlidersHorizontal, Tag, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,7 @@ import {
   saveBusinessOrderCommission,
   saveBusinessOrderItemCommission,
   saveCommissionCategoryRates,
+  saveCustomerCommissionTags,
 } from '@/lib/actions/commission'
 import {
   BUSINESS_ORDER_COMMISSION_COLUMNS,
@@ -39,6 +40,7 @@ import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-co
 import type {
   BusinessOrderCommissionRow,
   CommissionCategoryRate,
+  CustomerCommissionTag,
   DailyOrderShippingCategory,
   DailyOrderShop,
   DailyOrderShopGroup,
@@ -368,12 +370,218 @@ function CategoryRatesDialog({
   )
 }
 
+interface TagDraft {
+  key: string
+  tag_color: string
+  label: string
+  rate: string
+}
+
+let tagKeySeq = 0
+function nextTagKey() {
+  tagKeySeq += 1
+  return `tag-${tagKeySeq}`
+}
+
+function CustomerTagsDialog({ customerTags }: { customerTags: CustomerCommissionTag[] }) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [pending, startTransition] = useTransition()
+  const initial = useMemo<TagDraft[]>(
+    () =>
+      customerTags.map((tag) => ({
+        key: nextTagKey(),
+        tag_color: tag.tag_color,
+        label: tag.label,
+        rate: String(tag.product_commission_rate),
+      })),
+    [customerTags],
+  )
+  const [drafts, setDrafts] = useState<TagDraft[]>(initial)
+
+  function reset() {
+    setDrafts(
+      customerTags.map((tag) => ({
+        key: nextTagKey(),
+        tag_color: tag.tag_color,
+        label: tag.label,
+        rate: String(tag.product_commission_rate),
+      })),
+    )
+  }
+
+  function update(key: string, patch: Partial<TagDraft>) {
+    setDrafts((prev) => prev.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+  }
+
+  function addRow() {
+    setDrafts((prev) => [...prev, { key: nextTagKey(), tag_color: '#3b82f6', label: '', rate: '' }])
+  }
+
+  function removeRow(key: string) {
+    setDrafts((prev) => prev.filter((row) => row.key !== key))
+  }
+
+  function save() {
+    const seen = new Set<string>()
+    const tags: Array<{ tag_color: string; label: string; product_commission_rate: number; sort_order: number }> = []
+    for (let index = 0; index < drafts.length; index += 1) {
+      const row = drafts[index]
+      const color = row.tag_color.trim()
+      if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+        toast.error('颜色格式错误（应为 #RRGGBB）')
+        return
+      }
+      const key = color.toLowerCase()
+      if (seen.has(key)) {
+        toast.error('同一颜色只能有一个标记')
+        return
+      }
+      seen.add(key)
+      const label = row.label.trim()
+      if (!label) {
+        toast.error('请填写每个标记的含义')
+        return
+      }
+      const rate = row.rate.trim() === '' ? 0 : Number(row.rate)
+      if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+        toast.error('提点必须是 0~100 的数字')
+        return
+      }
+      tags.push({ tag_color: color, label, product_commission_rate: rate, sort_order: index })
+    }
+    startTransition(async () => {
+      const result = await saveCustomerCommissionTags({ tags })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '客户标记保存失败')
+        return
+      }
+      toast.success('客户标记已保存，选用该标记的客户将按此提点计算')
+      setOpen(false)
+      router.refresh()
+    })
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => {
+          reset()
+          setOpen(true)
+        }}
+      >
+        <Tag className="mr-1.5 h-4 w-4" />
+        按客户标记设置提成
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>按客户标记设置产品提点</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              维护一套客户标记（颜色 + 含义 + 产品提点）。客户库中选用某标记颜色的客户，其订单产品提点优先按标记计算；
+              未打标记的客户回退到发货分类默认值。产品行单独改过提点的仍以行内为准。
+            </p>
+            <div className="space-y-2">
+              {drafts.map((row) => (
+                <div key={row.key} className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={row.tag_color || '#3b82f6'}
+                    onChange={(event) => update(row.key, { tag_color: event.target.value })}
+                    className="h-9 w-9 shrink-0 cursor-pointer rounded-md border-0 p-0"
+                    aria-label="标记颜色"
+                  />
+                  <Input
+                    value={row.label}
+                    placeholder="标记含义，如 VIP 客户"
+                    onChange={(event) => update(row.key, { label: event.target.value })}
+                    className="h-9 flex-1"
+                  />
+                  <div className="relative w-28 shrink-0">
+                    <Input
+                      value={row.rate}
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.0001"
+                      placeholder="0"
+                      title="产品提点（百分数）"
+                      onChange={(event) => update(row.key, { rate: event.target.value })}
+                      className="h-9 pr-7"
+                    />
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                      %
+                    </span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 text-destructive"
+                    onClick={() => removeRow(row.key)}
+                    aria-label="删除该标记"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              {drafts.length === 0 && (
+                <p className="py-2 text-center text-sm text-muted-foreground">
+                  暂无标记，点击下方按钮添加
+                </p>
+              )}
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={addRow}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              添加标记
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              取消
+            </Button>
+            <Button type="button" disabled={pending} onClick={save}>
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
+function CustomerTagsLegend({ customerTags }: { customerTags: CustomerCommissionTag[] }) {
+  if (customerTags.length === 0) return null
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+      <span className="text-muted-foreground">客户标记：</span>
+      {customerTags.map((tag) => (
+        <span key={tag.tag_color} className="flex items-center gap-1.5">
+          <span
+            className="inline-block h-3 w-3 shrink-0 rounded-full border"
+            style={{ backgroundColor: tag.tag_color }}
+          />
+          <span>{tag.label}</span>
+          <span className="tabular-nums text-muted-foreground">{tag.product_commission_rate}%</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export interface CommissionManagerProps {
   rows: BusinessOrderCommissionRow[]
   totalCount: number
   filters: BusinessOrderCommissionFilters
   categoryRates: CommissionCategoryRate[]
+  customerTags: CustomerCommissionTag[]
   canManageCategoryRates: boolean
+  isAdmin: boolean
   options: {
     shops: DailyOrderShop[]
     groups: DailyOrderShopGroup[]
@@ -386,7 +594,9 @@ export function CommissionManager({
   totalCount,
   filters,
   categoryRates,
+  customerTags,
   canManageCategoryRates,
+  isAdmin,
   options,
 }: CommissionManagerProps) {
   const currentPage = filters.page
@@ -408,12 +618,15 @@ export function CommissionManager({
         <p className="text-sm text-muted-foreground">
           已关联客户的业务订单自动进入本页。产品提成 = 产品实收金额 × 产品提点%；
           运费利润 = 运费实收 − 运费成本；运费提成 = 运费利润 × 运费提点%。
-          产品行单独设置提点的，优先以行内为准；未设置的按发货分类默认值。
+          产品提点优先级：手动逐行 &gt; 客户标记 &gt; 发货分类默认。
         </p>
         <div className="flex flex-wrap gap-2">
+          {isAdmin && <CustomerTagsDialog customerTags={customerTags} />}
           {canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}
         </div>
       </div>
+
+      <CustomerTagsLegend customerTags={customerTags} />
 
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
         <input type="hidden" name="page" value="1" />
@@ -510,8 +723,12 @@ export function CommissionManager({
                           rowSpan={rowSpan}
                           className={mergedCellClassName}
                           style={{ color: row.customer_tag_color ?? undefined }}
+                          title={row.customer_tag_label ?? undefined}
                         >
                           {row.customer_name || '—'}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} text-right tabular-nums`}>
+                          {row.custom_order_count}
                         </TableCell>
                       </>
                     )}

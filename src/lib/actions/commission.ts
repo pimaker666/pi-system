@@ -3,11 +3,12 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { requireApproved, requireFinanceAccess } from '@/lib/auth'
+import { requireAdmin, requireApproved, requireFinanceAccess } from '@/lib/auth'
 import {
   businessOrderCommissionSchema,
   businessOrderItemCommissionSchema,
   commissionCategoryRateSchema,
+  customerCommissionTagsSchema,
 } from '@/schemas/business-order-commission'
 import type { ActionResult } from './products'
 
@@ -104,5 +105,43 @@ export async function saveCommissionCategoryRates(input: {
   if (error) return { ok: false, error: error.message }
 
   revalidateCommission()
+  return { ok: true }
+}
+
+const customerTagsInput = z.object({ tags: customerCommissionTagsSchema })
+
+export async function saveCustomerCommissionTags(input: {
+  tags: Array<{ tag_color: string; label: string; product_commission_rate: number; sort_order?: number }>
+}): Promise<ActionResult> {
+  const profile = await requireAdmin()
+  const parsed = customerTagsInput.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const tags = parsed.data.tags
+
+  // 小规模管理表（≤50 行），整表替换：先清空再插入，避免残留已删除的标记。
+  const { error: deleteError } = await supabase
+    .from('finance_customer_commission_tags')
+    .delete()
+    .gte('created_at', '1970-01-01')
+  if (deleteError) return { ok: false, error: deleteError.message }
+
+  if (tags.length > 0) {
+    const rows = tags.map((tag, index) => ({
+      tag_color: tag.tag_color,
+      label: tag.label,
+      product_commission_rate: tag.product_commission_rate,
+      sort_order: tag.sort_order ?? index,
+      updated_by: profile.id,
+    }))
+    const { error } = await supabase.from('finance_customer_commission_tags').insert(rows)
+    if (error) return { ok: false, error: error.message }
+  }
+
+  revalidateCommission()
+  revalidatePath('/customers')
   return { ok: true }
 }

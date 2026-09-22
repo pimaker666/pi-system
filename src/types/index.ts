@@ -254,6 +254,17 @@ export interface CommissionCategoryRate {
   product_commission_rate: number
 }
 
+export interface CustomerCommissionTag {
+  /** 标记颜色（十六进制 #RRGGBB），与 customers.tag_color 对应。 */
+  tag_color: string
+  /** 标记含义（图例文字）。 */
+  label: string
+  /** 该标记的产品提点（百分数，例如 5 表示 5%）。 */
+  product_commission_rate: number
+  /** 展示排序。 */
+  sort_order: number
+}
+
 export interface BusinessOrderCommissionRow {
   order_id: string
   item_id: string
@@ -268,6 +279,10 @@ export interface BusinessOrderCommissionRow {
   external_order_number: string | null
   customer_name: string | null
   customer_tag_color: string | null
+  /** 客户标记含义（图例文字），无标记或标记未定义时为 null。 */
+  customer_tag_label: string | null
+  /** 客户库中该客户的定制订单数（匹配客户列表口径）。 */
+  custom_order_count: number
   shipping_category: DailyOrderShippingCategory | null
   product_name: string
   product_sku: string
@@ -277,7 +292,7 @@ export interface BusinessOrderCommissionRow {
   product_received_amount: number
   currency: CurrencyCode
   order_total_amount: number
-  /** 产品提点（百分数，优先级：手动逐行覆盖 > 发货分类默认 > 0）。 */
+  /** 产品提点（百分数，优先级：手动逐行覆盖 > 客户标记 > 发货分类默认 > 0）。 */
   product_commission_rate: number
   /** 该行是否单独设置过产品提点（覆盖）。 */
   product_commission_rate_overridden: boolean
