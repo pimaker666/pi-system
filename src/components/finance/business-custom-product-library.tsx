@@ -42,10 +42,6 @@ interface BusinessCustomProductLibraryProps {
   initialError?: string | null
 }
 
-function nullableNumber(value: unknown) {
-  return value == null ? null : Number(value)
-}
-
 function normalizeProduct(raw: BusinessCustomProductLibraryItem): NormalizedProduct {
   const row = raw as unknown as Record<string, unknown>
   return {
@@ -65,12 +61,12 @@ function normalizeProduct(raw: BusinessCustomProductLibraryItem): NormalizedProd
     specification: typeof row.specification === 'string' ? row.specification : null,
     unit: String(row.unit ?? ''),
     image_url: typeof row.image_url === 'string' ? row.image_url : null,
-    quantity: nullableNumber(row.quantity),
+    quantity: row.quantity == null ? null : Number(row.quantity),
     default_unit_price: Number(row.default_unit_price ?? 0),
     default_currency: (row.default_currency as CurrencyCode | null) ?? 'USD',
-    order_amount: nullableNumber(row.order_amount),
-    received_amount: nullableNumber(row.received_amount),
-    outstanding_amount: nullableNumber(row.outstanding_amount),
+    order_amount: row.order_amount == null ? null : Number(row.order_amount),
+    received_amount: row.received_amount == null ? null : Number(row.received_amount),
+    outstanding_amount: row.outstanding_amount == null ? null : Number(row.outstanding_amount),
     version_count: Number(row.version_count ?? 0),
   }
 }
@@ -79,10 +75,6 @@ function latestProducts(rows: BusinessCustomProductLibraryItem[]) {
   return rows
     .map(normalizeProduct)
     .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-}
-
-function formatNullableCurrency(value: number | null, currency: CurrencyCode) {
-  return value == null ? '—' : formatCurrency(value, currency)
 }
 
 export function BusinessCustomProductLibrary({
@@ -228,13 +220,9 @@ export function BusinessCustomProductLibrary({
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                     <div><dt className="text-xs text-muted-foreground">规格</dt><dd className="mt-0.5 break-words">{product.specification || '—'}</dd></div>
-                    <div><dt className="text-xs text-muted-foreground">数量</dt><dd className="mt-0.5 tabular-nums">{product.quantity?.toLocaleString('zh-CN') ?? '—'}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">销售单价</dt><dd className="mt-0.5 font-medium tabular-nums">{formatCurrency(product.default_unit_price, product.default_currency)}</dd></div>
-                    <div><dt className="text-xs text-muted-foreground">订单金额</dt><dd className="mt-0.5 tabular-nums">{formatNullableCurrency(product.order_amount, product.default_currency)}</dd></div>
-                    <div><dt className="text-xs text-muted-foreground">实收金额</dt><dd className="mt-0.5 tabular-nums">{formatNullableCurrency(product.received_amount, product.default_currency)}</dd></div>
-                    <div><dt className="text-xs text-muted-foreground">未收尾款</dt><dd className="mt-0.5 tabular-nums">{formatNullableCurrency(product.outstanding_amount, product.default_currency)}</dd></div>
                     <div><dt className="text-xs text-muted-foreground">版本数</dt><dd className="mt-0.5">{product.version_count}</dd></div>
                   </dl>
                   <div className="rounded-md bg-muted/40 p-3 text-sm"><div className="text-xs text-muted-foreground">备注</div><p className="mt-1 whitespace-pre-wrap break-words">{product.description || '—'}</p></div>
