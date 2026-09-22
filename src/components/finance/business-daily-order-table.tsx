@@ -580,7 +580,11 @@ export function BusinessDailyOrderTable({
           {attachmentUrl && (
             // Signed Storage URLs cannot be optimized by next/image.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={attachmentUrl} alt="订单截图" className="max-h-[75vh] w-full object-contain" />
+            <img
+              src={attachmentUrl}
+              alt="订单截图"
+              className="mx-auto h-auto max-h-[75vh] max-w-full object-contain"
+            />
           )}
         </DialogContent>
       </Dialog>
