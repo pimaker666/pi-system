@@ -28,11 +28,9 @@ const NO_GROUP = '__none__'
 export function ProductForm({
   product,
   groups = [],
-  categories = [],
 }: {
   product?: Product
   groups?: ProductGroup[]
-  categories?: string[]
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -141,35 +139,24 @@ export function ProductForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="category">品类</Label>
-          <Input id="category" list="category-options" placeholder="选择或输入品类" {...register('category')} />
-          <datalist id="category-options">
-            {categories.map((c) => (
-              <option key={c} value={c} />
+      <div className="space-y-2">
+        <Label>分组</Label>
+        <Select
+          value={groupId ? groupId : NO_GROUP}
+          onValueChange={(v) => setValue('group_id', v === NO_GROUP ? '' : v)}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="选择分组" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NO_GROUP}>未分组</SelectItem>
+            {groups.map((g) => (
+              <SelectItem key={g.id} value={g.id}>
+                {g.name}
+              </SelectItem>
             ))}
-          </datalist>
-        </div>
-        <div className="space-y-2">
-          <Label>分组</Label>
-          <Select
-            value={groupId ? groupId : NO_GROUP}
-            onValueChange={(v) => setValue('group_id', v === NO_GROUP ? '' : v)}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="选择分组" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={NO_GROUP}>未分组</SelectItem>
-              {groups.map((g) => (
-                <SelectItem key={g.id} value={g.id}>
-                  {g.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="grid grid-cols-2 gap-4">

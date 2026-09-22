@@ -35,7 +35,7 @@ import { createOrderScopedProduct } from '@/lib/actions/products'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
 import { createClient } from '@/lib/supabase/client'
 import { toImageSrc } from '@/lib/supabase/image'
-import { CURRENCIES, KNOWN_CATEGORIES } from '@/schemas/product'
+import { CURRENCIES } from '@/schemas/product'
 import type { CurrencyCode, Product, ProductGroup } from '@/types'
 
 interface BusinessOrderProductDialogProps {
@@ -78,7 +78,6 @@ export function BusinessOrderProductDialog({
   const [specification, setSpecification] = useState('')
   const [weight, setWeight] = useState('')
   const [unit, setUnit] = useState('pcs')
-  const [category, setCategory] = useState('')
   const [groupId, setGroupId] = useState('')
   const [unitPrice, setUnitPrice] = useState('')
   const [currency, setCurrency] = useState<CurrencyCode>(defaultCurrency)
@@ -96,7 +95,6 @@ export function BusinessOrderProductDialog({
     setSpecification('')
     setWeight('')
     setUnit('pcs')
-    setCategory('')
     setGroupId('')
     setUnitPrice('')
     setCurrency(defaultCurrency)
@@ -189,7 +187,6 @@ export function BusinessOrderProductDialog({
           unit_price: unitPrice === '' ? 0 : Number(unitPrice),
           currency,
           image_url: imageUrl,
-          category,
           group_id: groupId || null,
         })
 
@@ -282,22 +279,6 @@ export function BusinessOrderProductDialog({
                 onChange={(event) => setWeight(event.target.value)}
                 placeholder="可留空"
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="order_product_category">品类</Label>
-              <Input
-                id="order_product_category"
-                list="order-product-category-options"
-                value={category}
-                onChange={(event) => setCategory(event.target.value)}
-                maxLength={100}
-                placeholder="选择或输入品类"
-              />
-              <datalist id="order-product-category-options">
-                {KNOWN_CATEGORIES.map((item) => (
-                  <option key={item} value={item} />
-                ))}
-              </datalist>
             </div>
             <div className="space-y-2">
               <Label>分组</Label>
