@@ -132,6 +132,43 @@ export function usePostalLookup({ country, debounceMs = 300 }: UsePostalLookupOp
     [countryCode]
   )
 
+  // Directly resolve the best postal match for a city (used after smart-recognize
+  // to auto-fill the postal field without waiting for the suggestion dropdown).
+  const resolvePostalByCity = useCallback(
+    async (
+      city: string,
+      countryName?: string,
+      stateHint?: string,
+    ): Promise<PostalResult | null> => {
+      const code = getCountryCode(countryName ?? country)
+      let q = (city || '').trim()
+      if (!code || !q) return null
+      // Chinese city names carry an administrative suffix (市/区/县…) that the
+      // GeoNames place_name usually omits; strip it for the prefix match.
+      if (code === 'CN') q = q.replace(/(自治州|地区|特别行政区|市|区|县|盟)$/, '') || q
+      if (!q) return null
+      try {
+        const params = new URLSearchParams({ mode: 'city', country: code, q })
+        const res = await fetch(`/api/postal-codes?${params}`)
+        if (!res.ok) return null
+        const data = await res.json()
+        const results: PostalResult[] = data.results || []
+        if (!results.length) return null
+        if (stateHint) {
+          const bare = stateHint.replace(/(省|市|自治区|特别行政区)$/, '')
+          const inState = results.find(
+            (r) => r.state_name && (stateHint.includes(r.state_name) || r.state_name.includes(bare)),
+          )
+          if (inState) return inState
+        }
+        return results[0]
+      } catch {
+        return null
+      }
+    },
+    [country],
+  )
+
   useEffect(() => {
     return () => {
       abortRef.current?.abort()
@@ -146,6 +183,7 @@ export function usePostalLookup({ country, debounceMs = 300 }: UsePostalLookupOp
     lookupByCity,
     lookupByPostal,
     parseAddress,
+    resolvePostalByCity,
     clearResults: () => { setCityResults([]); setPostalResults([]) },
   }
 }

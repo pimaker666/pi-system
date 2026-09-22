@@ -55,6 +55,20 @@ const CITY_STATE_RE = /^[A-Za-z][A-Za-z .'-]*,\s*[A-Za-z]{2}\.?(\s+\d{5}(-\d{4})
 // A standalone postal / ZIP code line.
 const ZIP_RE = /^\d{4,6}(-\d{4})?$/
 
+// Chinese administrative / street markers used to tell an address segment apart
+// from a personal name in a comma-separated contact block.
+const CJK_ADDRESS_MARKER = /[省市区县镇乡路街道号栋幢座单元室楼层巷弄]/
+// Personal-name titles (吴小姐 / 陈先生 / 王经理 ...).
+const CJK_NAME_TITLE = /(先生|女士|小姐|太太|夫人|老板|经理|总监|主管|老师|师傅|同学)$/
+
+/** Heuristic: does a bare segment look like a Chinese personal name? */
+function isChinesePersonName(s: string): boolean {
+  const t = s.trim()
+  if (!t || CJK_ADDRESS_MARKER.test(t)) return false
+  if (CJK_NAME_TITLE.test(t) && /^[\u4e00-\u9fff]{2,6}$/.test(t)) return true
+  return /^[\u4e00-\u9fff]{2,4}$/.test(t)
+}
+
 // Country detection: alias (lowercase for latin) -> canonical display name.
 // Latin aliases are matched on word boundaries to avoid false positives
 // (e.g. "oman" inside "Romania"); CJK aliases are matched as substrings.
@@ -403,6 +417,40 @@ export function parseCustomerText(text: string): ParsedCustomer {
     if (!result.name) result.name = compactChineseMatch[1]
     if (!result.phone) result.phone = compactChineseMatch[2]
     if (!result.address) result.address = compactChineseMatch[3]
+  }
+
+  // Comma-separated Chinese contact block without field labels, e.g.
+  //   "广东省佛山市禅城区智慧新城T1栋1203C，吴小姐，13890987678"
+  // Segments may appear in any order; classify each into phone / person / address.
+  if (
+    /[\u4e00-\u9fff]/.test(text) &&
+    !/[:：]/.test(text) &&
+    /[,，]/.test(text) &&
+    (!result.name || !result.contact_person || !result.address)
+  ) {
+    const segs = text
+      .split(/[,，]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    if (segs.length >= 2) {
+      for (const seg of segs) {
+        const phoneMatch = seg.match(/1[3-9]\d{9}/)
+        if (!result.phone && phoneMatch && seg.replace(/\D/g, '').length <= 15) {
+          result.phone = phoneMatch[0]
+          continue
+        }
+        if (!result.contact_person && isChinesePersonName(seg)) {
+          result.contact_person = seg
+          continue
+        }
+        if (!result.address && CJK_ADDRESS_MARKER.test(seg)) {
+          result.address = seg
+          continue
+        }
+      }
+      // A lone recipient name doubles as the customer name (required field).
+      if (!result.name && result.contact_person) result.name = result.contact_person
+    }
   }
 
   // From remaining leftovers, classify each line precisely so that countries and

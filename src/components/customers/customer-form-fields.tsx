@@ -67,7 +67,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
   const cityRef = useRef<HTMLDivElement>(null)
   const postalRef = useRef<HTMLDivElement>(null)
 
-  const { cityResults, postalResults, lookupByCity, lookupByPostal, parseAddress, clearResults } =
+  const { cityResults, postalResults, lookupByCity, lookupByPostal, parseAddress, resolvePostalByCity, clearResults } =
     usePostalLookup({ country: form.country })
 
   function update(field: keyof FormState, value: string) {
@@ -165,6 +165,20 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
       return next
     })
     toast.success(`已识别并填入：${keys.length} 项`)
+
+    // Auto-match postal code from the recognized city when none was parsed.
+    if (!parsed.postal_code && parsed.city && parsed.country) {
+      void resolvePostalByCity(parsed.city, parsed.country, parsed.state).then((result) => {
+        if (!result?.postal_code) return
+        setForm((prev) => ({
+          ...prev,
+          postal_code: prev.postal_code || result.postal_code,
+          city: result.place_name || prev.city,
+          state: prev.state || result.state_name || '',
+        }))
+        toast.success('已自动匹配邮编')
+      })
+    }
   }
 
   function handleSubmit(formData: FormData) {
