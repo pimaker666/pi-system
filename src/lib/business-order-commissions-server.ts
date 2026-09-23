@@ -393,15 +393,15 @@ export async function fetchBusinessOrderCommissions(
     const tag = tagColor ? tagMap.get(tagColor.toLowerCase()) ?? null : null
     const tagRate = tag ? tag.product_commission_rate : null
     const customOrderCount = order.customer_id ? customOrderCounts.get(order.customer_id) ?? 0 : 0
-    const customOrderRate = commissionCalculable
-      ? customOrderRates
-        .find((rate) => rate.maximum_custom_order_count >= customOrderCount)?.product_commission_rate ?? null
-      : null
     const orderRowSpan = mergedItems.length
 
     mergedItems.forEach((item, index) => {
       const category = item.daily_shipping_category
       const categoryDefault = category ? categoryRateMap.get(category) ?? null : null
+      const customOrderRate = commissionCalculable && category === 'custom'
+        ? customOrderRates
+          .find((rate) => rate.maximum_custom_order_count >= customOrderCount)?.product_commission_rate ?? null
+        : null
       const overrideRates = item.item_ids
         .map((id) => itemRateMap.get(id))
         .filter((value): value is number => value !== undefined)

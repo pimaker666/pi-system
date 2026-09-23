@@ -316,7 +316,7 @@ export interface BusinessOrderCommissionRow {
   product_commission_rate_overridden: boolean
   /** 该行发货分类的默认产品提点（百分数），无默认时为 null。 */
   category_default_rate: number | null
-  /** 按定制订单数匹配到的提点（百分数），未命中时为 null。 */
+  /** 仅定制发货分类按定制订单数匹配到的提点（百分数），未命中时为 null。 */
   custom_order_count_rate: number | null
   /** 产品提成 = 产品实收金额 × 产品提点% ÷ 100。 */
   product_commission_amount: number
