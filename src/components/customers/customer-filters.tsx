@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { DateRangePicker } from '@/components/shared/date-range-picker'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -116,8 +117,19 @@ export function CustomerFilters({
 
       <Input type="number" min="0" defaultValue={amountMin} placeholder="近一年金额最低" className="w-36" onBlur={(event) => setParam('amountMin', event.target.value)} />
       <Input type="number" min="0" defaultValue={amountMax} placeholder="近一年金额最高" className="w-36" onBlur={(event) => setParam('amountMax', event.target.value)} />
-      <Input type="date" defaultValue={lastOrderFrom} className="w-40" onChange={(event) => setParam('lastOrderFrom', event.target.value)} />
-      <Input type="date" defaultValue={lastOrderTo} className="w-40" onChange={(event) => setParam('lastOrderTo', event.target.value)} />
+      <DateRangePicker
+        from={lastOrderFrom}
+        to={lastOrderTo}
+        nameFrom="lastOrderFrom"
+        nameTo="lastOrderTo"
+        className="w-64"
+        onChange={({ from, to }) => pushParams((params) => {
+          if (from) params.set('lastOrderFrom', from)
+          else params.delete('lastOrderFrom')
+          if (to) params.set('lastOrderTo', to)
+          else params.delete('lastOrderTo')
+        })}
+      />
 
       {isAdmin && (
         <Select value={owner || ALL} onValueChange={(v) => setParam('owner', v)}>

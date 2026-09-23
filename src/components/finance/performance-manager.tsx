@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { DateRangePicker } from '@/components/shared/date-range-picker'
 import {
   Table,
   TableBody,
@@ -416,21 +417,12 @@ export function PerformanceManager({
 
       <div className="flex flex-col gap-3 rounded-md border bg-card p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">开始日期</label>
-            <Input
-              type="date"
-              value={dateFrom}
-              onChange={(event) => setDateFrom(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">结束日期</label>
-            <Input
-              type="date"
-              value={dateTo}
-              onChange={(event) => setDateTo(event.target.value)}
-            />
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">日期</label>
+            <DateRangePicker from={dateFrom} to={dateTo} onChange={({ from, to }) => {
+              setDateFrom(from)
+              setDateTo(to)
+            }} className="w-full" />
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">业务</label>

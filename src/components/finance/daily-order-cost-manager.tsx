@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { DateRangePicker } from '@/components/shared/date-range-picker'
 import { ImagePreview } from '@/components/ui/image-preview'
 import {
   Dialog,
@@ -354,9 +355,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
           placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU"
           className="xl:col-span-2"
         />
-        <Input name="dateFrom" type="date" defaultValue={filters.dateFrom} />
-        <Input name="dateTo" type="date" defaultValue={filters.dateTo} />
-        <Input name="month" type="month" defaultValue={filters.month} placeholder="月份" />
+        <DateRangePicker from={filters.dateFrom} to={filters.dateTo} className="md:col-span-2" />
         <MultiSelect
           name="shops"
           label="店铺"

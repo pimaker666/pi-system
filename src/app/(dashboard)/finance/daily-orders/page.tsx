@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Archive, CreditCard, Plus, Settings, Upload } from 'lucide-react'
 import { BusinessDailyOrderTable } from '@/components/finance/business-daily-order-table'
+import { DateRangePicker } from '@/components/shared/date-range-picker'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -147,8 +148,7 @@ export default async function DailyOrdersPage({
 
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-8">
         <Input name="q" defaultValue={filters.q} placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU" className="xl:col-span-2" />
-        <Input name="dateFrom" type="date" defaultValue={filters.dateFrom} />
-        <Input name="dateTo" type="date" defaultValue={filters.dateTo} />
+        <DateRangePicker from={filters.dateFrom} to={filters.dateTo} className="md:col-span-2" />
         <select name="shop" defaultValue={filters.shop ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="">全部店铺</option>
           {options.shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}
