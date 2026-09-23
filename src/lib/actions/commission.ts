@@ -293,12 +293,35 @@ export async function submitBusinessOrderCommissionClearance(input: {
   const { data: orders, error: orderError } = await supabase
     .from('business_orders')
     .select(
-      'id, status, voided_at, salesperson_id, customer_id, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))',
+      'id, currency, status, voided_at, salesperson_id, customer_id, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))',
     )
     .in('id', orderIds)
   if (orderError) return { ok: false, error: orderError.message }
 
   const orderMap = new Map((orders ?? []).map((order) => [order.id, order]))
+  const usdOrderIds = (orders ?? []).filter((order) => order.currency === 'USD').map((order) => order.id)
+  if (usdOrderIds.length > 0) {
+    const { data: commissions, error: commissionError } = await supabase
+      .from('finance_business_order_commissions')
+      .select('business_order_id, settlement_exchange_rate_to_cny')
+      .in('business_order_id', usdOrderIds)
+    if (commissionError) return { ok: false, error: commissionError.message }
+
+    const exchangeRates = new Map(
+      (commissions ?? []).map((commission) => [
+        commission.business_order_id,
+        commission.settlement_exchange_rate_to_cny,
+      ]),
+    )
+    const hasMissingExchangeRate = usdOrderIds.some((orderId) => {
+      const rate = exchangeRates.get(orderId)
+      return rate == null || !Number.isFinite(Number(rate)) || Number(rate) <= 0
+    })
+    if (hasMissingExchangeRate) {
+      return { ok: false, error: '美元订单请先保存美元兑人民币汇率，计算产品提成后再提交结清' }
+    }
+  }
+
   for (const orderId of orderIds) {
     const order = orderMap.get(orderId)
     if (!order) return { ok: false, error: '订单不存在' }

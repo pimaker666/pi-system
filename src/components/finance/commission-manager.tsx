@@ -95,8 +95,12 @@ function clearanceVariant(status: BusinessOrderCommissionClearanceStatus | null)
   return 'secondary'
 }
 
+function hasCalculatedCommission(row: BusinessOrderCommissionRow) {
+  return row.currency !== 'USD' || (row.settlement_exchange_rate_to_cny ?? 0) > 0
+}
+
 function isClearanceSelectable(row: BusinessOrderCommissionRow) {
-  return row.commission_calculable && row.clearance_status !== 'confirmed'
+  return row.commission_calculable && hasCalculatedCommission(row) && row.clearance_status !== 'confirmed'
 }
 
 function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOnly?: boolean }) {
@@ -1170,9 +1174,11 @@ export function CommissionManager({
                           title={
                             !row.commission_calculable
                               ? '请先为订单关联客户'
-                              : isClearanceSelectable(row)
-                                ? '提交该产品行提成结清'
-                                : '已结清的产品行不可重复选择'
+                              : !hasCalculatedCommission(row)
+                                ? '请先保存美元兑人民币汇率，计算产品提成后再提交结清'
+                                : isClearanceSelectable(row)
+                                  ? '提交该产品行提成结清'
+                                  : '已结清的产品行不可重复选择'
                           }
                           onChange={(event) => toggleRow(row, event.target.checked)}
                         />
