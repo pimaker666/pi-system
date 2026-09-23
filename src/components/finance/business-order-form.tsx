@@ -1269,13 +1269,24 @@ export function BusinessOrderForm({
                             </div>
                             <div className="flex flex-wrap items-center gap-2">
                               <Input
+                                id={`custom-product-image-${item.key}`}
                                 aria-label={`${item.product_name} 产品图片`}
                                 type="file"
                                 accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                                 onChange={(event) => handleCustomProductImageChange(item, event)}
                                 disabled={identityLocked || pending || customProductImageUploading}
-                                className="max-w-[190px]"
+                                className="sr-only"
                               />
+                              <Label
+                                htmlFor={`custom-product-image-${item.key}`}
+                                className={cn(
+                                  'inline-flex h-9 cursor-pointer items-center rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground',
+                                  (identityLocked || pending || customProductImageUploading) &&
+                                    'pointer-events-none cursor-not-allowed opacity-50',
+                                )}
+                              >
+                                {customProductImageUploading ? '图片上传中…' : item.image_url ? '更换图片' : '上传图片'}
+                              </Label>
                               <Button
                                 type="button"
                                 size="sm"
@@ -1297,7 +1308,7 @@ export function BusinessOrderForm({
                               </Button>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              修改编码或图片后保存，会留存为同一产品的新版本。
+                              {item.image_url ? '点击图片可查看大图；' : '暂未上传图片。'}修改编码或图片后保存，会留存为同一产品的新版本。
                             </p>
                           </div>
                         </div>
