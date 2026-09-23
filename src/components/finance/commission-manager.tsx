@@ -865,6 +865,7 @@ export function CommissionManager({
   const currentPage = filters.page
   const totalPages = Math.max(1, Math.ceil(totalCount / COMMISSION_PAGE_SIZE))
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
+  const [selectedConfirmationItemIds, setSelectedConfirmationItemIds] = useState<Set<string>>(new Set())
   const [dialogOpen, setDialogOpen] = useState(false)
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
   const [submitPending, startSubmitTransition] = useTransition()
@@ -910,6 +911,17 @@ export function CommissionManager({
   const allSelected =
     selectableRows.length > 0 &&
     selectableRows.every((row) => row.item_ids.every((id) => selectedItemIds.has(id)))
+  const confirmationSelectableRows = useMemo(
+    () => rows.filter((row) => row.clearance_status === 'pending'),
+    [rows],
+  )
+  const selectedConfirmationCount = useMemo(
+    () => confirmationSelectableRows.filter((row) => row.item_ids.every((id) => selectedConfirmationItemIds.has(id))).length,
+    [confirmationSelectableRows, selectedConfirmationItemIds],
+  )
+  const allConfirmationSelected =
+    confirmationSelectableRows.length > 0 &&
+    confirmationSelectableRows.every((row) => row.item_ids.every((id) => selectedConfirmationItemIds.has(id)))
 
   function toggleRow(row: BusinessOrderCommissionRow, checked: boolean) {
     setSelectedItemIds((previous) => {
@@ -927,6 +939,28 @@ export function CommissionManager({
       if (!checked) return new Set()
       const next = new Set<string>()
       for (const row of selectableRows) {
+        for (const id of row.item_ids) next.add(id)
+      }
+      return next
+    })
+  }
+
+  function toggleConfirmationRow(row: BusinessOrderCommissionRow, checked: boolean) {
+    setSelectedConfirmationItemIds((previous) => {
+      const next = new Set(previous)
+      for (const id of row.item_ids) {
+        if (checked) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
+
+  function toggleSelectAllConfirmation(checked: boolean) {
+    setSelectedConfirmationItemIds(() => {
+      if (!checked) return new Set()
+      const next = new Set<string>()
+      for (const row of confirmationSelectableRows) {
         for (const id of row.item_ids) next.add(id)
       }
       return next
@@ -967,6 +1001,25 @@ export function CommissionManager({
         return
       }
       toast.success('已确认提成结清')
+      router.refresh()
+    })
+  }
+
+  function confirmSelectedClearances() {
+    const itemIds = [...selectedConfirmationItemIds]
+    if (itemIds.length === 0) {
+      toast.error('请先勾选待确认产品行')
+      return
+    }
+    startConfirmTransition(async () => {
+      const result = await confirmBusinessOrderCommissionClearance({ business_order_item_ids: itemIds })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '批量确认结清失败')
+        return
+      }
+      toast.success(`已确认 ${selectedConfirmationCount} 个产品行结清`)
+      setSelectedConfirmationItemIds(new Set())
       router.refresh()
     })
   }
@@ -1082,6 +1135,21 @@ export function CommissionManager({
         </div>
       )}
 
+      {!readOnly && isSalespersonView && confirmationSelectableRows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+          <span className="text-sm text-muted-foreground">已选 {selectedConfirmationCount} 个待确认产品行</span>
+          <Button
+            type="button"
+            disabled={selectedConfirmationCount === 0 || confirmPending}
+            onClick={confirmSelectedClearances}
+          >
+            <CheckCircle2 className="mr-1.5 h-4 w-4" />
+            批量确认结清
+          </Button>
+          <span className="text-xs text-muted-foreground">仅可批量确认本人待确认的产品行。</span>
+        </div>
+      )}
+
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
         <input type="hidden" name="page" value="1" />
         <Input
@@ -1131,14 +1199,17 @@ export function CommissionManager({
         >
           <TableHeader>
             <TableRow className="bg-background">
-              {!isSalespersonView && (
+              {!readOnly && (
                 <TableHead className="sticky top-0 z-20 w-12 bg-background shadow-sm">
-                  {selectableRows.length > 0 && (
+                  {(isSalespersonView ? confirmationSelectableRows : selectableRows).length > 0 && (
                     <input
                       type="checkbox"
                       aria-label="全选"
-                      checked={allSelected}
-                      onChange={(event) => toggleSelectAll(event.target.checked)}
+                      checked={isSalespersonView ? allConfirmationSelected : allSelected}
+                      onChange={(event) => {
+                        if (isSalespersonView) toggleSelectAllConfirmation(event.target.checked)
+                        else toggleSelectAll(event.target.checked)
+                      }}
                     />
                   )}
                 </TableHead>
@@ -1164,23 +1235,32 @@ export function CommissionManager({
                     key={row.item_id}
                     className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
                   >
-                    {!isSalespersonView && isFirstRow && (
+                    {!readOnly && isFirstRow && (
                       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
                         <input
                           type="checkbox"
                           aria-label={`选择产品行 ${row.product_name}`}
-                          checked={row.item_ids.every((id) => selectedItemIds.has(id))}
-                          disabled={!isClearanceSelectable(row)}
+                          checked={isSalespersonView
+                            ? row.item_ids.every((id) => selectedConfirmationItemIds.has(id))
+                            : row.item_ids.every((id) => selectedItemIds.has(id))}
+                          disabled={isSalespersonView ? row.clearance_status !== 'pending' : !isClearanceSelectable(row)}
                           title={
-                            !row.commission_calculable
-                              ? '请先为订单关联客户'
-                              : !hasCalculatedCommission(row)
-                                ? '请先保存美元兑人民币汇率，计算产品提成后再提交结清'
-                                : isClearanceSelectable(row)
-                                  ? '提交该产品行提成结清'
-                                  : '已结清的产品行不可重复选择'
+                            isSalespersonView
+                              ? row.clearance_status === 'pending'
+                                ? '批量确认该产品行提成结清'
+                                : '仅待确认的产品行可批量确认'
+                              : !row.commission_calculable
+                                ? '请先为订单关联客户'
+                                : !hasCalculatedCommission(row)
+                                  ? '请先保存美元兑人民币汇率，计算产品提成后再提交结清'
+                                  : isClearanceSelectable(row)
+                                    ? '提交该产品行提成结清'
+                                    : '已结清的产品行不可重复选择'
                           }
-                          onChange={(event) => toggleRow(row, event.target.checked)}
+                          onChange={(event) => {
+                            if (isSalespersonView) toggleConfirmationRow(row, event.target.checked)
+                            else toggleRow(row, event.target.checked)
+                          }}
                         />
                       </TableCell>
                     )}

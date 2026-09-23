@@ -1,4 +1,5 @@
 import { CommissionManager } from '@/components/finance/commission-manager'
+import { CommissionSummary } from '@/components/finance/commission-summary'
 import { requireFinanceAccess } from '@/lib/auth'
 import { fetchBusinessOrderCommissions } from '@/lib/business-order-commissions-server'
 import { parseBusinessOrderCommissionFilters } from '@/lib/business-order-commission'
@@ -13,9 +14,10 @@ export default async function SettledCommissionPage({
   const profile = await requireFinanceAccess()
   const filters = parseBusinessOrderCommissionFilters(await searchParams)
   const supabase = await createClient()
-  const [options, commissions] = await Promise.all([
+  const [options, commissions, summary] = await Promise.all([
     fetchDailyOrderOptions(supabase),
     fetchBusinessOrderCommissions(supabase, filters, filters.page, undefined, 'settled'),
+    fetchBusinessOrderCommissions(supabase, { ...filters, page: 1 }, 1, 1000, 'settled'),
   ])
 
   return (
@@ -24,6 +26,7 @@ export default async function SettledCommissionPage({
         <h1 className="text-2xl font-semibold">已结清订单</h1>
         <p className="text-sm text-muted-foreground">所有产品行均已确认结清的订单归档于此，仅供查询。</p>
       </div>
+      <CommissionSummary rows={summary.rows} />
       <CommissionManager
         rows={commissions.rows}
         totalCount={commissions.totalCount}
