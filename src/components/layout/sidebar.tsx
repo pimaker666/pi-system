@@ -84,6 +84,13 @@ const NAV: NavItem[] = [
     allowedRoles: ['sales', 'supervisor'],
     match: (p) => p.startsWith('/finance/performance'),
   },
+  {
+    href: '/finance/my-commission',
+    label: '我的提成',
+    icon: Landmark,
+    allowedRoles: ['sales', 'supervisor'],
+    match: (p) => p.startsWith('/finance/my-commission'),
+  },
   { href: '/settings', label: '公司设置', icon: Settings },
   {
     href: '/users',

@@ -13,6 +13,7 @@ const financeItems = [
   { href: '/finance/settled-orders', label: '已结算订单', financeOnly: true },
   { href: '/finance/performance', label: '业务业绩', financeOnly: false },
   { href: '/finance/commission', label: '业务提成', financeOnly: false },
+  { href: '/finance/commission/settled', label: '已结清订单', financeOnly: true },
   { href: '/finance/profit', label: '利润核算', financeOnly: true },
 ] as const
 
