@@ -72,8 +72,7 @@ begin;
               left join public.products p on p.id = i.product_id
               left join public.business_custom_product_versions cv on cv.id = i.custom_product_version_id
               where i.order_id = bo.id
-                and (p.product_group_id = any (p_product_group_ids)
-                     or cv.product_group_id = any (p_product_group_ids))
+                and cv.product_group_id = any (p_product_group_ids)
             ))
        and public.can_view_business_order(bo.id)
    ),
@@ -233,8 +232,7 @@ begin;
                 left join public.products p on p.id = i.product_id
                 left join public.business_custom_product_versions cv on cv.id = i.custom_product_version_id
                 where i.order_id = bo.id
-                  and (p.product_group_id = any (p_product_group_ids)
-                       or cv.product_group_id = any (p_product_group_ids))
+                  and cv.product_group_id = any (p_product_group_ids)
               ))
          and public.can_view_business_order(bo.id)
      ),
@@ -354,8 +352,7 @@ begin;
                 left join public.products p on p.id = i.product_id
                 left join public.business_custom_product_versions cv on cv.id = i.custom_product_version_id
                 where i.order_id = bo.id
-                  and (p.product_group_id = any (p_product_group_ids)
-                       or cv.product_group_id = any (p_product_group_ids))
+                  and cv.product_group_id = any (p_product_group_ids)
               ))
          and public.can_view_business_order(bo.id)
      ),
@@ -469,8 +466,7 @@ begin;
                 left join public.products p on p.id = i.product_id
                 left join public.business_custom_product_versions cv on cv.id = i.custom_product_version_id
                 where i.order_id = bo.id
-                  and (p.product_group_id = any (p_product_group_ids)
-                       or cv.product_group_id = any (p_product_group_ids))
+                  and cv.product_group_id = any (p_product_group_ids)
               ))
          and public.can_view_business_order(bo.id)
      ),
@@ -583,8 +579,7 @@ begin;
                 left join public.products p on p.id = i.product_id
                 left join public.business_custom_product_versions cv on cv.id = i.custom_product_version_id
                 where i.order_id = bo.id
-                  and (p.product_group_id = any (p_product_group_ids)
-                       or cv.product_group_id = any (p_product_group_ids))
+                  and cv.product_group_id = any (p_product_group_ids)
               ))
          and public.can_view_business_order(bo.id)
      ),
@@ -691,7 +686,7 @@ begin;
      items as (
        select
          i.order_id,
-         coalesce(p.product_group_id, cv.product_group_id) as product_group_id,
+         cv.product_group_id,
          i.line_amount,
          i.product_received_amount,
          i.daily_shipping_category
@@ -700,7 +695,7 @@ begin;
        left join public.products p on p.id = i.product_id
        left join public.business_custom_product_versions cv on cv.id = i.custom_product_version_id
        where (p_product_group_ids is null or array_length(p_product_group_ids, 1) is null
-              or coalesce(p.product_group_id, cv.product_group_id) = any (p_product_group_ids))
+              or cv.product_group_id = any (p_product_group_ids))
          and (p_shipping_categories is null or array_length(p_shipping_categories, 1) is null
               or i.daily_shipping_category::text = any (p_shipping_categories))
      )
@@ -756,8 +751,7 @@ begin;
                 left join public.products p on p.id = i.product_id
                 left join public.business_custom_product_versions cv on cv.id = i.custom_product_version_id
                 where i.order_id = bo.id
-                  and (p.product_group_id = any (p_product_group_ids)
-                       or cv.product_group_id = any (p_product_group_ids))
+                  and cv.product_group_id = any (p_product_group_ids)
               ))
          and public.can_view_business_order(bo.id)
      ),
