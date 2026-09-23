@@ -23,6 +23,8 @@ import { formatCurrency } from '@/lib/utils'
 import type {
   BusinessCustomProductLibraryItem,
   BusinessCustomProductListItem,
+  BusinessCustomProductOrderAmount,
+  BusinessCustomProductOrderHistoryItem,
   CurrencyCode,
   ProductGroup,
   Profile,
@@ -31,7 +33,10 @@ import { BusinessCustomProductDialog } from './business-custom-product-dialog'
 
 const ALL = '__all__'
 
-type NormalizedProduct = BusinessCustomProductListItem & {
+type NormalizedProduct = BusinessCustomProductListItem & Pick<
+  BusinessCustomProductLibraryItem,
+  'order_history' | 'total_order_quantity' | 'total_order_amounts'
+> & {
   version_count: number
 }
 
@@ -67,8 +72,42 @@ function normalizeProduct(raw: BusinessCustomProductLibraryItem): NormalizedProd
     order_amount: row.order_amount == null ? null : Number(row.order_amount),
     received_amount: row.received_amount == null ? null : Number(row.received_amount),
     outstanding_amount: row.outstanding_amount == null ? null : Number(row.outstanding_amount),
+    order_history: Array.isArray(row.order_history)
+      ? row.order_history as BusinessCustomProductOrderHistoryItem[]
+      : [],
+    total_order_quantity: Number(row.total_order_quantity ?? 0),
+    total_order_amounts: Array.isArray(row.total_order_amounts)
+      ? row.total_order_amounts as BusinessCustomProductOrderAmount[]
+      : [],
     version_count: Number(row.version_count ?? 0),
   }
+}
+
+function groupOrderHistory(history: BusinessCustomProductOrderHistoryItem[]) {
+  const groups = new Map<string, {
+    code: string
+    image_url: string | null
+    unit: string
+    quantity: number
+    amounts: Map<CurrencyCode, number>
+    orders: BusinessCustomProductOrderHistoryItem[]
+  }>()
+  for (const order of history) {
+    const key = `${order.code}\u0000${order.image_url ?? ''}`
+    const group = groups.get(key) ?? {
+      code: order.code,
+      image_url: order.image_url,
+      unit: order.unit,
+      quantity: 0,
+      amounts: new Map<CurrencyCode, number>(),
+      orders: [],
+    }
+    group.quantity += Number(order.quantity)
+    group.amounts.set(order.currency, (group.amounts.get(order.currency) ?? 0) + Number(order.order_amount))
+    group.orders.push(order)
+    groups.set(key, group)
+  }
+  return [...groups.values()]
 }
 
 function latestProducts(rows: BusinessCustomProductLibraryItem[]) {
@@ -226,6 +265,45 @@ export function BusinessCustomProductLibrary({
                     <div><dt className="text-xs text-muted-foreground">版本数</dt><dd className="mt-0.5">{product.version_count}</dd></div>
                   </dl>
                   <div className="rounded-md bg-muted/40 p-3 text-sm"><div className="text-xs text-muted-foreground">备注</div><p className="mt-1 whitespace-pre-wrap break-words">{product.description || '—'}</p></div>
+                  <div className="space-y-3 rounded-md border p-3">
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <div className="font-medium">下单明细</div>
+                      <div className="text-xs text-muted-foreground">累计下单数量 {product.total_order_quantity.toLocaleString('zh-CN')}</div>
+                    </div>
+                    {product.total_order_amounts.length > 0 && (
+                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm tabular-nums">
+                        {product.total_order_amounts.map((total) => (
+                          <span key={total.currency}>{formatCurrency(Number(total.amount), total.currency)}</span>
+                        ))}
+                      </div>
+                    )}
+                    {product.order_history.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">暂无下单记录</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {groupOrderHistory(product.order_history).map((group) => (
+                          <div key={`${group.code}-${group.image_url ?? ''}`} className="rounded-md bg-muted/40 p-2.5">
+                            <div className="flex items-start gap-3">
+                              <ImagePreview src={group.image_url} alt={group.code || product.name} size="h-14 w-14" sizes="56px" />
+                              <div className="min-w-0 flex-1">
+                                <div className="font-medium">{group.code || '未填写编码'}</div>
+                                <div className="mt-0.5 text-xs text-muted-foreground">
+                                  累计 {group.quantity.toLocaleString('zh-CN')} {group.unit || ''}
+                                  {Array.from(group.amounts.entries()).map(([currency, amount]) => ` · ${formatCurrency(amount, currency)}`).join('')}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="mt-2 overflow-x-auto">
+                              <table className="w-full min-w-[460px] text-left text-xs">
+                                <thead className="text-muted-foreground"><tr><th className="pb-1 font-medium">下单时间</th><th className="pb-1 font-medium">订单号</th><th className="pb-1 text-right font-medium">下单数量</th><th className="pb-1 text-right font-medium">下单金额</th></tr></thead>
+                                <tbody>{group.orders.map((order, index) => <tr key={`${order.order_number}-${order.order_date}-${index}`} className="border-t"><td className="py-1.5">{order.order_date}</td><td className="py-1.5">{order.external_order_number || order.order_number}</td><td className="py-1.5 text-right tabular-nums">{Number(order.quantity).toLocaleString('zh-CN')} {order.unit || ''}</td><td className="py-1.5 text-right tabular-nums">{formatCurrency(Number(order.order_amount), order.currency)}</td></tr>)}</tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex flex-wrap gap-2 border-t pt-3">
                     <BusinessCustomProductDialog mode="version" product={product} defaultCurrency={product.default_currency} productGroups={productGroups} context="library" disabled={product.is_archived || refreshing || statePending} onCreated={handleSaved} />
                     {canManageState && <Button type="button" size="sm" variant={product.is_archived ? 'outline' : 'destructive'} disabled={refreshing || statePending} onClick={() => void updateState(product, !product.is_archived)}>{statePending ? <Loader2 className="h-4 w-4 animate-spin" /> : product.is_archived ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}{product.is_archived ? '恢复' : '归档'}</Button>}

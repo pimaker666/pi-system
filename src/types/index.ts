@@ -723,6 +723,24 @@ export interface BusinessCustomProductListItem {
   outstanding_amount: number | null
 }
 
+export interface BusinessCustomProductOrderHistoryItem {
+  code: string
+  name: string
+  unit: string
+  image_url: string | null
+  quantity: number
+  order_date: string
+  order_number: string
+  external_order_number: string | null
+  currency: CurrencyCode
+  order_amount: number
+}
+
+export interface BusinessCustomProductOrderAmount {
+  currency: CurrencyCode
+  amount: number
+}
+
 export interface BusinessCustomProductLibraryItem {
   custom_product_id: string
   is_archived: boolean
@@ -747,6 +765,9 @@ export interface BusinessCustomProductLibraryItem {
   order_amount: number | null
   received_amount: number | null
   outstanding_amount: number | null
+  order_history: BusinessCustomProductOrderHistoryItem[]
+  total_order_quantity: number
+  total_order_amounts: BusinessCustomProductOrderAmount[]
 }
 
 export interface BusinessCustomerTransfer {

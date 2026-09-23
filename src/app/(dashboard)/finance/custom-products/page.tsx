@@ -26,7 +26,7 @@ export default async function BusinessCustomProductsPage() {
       <div>
         <h1 className="text-2xl font-semibold">定制产品库</h1>
         <p className="text-sm text-muted-foreground">
-          维护全局定制产品及不可变版本；历史订单始终保留其下单时引用的版本。
+          维护全局定制产品；修改编码或图片会更新同一产品的库明细，历史订单保留原下单快照。
         </p>
       </div>
       <BusinessCustomProductLibrary

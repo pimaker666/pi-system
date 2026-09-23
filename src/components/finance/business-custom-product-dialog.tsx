@@ -317,7 +317,7 @@ export function BusinessCustomProductDialog({
         onCreated(created)
         toast.success(
           isVersionMode
-            ? `已创建不可变版本 v${version.version_no}`
+            ? `定制产品已更新为 v${version.version_no}`
             : context === 'order'
               ? '定制产品已创建并加入订单'
               : '定制产品已创建',
@@ -326,7 +326,7 @@ export function BusinessCustomProductDialog({
         setOpen(false)
       } catch {
         await cleanupFailedUpload()
-        toast.error(isVersionMode ? '新增版本失败，请稍后重试' : '创建失败，请稍后重试')
+        toast.error(isVersionMode ? '保存修改失败，请稍后重试' : '创建失败，请稍后重试')
       }
     })
   }
@@ -336,15 +336,15 @@ export function BusinessCustomProductDialog({
       <DialogTrigger asChild>
         <Button type="button" variant={isVersionMode ? 'outline' : context === 'order' ? 'outline' : 'default'} disabled={disabled || productGroups.length === 0}>
           <Plus className="h-4 w-4" />
-          {isVersionMode ? '新增版本' : '新建定制产品'}
+          {isVersionMode ? '编辑产品' : '新建定制产品'}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isVersionMode ? '创建不可变新版本' : '新建定制产品'}</DialogTitle>
+          <DialogTitle>{isVersionMode ? '编辑定制产品' : '新建定制产品'}</DialogTitle>
           <DialogDescription>
             {isVersionMode
-              ? `基于 v${product?.version_no ?? '-'} 创建新版本；旧版本及历史订单不会被修改。`
+              ? `保存后更新同一产品的库明细为 v${(product?.version_no ?? 0) + 1}；历史订单保留原有编码和图片。`
               : '定制产品创建后可供全部业务订单选择；可上传 JPEG/PNG 图片，也可填写公开图片 URL。'}
           </DialogDescription>
         </DialogHeader>
@@ -436,7 +436,7 @@ export function BusinessCustomProductDialog({
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={pending || uploading}>取消</Button>
             <Button type="submit" disabled={pending || uploading || productGroups.length === 0}>
               {pending || uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {pending ? '保存中…' : isVersionMode ? '创建新版本' : context === 'order' ? '创建并加入订单' : '创建产品'}
+              {pending ? '保存中…' : isVersionMode ? '保存修改' : context === 'order' ? '创建并加入订单' : '创建产品'}
             </Button>
           </DialogFooter>
         </form>

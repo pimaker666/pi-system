@@ -6,6 +6,7 @@ import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { ImagePreview } from '@/components/ui/image-preview'
 import {
   Command,
   CommandEmpty,
@@ -140,6 +141,7 @@ export function BusinessCustomProductPicker({
                 {filteredProducts.map((product) => (
                   <CommandItem key={product.version_id} value={`${product.name} ${product.code} ${product.specification ?? ''} ${product.product_group_name ?? ''}`} onSelect={() => { onChange(product); setOpen(false) }} className="gap-2">
                     <Check className={cn('h-4 w-4 shrink-0', value?.version_id === product.version_id ? 'opacity-100' : 'opacity-0')} />
+                    <ImagePreview src={product.image_url} alt={product.name} size="h-10 w-10" sizes="40px" />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="truncate font-medium">{product.name}</span>
@@ -163,6 +165,16 @@ export function BusinessCustomProductPicker({
         </PopoverContent>
       </Popover>
       {actionBeforeCreate}
+      {value && (
+        <BusinessCustomProductDialog
+          mode="version"
+          product={value}
+          defaultCurrency={orderCurrency}
+          productGroups={productGroups}
+          disabled={disabled}
+          onCreated={handleCreated}
+        />
+      )}
       {allowCreate && (
         <BusinessCustomProductDialog
           defaultCurrency={orderCurrency}
