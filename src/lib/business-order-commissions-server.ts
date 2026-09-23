@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
+  BusinessOrderCommissionClearanceDetail,
   BusinessOrderCommissionRow,
   CommissionCategoryRate,
   CustomerCommissionTag,
@@ -291,6 +292,59 @@ async function fetchAllCommissionClearances(supabase: SupabaseClient): Promise<C
     }
     if (page.length < PAGE_SIZE) return rows
   }
+}
+
+export async function fetchBusinessOrderCommissionClearanceDetails(
+  supabase: SupabaseClient,
+): Promise<BusinessOrderCommissionClearanceDetail[]> {
+  const { data, error } = await supabase
+    .from('finance_business_order_item_commission_clearances')
+    .select(
+      'business_order_item_id, period, status, submitted_at, confirmed_at, rejected_reason, item:business_order_items!inner(order_id, name_snapshot, sku_snapshot, quantity, order:business_orders!inner(order_number, external_order_number, salesperson:profiles!salesperson_id(chinese_name, full_name, email))), submitted:profiles!submitted_by(chinese_name, full_name, email), confirmer:profiles!confirmed_by(chinese_name, full_name, email)',
+    )
+    .order('submitted_at', { ascending: false })
+  if (error) throw new Error(`提成结清明细读取失败：${error.message}`)
+
+  return (data ?? []).map((row) => {
+    const clearance = row as unknown as {
+      business_order_item_id: string
+      period: string
+      status: import('@/types').CommissionClearanceStatus
+      submitted_at: string
+      confirmed_at: string | null
+      rejected_reason: string | null
+      item: {
+        order_id: string
+        name_snapshot: string
+        sku_snapshot: string
+        quantity: number | string
+        order: {
+          order_number: string
+          external_order_number: string | null
+          salesperson: Pick<import('@/types').Profile, 'chinese_name' | 'full_name' | 'email'> | null
+        }
+      }
+      submitted: Pick<import('@/types').Profile, 'chinese_name' | 'full_name' | 'email'> | null
+      confirmer: Pick<import('@/types').Profile, 'chinese_name' | 'full_name' | 'email'> | null
+    }
+    return {
+      business_order_item_id: clearance.business_order_item_id,
+      order_id: clearance.item.order_id,
+      order_number: clearance.item.order.order_number,
+      external_order_number: clearance.item.order.external_order_number,
+      salesperson_name: displayProfileName(clearance.item.order.salesperson),
+      product_name: clearance.item.name_snapshot,
+      product_sku: clearance.item.sku_snapshot,
+      quantity: Number(clearance.item.quantity),
+      period: clearance.period.slice(0, 7),
+      status: clearance.status,
+      submitted_by_name: clearance.submitted ? displayProfileName(clearance.submitted) : null,
+      submitted_at: clearance.submitted_at,
+      confirmed_by_name: clearance.confirmer ? displayProfileName(clearance.confirmer) : null,
+      confirmed_at: clearance.confirmed_at,
+      rejected_reason: clearance.rejected_reason,
+    }
+  })
 }
 
 function getCustomerName(customerSnapshot: unknown): string | null {

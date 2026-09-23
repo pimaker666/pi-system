@@ -358,6 +358,24 @@ export interface BusinessOrderCommissionClearance {
   updated_at: string
 }
 
+export interface BusinessOrderCommissionClearanceDetail {
+  business_order_item_id: string
+  order_id: string
+  order_number: string
+  external_order_number: string | null
+  salesperson_name: string
+  product_name: string
+  product_sku: string
+  quantity: number
+  period: string
+  status: CommissionClearanceStatus
+  submitted_by_name: string | null
+  submitted_at: string
+  confirmed_by_name: string | null
+  confirmed_at: string | null
+  rejected_reason: string | null
+}
+
 export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'
 export type DailyOrderPaymentCategory = 'full' | 'deposit' | 'balance'
 

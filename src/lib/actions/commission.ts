@@ -428,6 +428,38 @@ export async function confirmBusinessOrderCommissionClearance(input: {
   return { ok: true }
 }
 
+export async function withdrawBusinessOrderCommissionClearance(input: {
+  business_order_item_ids: string[]
+}): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const parsed = businessOrderCommissionClearanceConfirmSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const itemIds = parsed.data.business_order_item_ids
+  const { data: rows, error: selectError } = await supabase
+    .from('finance_business_order_item_commission_clearances')
+    .select('business_order_item_id')
+    .in('business_order_item_id', itemIds)
+    .eq('status', 'pending')
+  if (selectError) return { ok: false, error: selectError.message }
+  if (!rows || rows.length !== itemIds.length) {
+    return { ok: false, error: '部分待确认结清记录不存在或已处理' }
+  }
+
+  const { error } = await supabase
+    .from('finance_business_order_item_commission_clearances')
+    .delete()
+    .in('business_order_item_id', itemIds)
+    .eq('status', 'pending')
+  if (error) return { ok: false, error: error.message }
+
+  revalidateClearance()
+  return { ok: true }
+}
+
 export async function rejectBusinessOrderCommissionClearance(input: {
   business_order_item_ids: string[]
   reason: string
