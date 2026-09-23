@@ -30,6 +30,7 @@ import {
   rejectBusinessOrderCommissionClearance,
   saveBusinessOrderCommission,
   saveBusinessOrderCommissionExchangeRate,
+  saveBusinessOrderFreightCommissionRate,
   saveBusinessOrderItemCommission,
   saveCommissionCategoryRates,
   saveCustomerCommissionTags,
@@ -205,7 +206,7 @@ function FreightEditor({
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const initialCost = String(row.freight_cost)
+  const initialCost = row.freight_cost === 0 ? '' : String(row.freight_cost)
   const initialRate = String(row.freight_commission_rate)
   const [costDraft, setCostDraft] = useState(initialCost)
   const [rateDraft, setRateDraft] = useState(initialRate)
@@ -283,8 +284,8 @@ function FreightEditor({
             min={0}
             step="0.0001"
             disabled={pending}
-            placeholder="0"
-            title="运费成本（人民币）"
+            placeholder="未填写"
+            title="运费成本（人民币）；留空按 0 计算"
             onChange={(event) => setCostDraft(event.target.value)}
             className="h-8"
           />
@@ -811,6 +812,73 @@ function CustomOrderCountRatesDialog({
   )
 }
 
+function FreightCommissionRateDialog({ orderIds }: { orderIds: string[] }) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [draft, setDraft] = useState('0')
+  const [pending, startTransition] = useTransition()
+
+  function save() {
+    const rate = Number(draft.trim())
+    if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+      toast.error('运费提点必须是 0~100 的数字')
+      return
+    }
+    startTransition(async () => {
+      const result = await saveBusinessOrderFreightCommissionRate({
+        business_order_ids: orderIds,
+        freight_commission_rate: rate,
+      })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '运费提点保存失败')
+        return
+      }
+      toast.success(`已将运费提点应用到当前页 ${orderIds.length} 个订单`)
+      setOpen(false)
+      router.refresh()
+    })
+  }
+
+  return (
+    <>
+      <Button type="button" variant="outline" disabled={orderIds.length === 0} onClick={() => setOpen(true)}>
+        <SlidersHorizontal className="mr-1.5 h-4 w-4" />
+        设置运费提点
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>设置运费提点</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              保存后将应用到当前页全部 {orderIds.length} 个可计算提成订单；未填写运费成本的订单按 0 计算。
+            </p>
+            <div className="relative">
+              <Input
+                value={draft}
+                type="number"
+                min={0}
+                max={100}
+                step="0.0001"
+                aria-label="运费提点"
+                onChange={(event) => setDraft(event.target.value)}
+                className="pr-8"
+              />
+              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">%</span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>取消</Button>
+            <Button type="button" disabled={pending} onClick={save}>保存并应用当前页</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 function CustomerTagsLegend({ customerTags }: { customerTags: CustomerCommissionTag[] }) {
   if (customerTags.length === 0) return null
   return (
@@ -889,6 +957,10 @@ export function CommissionManager({
           .map((row) => row.order_id),
       ),
     ],
+    [rows],
+  )
+  const freightCommissionOrderIds = useMemo(
+    () => [...new Set(rows.filter((row) => row.commission_calculable).map((row) => row.order_id))],
     [rows],
   )
   const canConfirmClearance = isSalespersonView
@@ -1084,6 +1156,9 @@ export function CommissionManager({
           {!readOnly && isAdmin && <CustomerTagsDialog customerTags={customerTags} />}
           {!readOnly && canManageCategoryRates && <CustomOrderCountRatesDialog rates={customOrderRates} />}
           {!readOnly && canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}
+          {!readOnly && canManageCategoryRates && (
+            <FreightCommissionRateDialog orderIds={freightCommissionOrderIds} />
+          )}
         </div>
       </div>
 

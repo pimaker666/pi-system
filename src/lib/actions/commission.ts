@@ -15,6 +15,7 @@ import {
   businessOrderCommissionClearanceRejectSchema,
   businessOrderCommissionClearanceSubmitSchema,
   businessOrderCommissionSchema,
+  businessOrderFreightCommissionRateSchema,
   businessOrderItemCommissionSchema,
   commissionCategoryRateSchema,
   customerCommissionTagsSchema,
@@ -147,6 +148,58 @@ export async function saveBusinessOrderCommissionExchangeRate(input: {
       freight_cost: commission?.freight_cost ?? 0,
       freight_commission_rate: commission?.freight_commission_rate ?? 0,
       settlement_exchange_rate_to_cny: parsed.data.settlement_exchange_rate_to_cny,
+      updated_by: profile.id,
+    }
+  })
+  const { error } = await supabase
+    .from('finance_business_order_commissions')
+    .upsert(rows, { onConflict: 'business_order_id' })
+  if (error) return { ok: false, error: error.message }
+
+  revalidateCommission()
+  revalidatePath('/finance/profit')
+  revalidatePath('/finance/performance')
+  return { ok: true }
+}
+
+export async function saveBusinessOrderFreightCommissionRate(input: {
+  business_order_ids: string[]
+  freight_commission_rate: number
+}): Promise<ActionResult> {
+  const profile = await requireFinanceAccess()
+  const parsed = businessOrderFreightCommissionRateSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const orderIds = parsed.data.business_order_ids
+  const { data: orders, error: orderError } = await supabase
+    .from('business_orders')
+    .select('id, customer_id, voided_at')
+    .in('id', orderIds)
+  if (orderError) return { ok: false, error: orderError.message }
+  if (!orders || orders.length !== orderIds.length) {
+    return { ok: false, error: '部分订单不存在' }
+  }
+  if (orders.some((order) => order.voided_at || !order.customer_id)) {
+    return { ok: false, error: '请先为订单关联客户，再设置运费提点' }
+  }
+
+  const { data: existing, error: selectError } = await supabase
+    .from('finance_business_order_commissions')
+    .select('business_order_id, freight_cost, settlement_exchange_rate_to_cny')
+    .in('business_order_id', orderIds)
+  if (selectError) return { ok: false, error: selectError.message }
+
+  const existingMap = new Map((existing ?? []).map((row) => [row.business_order_id, row]))
+  const rows = orderIds.map((businessOrderId) => {
+    const commission = existingMap.get(businessOrderId)
+    return {
+      business_order_id: businessOrderId,
+      freight_cost: commission?.freight_cost ?? 0,
+      freight_commission_rate: parsed.data.freight_commission_rate,
+      settlement_exchange_rate_to_cny: commission?.settlement_exchange_rate_to_cny ?? null,
       updated_by: profile.id,
     }
   })

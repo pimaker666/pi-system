@@ -55,6 +55,11 @@ export const businessOrderCommissionSchema = z.object({
   ),
 })
 
+export const businessOrderFreightCommissionRateSchema = z.object({
+  business_order_ids: z.array(z.string().uuid('订单 ID 无效')).min(1, '至少选择一个订单'),
+  freight_commission_rate: percentRate,
+})
+
 /** 按发货分类设置默认产品提点。 */
 export const commissionCategoryRateSchema = z.object({
   category: z.enum(shippingCategories),
