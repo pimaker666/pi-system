@@ -23,16 +23,24 @@ alter table public.finance_business_order_profit_fees enable row level security;
 revoke all on table public.finance_business_order_profit_fees from public, anon, authenticated, service_role;
 grant select, insert, update, delete on table public.finance_business_order_profit_fees to authenticated, service_role;
 
+drop policy if exists "business_order_profit_fees_select"
+  on public.finance_business_order_profit_fees;
 create policy "business_order_profit_fees_select"
   on public.finance_business_order_profit_fees for select to authenticated
   using (public.is_finance_or_admin());
+drop policy if exists "business_order_profit_fees_insert"
+  on public.finance_business_order_profit_fees;
 create policy "business_order_profit_fees_insert"
   on public.finance_business_order_profit_fees for insert to authenticated
   with check (public.is_finance_or_admin() and updated_by = (select auth.uid()));
+drop policy if exists "business_order_profit_fees_update"
+  on public.finance_business_order_profit_fees;
 create policy "business_order_profit_fees_update"
   on public.finance_business_order_profit_fees for update to authenticated
   using (public.is_finance_or_admin())
   with check (public.is_finance_or_admin() and updated_by = (select auth.uid()));
+drop policy if exists "business_order_profit_fees_delete"
+  on public.finance_business_order_profit_fees;
 create policy "business_order_profit_fees_delete"
   on public.finance_business_order_profit_fees for delete to authenticated
   using (public.is_finance_or_admin());
