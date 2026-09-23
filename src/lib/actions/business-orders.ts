@@ -439,13 +439,14 @@ export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOr
   }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('create_business_order_v5', {
+  const { data, error } = await supabase.rpc('create_business_order_v6', {
     p_customer_id: input.customer_id,
     p_order_date: input.order_date,
     p_fulfillment_type: input.fulfillment_type,
     p_currency: input.currency,
     p_exchange_rate_to_cny: input.exchange_rate_to_cny,
     p_shipping_fee: input.shipping_fee,
+    p_order_fee: input.order_fee,
     p_tracking_number: null,
     p_sales_notes: nullableText(input.sales_notes),
     p_items: orderItemsPayload(input.items),
@@ -497,7 +498,7 @@ export async function updateBusinessOrder(
 
   const input = parsed.data
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('update_business_order_v5', {
+  const { data, error } = await supabase.rpc('update_business_order_v6', {
     p_order_id: id,
     p_expected_version: expectedVersion,
     p_customer_id: input.customer_id,
@@ -506,6 +507,7 @@ export async function updateBusinessOrder(
     p_currency: input.currency,
     p_exchange_rate_to_cny: input.exchange_rate_to_cny,
     p_shipping_fee: input.shipping_fee,
+    p_order_fee: input.order_fee,
     p_tracking_number: null,
     p_sales_notes: nullableText(input.sales_notes),
     p_items: orderItemsPayload(input.items),

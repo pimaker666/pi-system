@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getBusinessOrderProfitRows, saveBusinessOrderProfitFee } from '@/lib/actions/business-order-profit'
+import { getBusinessOrderProfitRows } from '@/lib/actions/business-order-profit'
 import { getBusinessDateKey } from '@/lib/business-orders'
 import { formatDailyMoney } from '@/lib/daily-orders'
 import { requireFinanceAccess } from '@/lib/auth'
@@ -47,14 +47,6 @@ export default async function FinanceProfitPage({
     }
     return { label: dimension.label, rows: [...groups.values()].sort((a, b) => b.profit - a.profit) }
   })
-
-  async function updateFee(formData: FormData) {
-    'use server'
-    await saveBusinessOrderProfitFee({
-      businessOrderId: String(formData.get('businessOrderId') ?? ''),
-      feeAmount: Number(formData.get('feeAmount') ?? 0),
-    })
-  }
 
   return (
     <div className="space-y-6">
@@ -102,7 +94,7 @@ export default async function FinanceProfitPage({
           <TableBody>{rows.map((row) => <TableRow key={row.order_id}>
             <TableCell>{row.profit_period}</TableCell><TableCell className="font-medium">{row.external_order_number || row.order_number}</TableCell><TableCell>{row.shop_name || '—'}</TableCell><TableCell>{row.salesperson_name || '—'}</TableCell>
             <TableCell className="text-right tabular-nums">{money(row.received_amount, row.currency)}</TableCell><TableCell className="text-right tabular-nums">{money(row.product_cost, row.currency)}</TableCell><TableCell className="text-right tabular-nums">{money(row.freight_cost, row.currency)}</TableCell><TableCell className="text-right tabular-nums">{money(row.commission_amount, row.currency)}</TableCell>
-            <TableCell><form action={updateFee} className="flex items-center gap-2"><input type="hidden" name="businessOrderId" value={row.order_id} /><Input name="feeAmount" type="number" min="0" step="0.0001" defaultValue={row.fee_amount} className="h-8 w-28" /><Button size="sm" variant="outline">保存</Button></form></TableCell>
+            <TableCell className="text-right tabular-nums">{money(row.fee_amount, row.currency)}</TableCell>
             <TableCell className="text-right font-medium tabular-nums">{money(row.profit_amount, row.currency)}</TableCell>
           </TableRow>)}{rows.length === 0 && <TableRow><TableCell colSpan={10} className="py-12 text-center text-muted-foreground">该月份暂无双结清订单</TableCell></TableRow>}</TableBody>
         </Table>

@@ -565,6 +565,8 @@ export interface BusinessOrder {
   exchange_rate_to_cny: number | null
   items_subtotal: number
   shipping_fee: number
+  /** 订单手续费：仅用于利润核算扣减，不参与应收或实收。 */
+  order_fee: number | null
   total_amount: number
   total_cny: number | null
   total_product_received_amount: number | null

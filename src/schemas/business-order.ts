@@ -89,6 +89,13 @@ function decimalNumber(scale: number, label: string, emptyAsZero = false) {
 const nonNegativeAmountSchema = decimalNumber(2, '金额', true).pipe(
   z.number().min(0, '金额不能为负').max(MAX_AMOUNT, '金额不能超过上限'),
 )
+const nonNegativeFeeSchema = decimalNumber(4, '手续费').pipe(
+  z.number().min(0, '手续费不能为负').max(MAX_AMOUNT, '手续费不能超过上限'),
+)
+const optionalFeeSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+  z.union([nonNegativeFeeSchema, z.null()]),
+)
 const positiveAmountSchema = decimalNumber(2, '金额').pipe(
   z.number().positive('金额必须大于 0').max(MAX_AMOUNT, '金额不能超过上限'),
 )
@@ -275,6 +282,7 @@ export const businessOrderInputSchema = z
     currency: z.enum(CURRENCIES),
     exchange_rate_to_cny: optionalExchangeRateSchema,
     shipping_fee: nonNegativeAmountSchema,
+    order_fee: optionalFeeSchema,
     payment_account: optionalText(200, '收款账户不能超过 200 字'),
     sales_notes: optionalText(2000, '业务备注不能超过 2000 字'),
     daily_shipping_date: nullableDateSchema,

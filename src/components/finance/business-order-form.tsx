@@ -301,6 +301,7 @@ export function BusinessOrderForm({
     String(initialOrder?.exchange_rate_to_cny ?? ''),
   )
   const [shippingFee, setShippingFee] = useState(String(initialOrder?.shipping_fee ?? ''))
+  const [orderFee, setOrderFee] = useState(String(initialOrder?.order_fee ?? ''))
   const [paymentAccount, setPaymentAccount] = useState(initialOrder?.payment_account ?? '')
   const [salesNotes, setSalesNotes] = useState(initialOrder?.sales_notes ?? '')
   const [catalogProducts, setCatalogProducts] = useState<Product[]>(products)
@@ -754,6 +755,7 @@ export function BusinessOrderForm({
       currency,
       exchange_rate_to_cny: exchangeRate,
       shipping_fee: shippingFee,
+      order_fee: orderFee,
       payment_account: paymentAccount,
       sales_notes: salesNotes,
       daily_shipping_date: dailyShippingDate,
@@ -1279,7 +1281,7 @@ export function BusinessOrderForm({
           <CardTitle className="text-base">订单金额汇总</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
             <div className="space-y-1">
               <Label>订单总金额（{currency}）</Label>
               <Input type="number" value={total} readOnly className="bg-muted/40" />
@@ -1336,6 +1338,20 @@ export function BusinessOrderForm({
               <p className="text-xs text-muted-foreground">
                 自动汇总：{formatCurrency(automaticShippingTotal, currency)}
               </p>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="order-fee">订单手续费（{currency}）</Label>
+              <Input
+                id="order-fee"
+                type="number"
+                min="0"
+                step="0.0001"
+                value={orderFee}
+                placeholder="0"
+                onChange={(event) => setOrderFee(event.target.value)}
+                disabled={pending || lifecycleLocked}
+              />
+              <p className="text-xs text-muted-foreground">仅记录利润核算扣减，不计入订单应收或实收</p>
             </div>
             <div className="space-y-1">
               <Label>实际实收总额（{currency}）</Label>
