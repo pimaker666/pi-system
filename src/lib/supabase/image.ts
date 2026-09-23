@@ -26,7 +26,7 @@ function storageTail(url?: string | null): string | null {
 export function toImageSrc(url?: string | null): string {
   const tail = storageTail(url)
   if (tail === null) return url ?? ''
-  return '/supabase' + tail
+  return `/supabase${tail}${tail.includes('?') ? '&' : '?'}v=20260923`
 }
 
 /**
