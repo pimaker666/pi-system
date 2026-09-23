@@ -257,10 +257,7 @@ function FreightEditor({
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
           {profit == null ? '请填写汇率' : formatDailyMoney(profit, 'CNY')}
         </TableCell>
-        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
-          {row.freight_commission_rate}
-        </TableCell>
-        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium tabular-nums`}>
+        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} bg-amber-50 font-semibold text-amber-950 tabular-nums`}>
           {commission == null ? '请填写汇率' : formatDailyMoney(commission, 'CNY')}
         </TableCell>
       </>
@@ -290,9 +287,9 @@ function FreightEditor({
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
         {profit == null ? '请填写汇率' : formatDailyMoney(profit, 'CNY')}
       </TableCell>
-      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
+      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} bg-amber-50 font-semibold text-amber-950 tabular-nums`}>
         <div className="flex min-w-36 items-center gap-2">
-          <span className="min-w-8 tabular-nums">{freightRate}</span>
+          {commission == null ? '请填写汇率' : formatDailyMoney(commission, 'CNY')}
           <Button
             type="button"
             variant="outline"
@@ -306,9 +303,6 @@ function FreightEditor({
             <Save className="h-4 w-4" />
           </Button>
         </div>
-      </TableCell>
-      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium tabular-nums`}>
-        {commission == null ? '请填写汇率' : formatDailyMoney(commission, 'CNY')}
       </TableCell>
     </>
   )
@@ -1335,37 +1329,8 @@ export function CommissionManager({
                         />
                       </TableCell>
                     )}
-                    <TableCell>
-                      <div className="font-medium">
-                        {groupIndex + 1}
-                        {rowSpan > 1 && (
-                          <span className="ml-1 text-xs text-muted-foreground">-{rowIndex + 1}</span>
-                        )}
-                      </div>
-                    </TableCell>
-
                     {isFirstRow && (
                       <>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
-                          {row.order_date}
-                        </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
-                          <div>{row.shop_name ?? '—'}</div>
-                          {row.shop_group_name && (
-                            <div className="text-xs text-muted-foreground">{row.shop_group_name}</div>
-                          )}
-                        </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
-                          {row.salesperson_name}
-                        </TableCell>
-                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
-                          <Link href={`/finance/daily-orders/${row.order_id}`} className="hover:underline">
-                            {displayOrderNumber}
-                          </Link>
-                          {row.external_order_number && (
-                            <div className="text-xs font-normal text-muted-foreground">{row.order_number}</div>
-                          )}
-                        </TableCell>
                         <TableCell
                           rowSpan={rowSpan}
                           className={mergedCellClassName}
@@ -1380,9 +1345,6 @@ export function CommissionManager({
                               <div className="text-xs text-muted-foreground">补充后可计算提成</div>
                             </div>
                           )}
-                        </TableCell>
-                        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} text-right tabular-nums`}>
-                          {row.custom_order_count}
                         </TableCell>
                       </>
                     )}
@@ -1399,10 +1361,6 @@ export function CommissionManager({
                         <div className="text-xs text-muted-foreground">{row.product_sku}</div>
                       )}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{quantityText(row.quantity)}</TableCell>
-                    <TableCell className="tabular-nums">
-                      {formatCommissionMoney(row.unit_price, row, currentExchangeRate)}
-                    </TableCell>
                     <TableCell className="tabular-nums">
                       {formatCommissionMoney(row.product_received_amount, row, currentExchangeRate)}
                     </TableCell>
@@ -1412,7 +1370,7 @@ export function CommissionManager({
                         readOnly={readOnly || isSalespersonView || !row.commission_calculable}
                       />
                     </TableCell>
-                    <TableCell className="font-medium tabular-nums">
+                    <TableCell className="bg-sky-50 font-semibold text-sky-950 tabular-nums">
                       {formatCommissionMoney(row.product_commission_amount, row, currentExchangeRate)}
                     </TableCell>
 
@@ -1432,35 +1390,12 @@ export function CommissionManager({
                             {clearanceLabel(row.clearance_status)}
                           </Badge>
                           {row.clearance_period && (
-                            <div className="text-xs text-muted-foreground">
-                              {row.clearance_period}
-                            </div>
+                            <div className="text-xs text-muted-foreground">{row.clearance_period}</div>
                           )}
                           {!readOnly && row.clearance_status === 'pending' && canConfirmClearance && (
                             <div className="flex items-center gap-1 pt-1">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs"
-                                disabled={confirmPending}
-                                onClick={() => confirmRowClearance(row)}
-                              >
-                                确认
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                                disabled={rejectPending}
-                                onClick={() => {
-                                  setRejectingRow(row)
-                                  setRejectReason('')
-                                }}
-                              >
-                                驳回
-                              </Button>
+                              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={confirmPending} onClick={() => confirmRowClearance(row)}>确认</Button>
+                              <Button type="button" variant="outline" size="sm" className="h-7 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={rejectPending} onClick={() => { setRejectingRow(row); setRejectReason('') }}>驳回</Button>
                             </div>
                           )}
                         </div>
