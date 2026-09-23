@@ -1108,12 +1108,12 @@ export function CommissionManager({
         </div>
       </form>
 
-      <div className="max-h-[calc(100vh-2rem)] overflow-auto rounded-md border">
+      <div className="max-h-[calc(100vh-20rem)] overflow-auto rounded-md border">
         <Table className="min-w-[2700px]">
-          <TableHeader>
-            <TableRow>
+          <TableHeader className="sticky top-0 z-20 bg-background shadow-sm">
+            <TableRow className="bg-background">
               {!isSalespersonView && (
-                <TableHead className="sticky top-0 z-20 w-12 bg-background shadow-sm">
+                <TableHead className="w-12 bg-background">
                   {selectableRows.length > 0 && (
                     <input
                       type="checkbox"
@@ -1125,7 +1125,7 @@ export function CommissionManager({
                 </TableHead>
               )}
               {BUSINESS_ORDER_COMMISSION_COLUMNS.map((label) => (
-                <TableHead key={label} className="sticky top-0 z-20 bg-background shadow-sm">{label}</TableHead>
+                <TableHead key={label} className="bg-background">{label}</TableHead>
               ))}
             </TableRow>
           </TableHeader>
