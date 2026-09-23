@@ -198,22 +198,22 @@ function FreightEditor({
   rowSpan,
   readOnly,
   exchangeRate,
+  defaultFreightCommissionRate,
 }: {
   row: BusinessOrderCommissionRow
   rowSpan: number
   readOnly?: boolean
   exchangeRate: number | null
+  defaultFreightCommissionRate: number
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const initialCost = row.freight_cost === 0 ? '' : String(row.freight_cost)
-  const initialRate = String(row.freight_commission_rate)
   const [costDraft, setCostDraft] = useState(initialCost)
-  const [rateDraft, setRateDraft] = useState(initialRate)
-  const unchanged = costDraft.trim() === initialCost && rateDraft.trim() === initialRate
+  const unchanged = costDraft.trim() === initialCost
 
   const cost = costDraft.trim() === '' ? 0 : Number(costDraft)
-  const freightRate = rateDraft.trim() === '' ? 0 : Number(rateDraft)
+  const freightRate = cost > 0 ? defaultFreightCommissionRate : 0
   const rateToCny = settlementExchangeRate(row, exchangeRate)
   const freightReceived = rateToCny == null ? null : round4(row.freight_received_amount * rateToCny)
   const profit = freightReceived == null ? null : round4(freightReceived - cost)
@@ -224,10 +224,6 @@ function FreightEditor({
       toast.error('运费成本必须是非负数字')
       return
     }
-    if (!Number.isFinite(freightRate) || freightRate < 0 || freightRate > 100) {
-      toast.error('运费提点必须是 0~100 的数字')
-      return
-    }
     if (row.currency === 'USD' && rateToCny == null) {
       toast.error('请先填写美元兑人民币汇率')
       return
@@ -236,7 +232,6 @@ function FreightEditor({
       const result = await saveBusinessOrderCommission({
         business_order_id: row.order_id,
         freight_cost: cost,
-        freight_commission_rate: freightRate,
         settlement_exchange_rate_to_cny: row.currency === 'USD' ? rateToCny : null,
       })
       if (!result.ok) {
@@ -296,24 +291,7 @@ function FreightEditor({
       </TableCell>
       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
         <div className="flex min-w-36 items-center gap-2">
-          <Input
-            value={rateDraft}
-            type="number"
-            min={0}
-            max={100}
-            step="0.0001"
-            disabled={pending}
-            placeholder="0"
-            title="运费提点（百分数）"
-            onChange={(event) => setRateDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !pending && !unchanged) {
-                event.preventDefault()
-                save()
-              }
-            }}
-            className="h-8"
-          />
+          <span className="min-w-8 tabular-nums">{freightRate}</span>
           <Button
             type="button"
             variant="outline"
@@ -321,8 +299,8 @@ function FreightEditor({
             className="h-8 w-8 shrink-0"
             disabled={pending || unchanged}
             onClick={save}
-            aria-label={`保存订单 ${row.order_number} 的运费成本与提点`}
-            title="保存运费成本与提点"
+            aria-label={`保存订单 ${row.order_number} 的运费成本`}
+            title="保存运费成本；正数成本自动套用默认运费提点"
           >
             <Save className="h-4 w-4" />
           </Button>
@@ -812,10 +790,16 @@ function CustomOrderCountRatesDialog({
   )
 }
 
-function FreightCommissionRateDialog({ orderIds }: { orderIds: string[] }) {
+function FreightCommissionRateDialog({
+  orderIds,
+  defaultRate,
+}: {
+  orderIds: string[]
+  defaultRate: number
+}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState('0')
+  const [draft, setDraft] = useState(String(defaultRate))
   const [pending, startTransition] = useTransition()
 
   function save() {
@@ -842,7 +826,15 @@ function FreightCommissionRateDialog({ orderIds }: { orderIds: string[] }) {
 
   return (
     <>
-      <Button type="button" variant="outline" disabled={orderIds.length === 0} onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={orderIds.length === 0}
+        onClick={() => {
+          setDraft(String(defaultRate))
+          setOpen(true)
+        }}
+      >
         <SlidersHorizontal className="mr-1.5 h-4 w-4" />
         设置运费提点
       </Button>
@@ -853,7 +845,7 @@ function FreightCommissionRateDialog({ orderIds }: { orderIds: string[] }) {
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              保存后将应用到当前页全部 {orderIds.length} 个可计算提成订单；未填写运费成本的订单按 0 计算。
+              保存默认运费提点后，当前页正数运费成本订单立即套用；未填写或为 0 的运费成本固定按 0% 计算，后续填写正数成本时自动套用。
             </p>
             <div className="relative">
               <Input
@@ -905,6 +897,7 @@ export interface CommissionManagerProps {
   categoryRates: CommissionCategoryRate[]
   customerTags: CustomerCommissionTag[]
   customOrderRates: CustomerCustomOrderCommissionRate[]
+  defaultFreightCommissionRate: number
   canManageCategoryRates: boolean
   isAdmin: boolean
   actor: Profile
@@ -923,6 +916,7 @@ export function CommissionManager({
   categoryRates,
   customerTags,
   customOrderRates,
+  defaultFreightCommissionRate,
   canManageCategoryRates,
   isAdmin,
   actor,
@@ -1157,7 +1151,10 @@ export function CommissionManager({
           {!readOnly && canManageCategoryRates && <CustomOrderCountRatesDialog rates={customOrderRates} />}
           {!readOnly && canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}
           {!readOnly && canManageCategoryRates && (
-            <FreightCommissionRateDialog orderIds={freightCommissionOrderIds} />
+            <FreightCommissionRateDialog
+              orderIds={freightCommissionOrderIds}
+              defaultRate={defaultFreightCommissionRate}
+            />
           )}
         </div>
       </div>
@@ -1426,6 +1423,7 @@ export function CommissionManager({
                         rowSpan={rowSpan}
                         readOnly={readOnly || isSalespersonView || !row.commission_calculable}
                         exchangeRate={currentExchangeRate}
+                        defaultFreightCommissionRate={defaultFreightCommissionRate}
                       />
                     )}
                     {isFirstRow && (

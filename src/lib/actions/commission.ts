@@ -82,7 +82,6 @@ export async function saveBusinessOrderItemCommission(input: {
 export async function saveBusinessOrderCommission(input: {
   business_order_id: string
   freight_cost: number
-  freight_commission_rate: number
   settlement_exchange_rate_to_cny: number | null
 }): Promise<ActionResult> {
   const profile = await requireApproved()
@@ -102,11 +101,21 @@ export async function saveBusinessOrderCommission(input: {
     return { ok: false, error: '请先为订单关联客户，再设置运费提成' }
   }
 
+  const { data: settings, error: settingsError } = await supabase
+    .from('finance_freight_commission_settings')
+    .select('freight_commission_rate')
+    .eq('id', 1)
+    .single()
+  if (settingsError) return { ok: false, error: settingsError.message }
+
+  const freightCommissionRate = parsed.data.freight_cost > 0
+    ? Number(settings.freight_commission_rate)
+    : 0
   const { error } = await supabase.from('finance_business_order_commissions').upsert(
     {
       business_order_id: parsed.data.business_order_id,
       freight_cost: parsed.data.freight_cost,
-      freight_commission_rate: parsed.data.freight_commission_rate,
+      freight_commission_rate: freightCommissionRate,
       settlement_exchange_rate_to_cny: parsed.data.settlement_exchange_rate_to_cny,
       updated_by: profile.id,
     },
@@ -115,6 +124,8 @@ export async function saveBusinessOrderCommission(input: {
   if (error) return { ok: false, error: error.message }
 
   revalidateCommission()
+  revalidatePath('/finance/profit')
+  revalidatePath('/finance/performance')
   return { ok: true }
 }
 
@@ -173,39 +184,23 @@ export async function saveBusinessOrderFreightCommissionRate(input: {
   }
 
   const supabase = await createClient()
-  const orderIds = parsed.data.business_order_ids
-  const { data: orders, error: orderError } = await supabase
-    .from('business_orders')
-    .select('id, customer_id, voided_at')
-    .in('id', orderIds)
-  if (orderError) return { ok: false, error: orderError.message }
-  if (!orders || orders.length !== orderIds.length) {
-    return { ok: false, error: '部分订单不存在' }
-  }
-  if (orders.some((order) => order.voided_at || !order.customer_id)) {
-    return { ok: false, error: '请先为订单关联客户，再设置运费提点' }
-  }
-
-  const { data: existing, error: selectError } = await supabase
-    .from('finance_business_order_commissions')
-    .select('business_order_id, freight_cost, settlement_exchange_rate_to_cny')
-    .in('business_order_id', orderIds)
-  if (selectError) return { ok: false, error: selectError.message }
-
-  const existingMap = new Map((existing ?? []).map((row) => [row.business_order_id, row]))
-  const rows = orderIds.map((businessOrderId) => {
-    const commission = existingMap.get(businessOrderId)
-    return {
-      business_order_id: businessOrderId,
-      freight_cost: commission?.freight_cost ?? 0,
+  const { error: settingsError } = await supabase
+    .from('finance_freight_commission_settings')
+    .update({
       freight_commission_rate: parsed.data.freight_commission_rate,
-      settlement_exchange_rate_to_cny: commission?.settlement_exchange_rate_to_cny ?? null,
       updated_by: profile.id,
-    }
-  })
+    })
+    .eq('id', 1)
+  if (settingsError) return { ok: false, error: settingsError.message }
+
   const { error } = await supabase
     .from('finance_business_order_commissions')
-    .upsert(rows, { onConflict: 'business_order_id' })
+    .update({
+      freight_commission_rate: parsed.data.freight_commission_rate,
+      updated_by: profile.id,
+    })
+    .in('business_order_id', parsed.data.business_order_ids)
+    .gt('freight_cost', 0)
   if (error) return { ok: false, error: error.message }
 
   revalidateCommission()

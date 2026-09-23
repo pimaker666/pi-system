@@ -49,6 +49,7 @@ export default async function FinanceCommissionPage({
         categoryRates={commissions.categoryRates}
         customerTags={commissions.customerTags}
         customOrderRates={commissions.customOrderRates}
+        defaultFreightCommissionRate={commissions.defaultFreightCommissionRate}
         canManageCategoryRates={canManageCategoryRates}
         isAdmin={isAdmin}
         options={options}

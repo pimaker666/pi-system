@@ -133,6 +133,16 @@ async function fetchMatchingOrders(
   return [...merged.values()].sort(compareOrders)
 }
 
+async function fetchDefaultFreightCommissionRate(supabase: SupabaseClient) {
+  const { data, error } = await supabase
+    .from('finance_freight_commission_settings')
+    .select('freight_commission_rate')
+    .eq('id', 1)
+    .single()
+  if (error) throw new Error(`默认运费提点读取失败：${error.message}`)
+  return Number(data.freight_commission_rate)
+}
+
 async function fetchAllCategoryRates(supabase: SupabaseClient): Promise<CommissionCategoryRate[]> {
   const { data, error } = await supabase
     .from('finance_commission_category_rates')
@@ -376,8 +386,9 @@ export async function fetchBusinessOrderCommissions(
   categoryRates: CommissionCategoryRate[]
   customerTags: CustomerCommissionTag[]
   customOrderRates: CustomerCustomOrderCommissionRate[]
+  defaultFreightCommissionRate: number
 }> {
-  const [allOrders, categoryRates, itemCommissions, orderCommissions, customerTags, customOrderRates, clearances] = await Promise.all([
+  const [allOrders, categoryRates, itemCommissions, orderCommissions, customerTags, customOrderRates, clearances, defaultFreightCommissionRate] = await Promise.all([
     fetchMatchingOrders(supabase, filters),
     fetchAllCategoryRates(supabase),
     fetchAllItemCommissions(supabase),
@@ -385,6 +396,7 @@ export async function fetchBusinessOrderCommissions(
     fetchAllCustomerCommissionTags(supabase),
     fetchAllCustomerCustomOrderCommissionRates(supabase),
     fetchAllCommissionClearances(supabase),
+    fetchDefaultFreightCommissionRate(supabase),
   ])
 
   const categoryRateMap = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
@@ -434,7 +446,7 @@ export async function fetchBusinessOrderCommissions(
       : Number(order.total_shipping_received_amount)
     const freightReceived = round4(declaredFreightReceived + shippingTotal)
     const freightCost = freight ? freight.freight_cost : 0
-    const freightRate = freight ? freight.freight_commission_rate : 0
+    const freightRate = freightCost > 0 ? freight?.freight_commission_rate ?? defaultFreightCommissionRate : 0
     const freightProfit = round4(freightReceived - freightCost)
     const freightCommission = round4((freightProfit * freightRate) / 100)
 
@@ -538,5 +550,12 @@ export async function fetchBusinessOrderCommissions(
     })
   }
 
-  return { rows, totalCount: scopedOrders.length, categoryRates, customerTags, customOrderRates }
+  return {
+    rows,
+    totalCount: scopedOrders.length,
+    categoryRates,
+    customerTags,
+    customOrderRates,
+    defaultFreightCommissionRate,
+  }
 }
