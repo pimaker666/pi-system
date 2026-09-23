@@ -3,12 +3,33 @@
 -- order views (commission, cost, and daily order tables).
 
 alter table public.customers
-  add column tag_color text null
-  constraint customers_tag_color_check check (tag_color is null or tag_color ~ '^#[0-9A-Fa-f]{6}$');
+  add column if not exists tag_color text null;
 
 alter table public.finance_daily_order_workflows
-  add column customer_tag_color text null
-  constraint fdo_workflow_customer_tag_color_check check (customer_tag_color is null or customer_tag_color ~ '^#[0-9A-Fa-f]{6}$');
+  add column if not exists customer_tag_color text null;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.customers'::regclass
+      and conname = 'customers_tag_color_check'
+  ) then
+    alter table public.customers
+      add constraint customers_tag_color_check
+      check (tag_color is null or tag_color ~ '^#[0-9A-Fa-f]{6}$');
+  end if;
+
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.finance_daily_order_workflows'::regclass
+      and conname = 'fdo_workflow_customer_tag_color_check'
+  ) then
+    alter table public.finance_daily_order_workflows
+      add constraint fdo_workflow_customer_tag_color_check
+      check (customer_tag_color is null or customer_tag_color ~ '^#[0-9A-Fa-f]{6}$');
+  end if;
+end $$;
 
 comment on column public.customers.tag_color is '客户标记颜色（十六进制，如 #ff0000）';
 comment on column public.finance_daily_order_workflows.customer_tag_color is '绑定客户时的标记颜色快照';
