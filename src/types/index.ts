@@ -26,6 +26,7 @@ export type BusinessPerformanceGroupBy =
   | 'month'
   | 'product_group'
   | 'shipping_category'
+  | 'country'
 export type BusinessPaymentType = 'full' | 'deposit' | 'balance'
 
 export interface BusinessPerformanceSummary {

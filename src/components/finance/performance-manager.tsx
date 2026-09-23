@@ -53,6 +53,7 @@ const GROUP_TABS: { value: BusinessPerformanceGroupBy; label: string }[] = [
   { value: 'month', label: '月份' },
   { value: 'product_group', label: '产品分组' },
   { value: 'shipping_category', label: '发货分类' },
+  { value: 'country', label: '国家' },
 ]
 
 const GROUP_COLUMN_LABELS: Record<BusinessPerformanceGroupBy, string> = {
@@ -62,6 +63,7 @@ const GROUP_COLUMN_LABELS: Record<BusinessPerformanceGroupBy, string> = {
   month: '月份',
   product_group: '产品分组',
   shipping_category: '发货分类',
+  country: '国家',
 }
 
 const SHIPPING_OPTIONS: Option[] = [

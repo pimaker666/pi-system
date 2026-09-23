@@ -54,6 +54,7 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
     'month',
     'product_group',
     'shipping_category',
+    'country',
   ]
   const rawGroup = scalar('groupBy')
   const groupBy: BusinessPerformanceGroupBy =
