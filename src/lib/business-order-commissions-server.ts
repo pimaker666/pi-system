@@ -11,6 +11,7 @@ import { displayProfileName } from '@/lib/utils'
 import { COMMISSION_PAGE_SIZE } from '@/lib/business-order-commission'
 import {
   businessOrderAllocationBreakdown,
+  isMergedBusinessDailyItemPaidAndShipped,
   mergeBusinessDailyItems,
   type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
@@ -52,10 +53,9 @@ function buildOrdersQuery(
   let query = supabase
     .from('business_orders')
     .select(
-      `*, ${itemsEmbed}, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), customer:customers!customer_id(tag_color), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`,
+      `*, ${itemsEmbed}, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), customer:customers!customer_id(tag_color), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`,
     )
     .is('voided_at', null)
-    .not('customer_id', 'is', null)
     .order('order_date', { ascending: false })
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
@@ -315,6 +315,7 @@ export async function fetchBusinessOrderCommissions(
   filters: BusinessOrderCommissionFilters,
   page = 1,
   pageSize = COMMISSION_PAGE_SIZE,
+  scope: 'pending' | 'settled' = 'pending',
 ): Promise<{
   rows: BusinessOrderCommissionRow[]
   totalCount: number
@@ -338,24 +339,36 @@ export async function fetchBusinessOrderCommissions(
   const tagMap = new Map(customerTags.map((tag) => [tag.tag_color.toLowerCase(), tag]))
   const clearanceMap = new Map(clearances.map((row) => [row.business_order_item_id, row]))
 
+  const eligibleOrders = allOrders
+    .map((order) => ({
+      order,
+      items: mergeBusinessDailyItems(order).filter(isMergedBusinessDailyItemPaidAndShipped),
+    }))
+    .filter((entry) => entry.items.length > 0)
+  const scopedOrders = eligibleOrders.filter(({ items }) => {
+    const settled = items.every((item) =>
+      item.item_ids.every((id) => clearanceMap.get(id)?.status === 'confirmed'),
+    )
+    return scope === 'settled' ? settled : !settled
+  })
   const offset = (page - 1) * pageSize
-  const pagedOrders = allOrders.slice(offset, offset + pageSize)
+  const pagedOrders = scopedOrders.slice(offset, offset + pageSize)
 
   const customerIds = [
     ...new Set(
       pagedOrders
-        .map((order) => order.customer_id)
+        .map(({ order }) => order.customer_id)
         .filter((id): id is string => typeof id === 'string' && id.length > 0),
     ),
   ]
   const [customOrderCounts, customerTagColors] = await Promise.all([
     fetchCustomOrderCounts(supabase, customerIds),
-    fetchCustomerTagColors(supabase, pagedOrders.map((order) => order.id)),
+    fetchCustomerTagColors(supabase, pagedOrders.map(({ order }) => order.id)),
   ])
 
   const rows: BusinessOrderCommissionRow[] = []
 
-  for (const order of pagedOrders) {
+  for (const { order, items: mergedItems } of pagedOrders) {
     const salespersonName = displayProfileName(
       order.salesperson,
       order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
@@ -371,16 +384,19 @@ export async function fetchBusinessOrderCommissions(
     const freightProfit = round4(freightReceived - freightCost)
     const freightCommission = round4((freightProfit * freightRate) / 100)
 
-    const tagColor = customerTagColors.has(order.id)
-      ? customerTagColors.get(order.id) ?? null
-      : getCustomerTagColor(order)
+    const commissionCalculable = order.customer_id !== null
+    const tagColor = commissionCalculable
+      ? customerTagColors.has(order.id)
+        ? customerTagColors.get(order.id) ?? null
+        : getCustomerTagColor(order)
+      : null
     const tag = tagColor ? tagMap.get(tagColor.toLowerCase()) ?? null : null
     const tagRate = tag ? tag.product_commission_rate : null
     const customOrderCount = order.customer_id ? customOrderCounts.get(order.customer_id) ?? 0 : 0
-    const customOrderRate = customOrderRates
-      .find((rate) => rate.maximum_custom_order_count >= customOrderCount)?.product_commission_rate ?? null
-
-    const mergedItems = mergeBusinessDailyItems(order)
+    const customOrderRate = commissionCalculable
+      ? customOrderRates
+        .find((rate) => rate.maximum_custom_order_count >= customOrderCount)?.product_commission_rate ?? null
+      : null
     const orderRowSpan = mergedItems.length
 
     mergedItems.forEach((item, index) => {
@@ -402,7 +418,9 @@ export async function fetchBusinessOrderCommissions(
               : categoryDefault !== null
                 ? 'shipping_category'
                 : 'none'
-      const effectiveRate = overriddenRate ?? tagRate ?? customOrderRate ?? categoryDefault ?? 0
+      const effectiveRate = commissionCalculable
+        ? overriddenRate ?? tagRate ?? customOrderRate ?? categoryDefault ?? 0
+        : 0
       const productReceived = Number(item.product_received_amount)
       const productCommission = round4((productReceived * effectiveRate) / 100)
       const representativeItemId = item.item_ids[0] ?? order.id
@@ -432,7 +450,8 @@ export async function fetchBusinessOrderCommissions(
         salesperson_name: salespersonName,
         order_number: order.order_number,
         external_order_number: order.external_order_number,
-        customer_name: getCustomerName(order.customer_snapshot),
+        customer_name: commissionCalculable ? getCustomerName(order.customer_snapshot) : null,
+        commission_calculable: commissionCalculable,
         customer_tag_color: tagColor,
         customer_tag_label: tag ? tag.label : null,
         custom_order_count: customOrderCount,
@@ -465,5 +484,5 @@ export async function fetchBusinessOrderCommissions(
     })
   }
 
-  return { rows, totalCount: allOrders.length, categoryRates, customerTags, customOrderRates }
+  return { rows, totalCount: scopedOrders.length, categoryRates, customerTags, customOrderRates }
 }

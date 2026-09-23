@@ -38,6 +38,21 @@ export async function saveBusinessOrderItemCommission(input: {
 
   const supabase = await createClient()
   const itemIds = parsed.data.business_order_item_ids
+  const { data: itemOrders, error: itemOrderError } = await supabase
+    .from('business_order_items')
+    .select('id, order:business_orders!inner(customer_id, voided_at)')
+    .in('id', itemIds)
+  if (itemOrderError) return { ok: false, error: itemOrderError.message }
+  if (!itemOrders || itemOrders.length !== itemIds.length) {
+    return { ok: false, error: '部分订单明细行不存在' }
+  }
+  const hasUncalculableOrder = itemOrders.some((item) => {
+    const order = item.order as unknown as { customer_id: string | null; voided_at: string | null }
+    return !order.customer_id || order.voided_at
+  })
+  if (hasUncalculableOrder) {
+    return { ok: false, error: '请先为订单关联客户，再设置产品提点' }
+  }
 
   if (parsed.data.rate === null) {
     const { error } = await supabase
@@ -76,6 +91,16 @@ export async function saveBusinessOrderCommission(input: {
   }
 
   const supabase = await createClient()
+  const { data: order, error: orderError } = await supabase
+    .from('business_orders')
+    .select('customer_id, voided_at')
+    .eq('id', parsed.data.business_order_id)
+    .maybeSingle()
+  if (orderError) return { ok: false, error: orderError.message }
+  if (!order || order.voided_at || !order.customer_id) {
+    return { ok: false, error: '请先为订单关联客户，再设置运费提成' }
+  }
+
   const { error } = await supabase.from('finance_business_order_commissions').upsert(
     {
       business_order_id: parsed.data.business_order_id,
@@ -233,6 +258,8 @@ export async function saveCustomerCommissionTags(input: {
 
 function revalidateClearance() {
   revalidateCommission()
+  revalidatePath('/finance/commission/settled')
+  revalidatePath('/finance/my-commission')
   revalidatePath('/finance/daily-orders')
 }
 
@@ -266,7 +293,7 @@ export async function submitBusinessOrderCommissionClearance(input: {
   const { data: orders, error: orderError } = await supabase
     .from('business_orders')
     .select(
-      'id, status, voided_at, salesperson_id, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))',
+      'id, status, voided_at, salesperson_id, customer_id, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))',
     )
     .in('id', orderIds)
   if (orderError) return { ok: false, error: orderError.message }
@@ -277,6 +304,9 @@ export async function submitBusinessOrderCommissionClearance(input: {
     if (!order) return { ok: false, error: '订单不存在' }
     if (order.voided_at || !['approved', 'completed'].includes(order.status)) {
       return { ok: false, error: '只有已审核且未作废的订单才能提交提成结清' }
+    }
+    if (!order.customer_id) {
+      return { ok: false, error: '请先为订单关联客户，再提交提成结清' }
     }
   }
 

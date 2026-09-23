@@ -31,7 +31,7 @@ export default async function FinanceCommissionPage({
       <div>
         <h1 className="text-2xl font-semibold">业务提成</h1>
         <p className="text-sm text-muted-foreground">
-          业务员为订单关联客户后，订单即进入本页；按产品行计算产品提成、按订单计算运费利润与运费提成。
+          已收齐且已发货的产品行自动进入本页；未关联客户的订单保留展示，补充客户后即可按产品行计算提成。
         </p>
       </div>
       <CommissionManager

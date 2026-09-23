@@ -292,6 +292,8 @@ export interface BusinessOrderCommissionRow {
   order_number: string
   external_order_number: string | null
   customer_name: string | null
+  /** 是否已关联客户；未关联时保留订单展示但不能计算或结清提成。 */
+  commission_calculable: boolean
   customer_tag_color: string | null
   /** 客户标记含义（图例文字），无标记或标记未定义时为 null。 */
   customer_tag_label: string | null

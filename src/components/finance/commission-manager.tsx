@@ -96,7 +96,7 @@ function clearanceVariant(status: BusinessOrderCommissionClearanceStatus | null)
 }
 
 function isClearanceSelectable(row: BusinessOrderCommissionRow) {
-  return row.clearance_status !== 'confirmed'
+  return row.commission_calculable && row.clearance_status !== 'confirmed'
 }
 
 function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOnly?: boolean }) {
@@ -136,6 +136,10 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
         : row.product_commission_rate_source === 'shipping_category'
           ? `分类默认 ${row.product_commission_rate}`
           : '未设置'
+
+  if (!row.commission_calculable) {
+    return <span className="text-sm text-muted-foreground">待补客户</span>
+  }
 
   if (readOnly) {
     return (
@@ -832,6 +836,7 @@ export interface CommissionManagerProps {
   canManageCategoryRates: boolean
   isAdmin: boolean
   actor: Profile
+  readOnly?: boolean
   options: {
     shops: DailyOrderShop[]
     groups: DailyOrderShopGroup[]
@@ -849,6 +854,7 @@ export function CommissionManager({
   canManageCategoryRates,
   isAdmin,
   actor,
+  readOnly = false,
   options,
 }: CommissionManagerProps) {
   const router = useRouter()
@@ -871,7 +877,13 @@ export function CommissionManager({
     return Number.isFinite(value) && value > 0 ? value : null
   }, [exchangeRate])
   const usdOrderIds = useMemo(
-    () => [...new Set(rows.filter((row) => row.currency === 'USD').map((row) => row.order_id))],
+    () => [
+      ...new Set(
+        rows
+          .filter((row) => row.currency === 'USD' && row.commission_calculable)
+          .map((row) => row.order_id),
+      ),
+    ],
     [rows],
   )
   const canConfirmClearance = isSalespersonView
@@ -1007,18 +1019,18 @@ export function CommissionManager({
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          已关联客户的业务订单自动进入本页。产品提成 = 产品实收金额 × 产品提点%；
-          运费利润 = 运费实收 − 运费成本；运费提成 = 运费利润 × 运费提点%。
+          已收齐且已发货的产品行自动进入本页；未关联客户的订单仅供补充客户信息，不能计算或结清提成。
+          产品提成 = 产品实收金额 × 产品提点%；运费利润 = 运费实收 − 运费成本；运费提成 = 运费利润 × 运费提点%。
           产品提点优先级：手动逐行 &gt; 客户标记 &gt; 定制单数 &gt; 发货分类默认。
         </p>
         <div className="flex flex-wrap gap-2">
-          {isAdmin && <CustomerTagsDialog customerTags={customerTags} />}
-          {canManageCategoryRates && <CustomOrderCountRatesDialog rates={customOrderRates} />}
-          {canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}
+          {!readOnly && isAdmin && <CustomerTagsDialog customerTags={customerTags} />}
+          {!readOnly && canManageCategoryRates && <CustomOrderCountRatesDialog rates={customOrderRates} />}
+          {!readOnly && canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card p-4">
+      {!readOnly && <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card p-4">
         <label htmlFor="commission-exchange-rate" className="text-sm font-medium">
           USD→CNY 汇率
         </label>
@@ -1045,11 +1057,11 @@ export function CommissionManager({
         <span className="text-xs text-muted-foreground">
           美元订单的产品实收、提成和运费实收均按此汇率结算为人民币；运费成本始终填写人民币。
         </span>
-      </div>
+      </div>}
 
       <CustomerTagsLegend customerTags={customerTags} />
 
-      {canManageCategoryRates && (
+      {!readOnly && canManageCategoryRates && (
         <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
           <span className="text-sm text-muted-foreground">已选 {selectedCount} 个产品行</span>
           <Button
@@ -1108,12 +1120,15 @@ export function CommissionManager({
         </div>
       </form>
 
-      <div className="max-h-[calc(100vh-20rem)] overflow-auto rounded-md border">
-        <Table className="min-w-[2700px]">
-          <TableHeader className="sticky top-0 z-20 bg-background shadow-sm">
+      <div className="overflow-hidden rounded-md border">
+        <Table
+          className="min-w-[2700px]"
+          containerClassName="max-h-[calc(100vh-20rem)]"
+        >
+          <TableHeader>
             <TableRow className="bg-background">
               {!isSalespersonView && (
-                <TableHead className="w-12 bg-background">
+                <TableHead className="sticky top-0 z-20 w-12 bg-background shadow-sm">
                   {selectableRows.length > 0 && (
                     <input
                       type="checkbox"
@@ -1125,7 +1140,12 @@ export function CommissionManager({
                 </TableHead>
               )}
               {BUSINESS_ORDER_COMMISSION_COLUMNS.map((label) => (
-                <TableHead key={label} className="bg-background">{label}</TableHead>
+                <TableHead
+                  key={label}
+                  className="sticky top-0 z-20 bg-background shadow-sm"
+                >
+                  {label}
+                </TableHead>
               ))}
             </TableRow>
           </TableHeader>
@@ -1148,9 +1168,11 @@ export function CommissionManager({
                           checked={row.item_ids.every((id) => selectedItemIds.has(id))}
                           disabled={!isClearanceSelectable(row)}
                           title={
-                            isClearanceSelectable(row)
-                              ? '提交该产品行提成结清'
-                              : '已结清的产品行不可重复选择'
+                            !row.commission_calculable
+                              ? '请先为订单关联客户'
+                              : isClearanceSelectable(row)
+                                ? '提交该产品行提成结清'
+                                : '已结清的产品行不可重复选择'
                           }
                           onChange={(event) => toggleRow(row, event.target.checked)}
                         />
@@ -1193,7 +1215,14 @@ export function CommissionManager({
                           style={{ color: row.customer_tag_color ?? undefined }}
                           title={row.customer_tag_label ?? undefined}
                         >
-                          {row.customer_name || '—'}
+                          {row.commission_calculable ? (
+                            row.customer_name || '—'
+                          ) : (
+                            <div>
+                              <div>未关联客户</div>
+                              <div className="text-xs text-muted-foreground">补充后可计算提成</div>
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} text-right tabular-nums`}>
                           {row.custom_order_count}
@@ -1221,7 +1250,10 @@ export function CommissionManager({
                       {formatCommissionMoney(row.product_received_amount, row, currentExchangeRate)}
                     </TableCell>
                     <TableCell>
-                      <RateEditor row={row} readOnly={isSalespersonView} />
+                      <RateEditor
+                        row={row}
+                        readOnly={readOnly || isSalespersonView || !row.commission_calculable}
+                      />
                     </TableCell>
                     <TableCell className="font-medium tabular-nums">
                       {formatCommissionMoney(row.product_commission_amount, row, currentExchangeRate)}
@@ -1231,7 +1263,7 @@ export function CommissionManager({
                       <FreightEditor
                         row={row}
                         rowSpan={rowSpan}
-                        readOnly={isSalespersonView}
+                        readOnly={readOnly || isSalespersonView || !row.commission_calculable}
                         exchangeRate={currentExchangeRate}
                       />
                     )}
@@ -1246,7 +1278,7 @@ export function CommissionManager({
                               {row.clearance_period}
                             </div>
                           )}
-                          {row.clearance_status === 'pending' && canConfirmClearance && (
+                          {!readOnly && row.clearance_status === 'pending' && canConfirmClearance && (
                             <div className="flex items-center gap-1 pt-1">
                               <Button
                                 type="button"
