@@ -165,16 +165,6 @@ export function BusinessCustomProductPicker({
         </PopoverContent>
       </Popover>
       {actionBeforeCreate}
-      {value && (
-        <BusinessCustomProductDialog
-          mode="version"
-          product={value}
-          defaultCurrency={orderCurrency}
-          productGroups={productGroups}
-          disabled={disabled}
-          onCreated={handleCreated}
-        />
-      )}
       {allowCreate && (
         <BusinessCustomProductDialog
           defaultCurrency={orderCurrency}

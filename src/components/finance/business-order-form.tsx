@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  ChangeEvent,
   ClipboardEvent,
   DragEvent,
   FormEvent,
@@ -10,10 +11,11 @@ import {
 } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Eye, LockKeyhole, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Eye, Loader2, LockKeyhole, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { CustomerCombobox } from '@/components/customers/customer-combobox'
 import { BusinessCustomProductPicker } from '@/components/finance/business-custom-product-picker'
+import { ImagePreview } from '@/components/ui/image-preview'
 import { BusinessOrderProductDialog } from '@/components/finance/business-order-product-dialog'
 import { PaymentAccountCombobox } from '@/components/finance/payment-account-combobox'
 import type { DailyOrderShopOption } from '@/lib/daily-orders'
@@ -32,12 +34,15 @@ import {
 } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  addBusinessCustomProductVersion,
   bindBusinessOrderAttachment,
   createBusinessOrder,
   getBusinessOrderAttachmentUrl,
+  listBusinessCustomProducts,
   removeBusinessOrderAttachment,
   updateBusinessOrder,
 } from '@/lib/actions/business-orders'
+import { useImageUpload } from '@/lib/hooks/use-image-upload'
 import { getBusinessDateKey } from '@/lib/business-orders'
 import { createClient } from '@/lib/supabase/client'
 import { cn, displayProfileName, formatCurrency, roundToScale } from '@/lib/utils'
@@ -67,6 +72,9 @@ interface EditableItem {
   custom_product_version_id: string | null
   product_name: string
   sku: string
+  image_url: string | null
+  saved_custom_product_code: string | null
+  saved_custom_product_image_url: string | null
   description: string | null
   specification: string | null
   unit: string
@@ -330,6 +338,10 @@ export function BusinessOrderForm({
           (item.product_id ? financialNameByProductId.get(item.product_id) : null) ??
           item.name_snapshot,
         sku: item.sku_snapshot,
+        image_url: item.image_url_snapshot,
+        saved_custom_product_code: item.source_type === 'custom' ? item.sku_snapshot : null,
+        saved_custom_product_image_url:
+          item.source_type === 'custom' ? item.image_url_snapshot : null,
         description: item.description_snapshot,
         specification: item.specification_snapshot,
         unit: item.unit_snapshot,
@@ -366,6 +378,11 @@ export function BusinessOrderForm({
   const [attachments, setAttachments] = useState(
     initialOrder?.business_order_attachments?.filter((item) => item.status === 'active') ?? [],
   )
+  const [customVersionPendingKey, setCustomVersionPendingKey] = useState<string | null>(null)
+  const { upload: uploadCustomProductImage, uploading: customProductImageUploading } = useImageUpload({
+    bucket: 'product-images',
+    folder: 'business-custom-products',
+  })
 
   const subtotal = useMemo(
     () => items.reduce(
@@ -431,6 +448,9 @@ export function BusinessOrderForm({
         custom_product_version_id: null,
         product_name: product.financial_product_name || product.name,
         sku: product.sku,
+        image_url: product.image_url,
+        saved_custom_product_code: null,
+        saved_custom_product_image_url: null,
         description: product.description,
         specification: product.specification,
         unit: product.unit,
@@ -473,6 +493,9 @@ export function BusinessOrderForm({
         custom_product_version_id: product.version_id,
         product_name: product.name,
         sku: product.code,
+        image_url: product.image_url,
+        saved_custom_product_code: product.code,
+        saved_custom_product_image_url: product.image_url,
         description: product.description,
         specification: product.specification,
         unit: product.unit,
@@ -526,6 +549,102 @@ export function BusinessOrderForm({
         return next
       }),
     )
+  }
+
+  function updateCustomProductDraft(
+    key: string,
+    patch: Partial<Pick<EditableItem, 'sku' | 'image_url'>>,
+  ) {
+    setItems((current) =>
+      current.map((item) => (item.key === key ? { ...item, ...patch } : item)),
+    )
+  }
+
+  async function handleCustomProductImage(item: EditableItem, file: File) {
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      toast.error('仅支持 JPEG 或 PNG 图片')
+      return
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('产品图片不能超过 20MB')
+      return
+    }
+    try {
+      const imageUrl = await uploadCustomProductImage(file)
+      updateCustomProductDraft(item.key, { image_url: imageUrl })
+      toast.success('图片已上传，请保存产品信息')
+    } catch {
+      toast.error('图片上传失败，请稍后重试')
+    }
+  }
+
+  function handleCustomProductImageChange(item: EditableItem, event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file) void handleCustomProductImage(item, file)
+  }
+
+  function saveCustomProductVersion(item: EditableItem) {
+    const customProductId = item.custom_product_id
+    const customProductVersionId = item.custom_product_version_id
+    if (!customProductId || !customProductVersionId) return
+    if (
+      item.sku === item.saved_custom_product_code &&
+      item.image_url === item.saved_custom_product_image_url
+    ) {
+      toast.info('编码和图片未变更')
+      return
+    }
+
+    startTransition(async () => {
+      setCustomVersionPendingKey(item.key)
+      try {
+        const productsResult = await listBusinessCustomProducts()
+        const source = productsResult.data?.find(
+          (product) => product.version_id === customProductVersionId,
+        )
+        if (!productsResult.ok || !source || !source.product_group_id) {
+          toast.error(productsResult.error ?? '无法读取当前定制产品版本')
+          return
+        }
+        const result = await addBusinessCustomProductVersion(customProductId, {
+          product_group_id: source.product_group_id,
+          code: item.sku,
+          name: source.name,
+          description: source.description ?? '',
+          specification: source.specification ?? '',
+          unit: source.unit,
+          image_url: item.image_url ?? '',
+          quantity: source.quantity ?? numericValue(item.quantity),
+          default_unit_price: source.default_unit_price,
+          default_currency: source.default_currency,
+          received_amount: source.received_amount ?? '',
+        })
+        if (!result.ok || !result.version) {
+          toast.error(result.error ?? '保存定制产品版本失败')
+          return
+        }
+        setItems((current) =>
+          current.map((row) =>
+            row.key === item.key
+              ? {
+                  ...row,
+                  custom_product_version_id: result.version?.id ?? row.custom_product_version_id,
+                  sku: result.version?.code ?? row.sku,
+                  image_url: result.version?.image_url ?? row.image_url,
+                  saved_custom_product_code: result.version?.code ?? row.sku,
+                  saved_custom_product_image_url: result.version?.image_url ?? row.image_url,
+                }
+              : row,
+          ),
+        )
+        toast.success(`已保存为同一产品的新版本 v${result.version.version_no}`)
+      } catch {
+        toast.error('保存定制产品版本失败，请稍后重试')
+      } finally {
+        setCustomVersionPendingKey(null)
+      }
+    })
   }
 
   function updateShippingCategory(key: string, value: DailyOrderShippingCategory) {
@@ -700,6 +819,16 @@ export function BusinessOrderForm({
     }
     if (lifecycleLocked) {
       toast.error('已完成、特殊关闭或作废的订单不可修改')
+      return
+    }
+    const unsavedCustomProduct = items.find(
+      (item) =>
+        item.source_type === 'custom' &&
+        (item.sku !== item.saved_custom_product_code ||
+          item.image_url !== item.saved_custom_product_image_url),
+    )
+    if (unsavedCustomProduct) {
+      toast.error(`请先保存“${unsavedCustomProduct.product_name}”的编码或图片修改`)
       return
     }
     const belowMinimum = items.find((item) => {
@@ -1117,10 +1246,67 @@ export function BusinessOrderForm({
                               : '普通产品'}
                         </Badge>
                       </div>
-                      {[item.sku, item.unit].filter(Boolean).length > 0 && (
-                        <div className="text-xs text-muted-foreground">
-                          {[item.sku, item.unit].filter(Boolean).join(' · ')}
+                      {item.source_type === 'custom' ? (
+                        <div className="mt-3 flex gap-3">
+                          <ImagePreview
+                            src={item.image_url}
+                            alt={item.product_name}
+                            size="h-16 w-16"
+                            sizes="64px"
+                          />
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="space-y-1">
+                              <Label htmlFor={`custom-product-code-${item.key}`}>编码</Label>
+                              <Input
+                                id={`custom-product-code-${item.key}`}
+                                value={item.sku}
+                                onChange={(event) =>
+                                  updateCustomProductDraft(item.key, { sku: event.target.value })
+                                }
+                                maxLength={100}
+                                disabled={identityLocked || pending || customProductImageUploading}
+                              />
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Input
+                                aria-label={`${item.product_name} 产品图片`}
+                                type="file"
+                                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                                onChange={(event) => handleCustomProductImageChange(item, event)}
+                                disabled={identityLocked || pending || customProductImageUploading}
+                                className="max-w-[190px]"
+                              />
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => saveCustomProductVersion(item)}
+                                disabled={
+                                  identityLocked ||
+                                  pending ||
+                                  customProductImageUploading ||
+                                  customVersionPendingKey === item.key ||
+                                  (item.sku === item.saved_custom_product_code &&
+                                    item.image_url === item.saved_custom_product_image_url)
+                                }
+                              >
+                                {customVersionPendingKey === item.key ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : null}
+                                保存产品信息
+                              </Button>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              修改编码或图片后保存，会留存为同一产品的新版本。
+                            </p>
+                          </div>
                         </div>
+                      ) : (
+                        [item.sku, item.unit].filter(Boolean).length > 0 && (
+                          <div className="text-xs text-muted-foreground">
+                            {[item.sku, item.unit].filter(Boolean).join(' · ')}
+                          </div>
+                        )
                       )}
                       {item.specification && (
                         <div className="mt-1 text-xs text-muted-foreground">规格：{item.specification}</div>
