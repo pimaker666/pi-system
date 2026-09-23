@@ -265,6 +265,20 @@ export interface CustomerCommissionTag {
   sort_order: number
 }
 
+export interface CustomerCustomOrderCommissionRate {
+  /** 达到此累计定制订单数后适用；取不超过实际数量的最高门槛。 */
+  minimum_custom_order_count: number
+  /** 产品提点（百分数，例如 5 表示 5%）。 */
+  product_commission_rate: number
+}
+
+export type BusinessOrderCommissionRateSource =
+  | 'override'
+  | 'customer_tag'
+  | 'custom_order_count'
+  | 'shipping_category'
+  | 'none'
+
 export interface BusinessOrderCommissionRow {
   order_id: string
   item_id: string
@@ -292,12 +306,16 @@ export interface BusinessOrderCommissionRow {
   product_received_amount: number
   currency: CurrencyCode
   order_total_amount: number
-  /** 产品提点（百分数，优先级：手动逐行覆盖 > 客户标记 > 发货分类默认 > 0）。 */
+  /** 产品提点（百分数，优先级：手动逐行覆盖 > 客户标记 > 定制订单数 > 发货分类默认 > 0）。 */
   product_commission_rate: number
+  /** 实际生效的产品提点来源。 */
+  product_commission_rate_source: BusinessOrderCommissionRateSource
   /** 该行是否单独设置过产品提点（覆盖）。 */
   product_commission_rate_overridden: boolean
   /** 该行发货分类的默认产品提点（百分数），无默认时为 null。 */
   category_default_rate: number | null
+  /** 按定制订单数匹配到的提点（百分数），未命中时为 null。 */
+  custom_order_count_rate: number | null
   /** 产品提成 = 产品实收金额 × 产品提点% ÷ 100。 */
   product_commission_amount: number
   /** 运费实收金额（订单级）。 */

@@ -68,6 +68,40 @@ export type BusinessOrderItemCommissionInput = z.infer<typeof businessOrderItemC
 export type BusinessOrderCommissionInput = z.infer<typeof businessOrderCommissionSchema>
 export type CommissionCategoryRateInput = z.infer<typeof commissionCategoryRateSchema>
 
+/** 按客户累计定制订单数设置产品提点门槛。 */
+export const customerCustomOrderCommissionRateSchema = z.object({
+  minimum_custom_order_count: z.coerce
+    .number()
+    .int('定制单数必须是整数')
+    .min(0, '定制单数不能为负')
+    .max(1000000, '定制单数超出允许范围'),
+  product_commission_rate: z.preprocess(
+    (value) => (value === '' || value === null || value === undefined ? 0 : Number(value)),
+    percentRate,
+  ),
+})
+
+export const customerCustomOrderCommissionRatesSchema = z
+  .array(customerCustomOrderCommissionRateSchema)
+  .max(50, '规则数量不能超过 50 个')
+  .superRefine((rates, ctx) => {
+    const seen = new Set<number>()
+    rates.forEach((rate, index) => {
+      if (seen.has(rate.minimum_custom_order_count)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '同一定制单数只能设置一条规则',
+          path: [index, 'minimum_custom_order_count'],
+        })
+      }
+      seen.add(rate.minimum_custom_order_count)
+    })
+  })
+
+export type CustomerCustomOrderCommissionRateInput = z.infer<
+  typeof customerCustomOrderCommissionRateSchema
+>
+
 /** 提成结清提交：财务选择一组产品行并指定归属年月。 */
 export const businessOrderCommissionClearanceSubmitSchema = z.object({
   business_order_item_ids: z

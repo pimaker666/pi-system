@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
-import { CheckCircle2, Plus, Save, SlidersHorizontal, Tag, Trash2 } from 'lucide-react'
+import { CheckCircle2, ListOrdered, Plus, Save, SlidersHorizontal, Tag, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +33,7 @@ import {
   saveBusinessOrderItemCommission,
   saveCommissionCategoryRates,
   saveCustomerCommissionTags,
+  saveCustomerCustomOrderCommissionRates,
   submitBusinessOrderCommissionClearance,
 } from '@/lib/actions/commission'
 import {
@@ -48,6 +49,7 @@ import type {
   BusinessOrderCommissionRow,
   CommissionCategoryRate,
   CustomerCommissionTag,
+  CustomerCustomOrderCommissionRate,
   DailyOrderShippingCategory,
   DailyOrderShop,
   DailyOrderShopGroup,
@@ -127,7 +129,13 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
   }
 
   const placeholder =
-    row.category_default_rate != null ? `默认 ${row.category_default_rate}` : '未设置'
+    row.product_commission_rate_source === 'customer_tag'
+      ? `客户标记 ${row.product_commission_rate}`
+      : row.product_commission_rate_source === 'custom_order_count'
+        ? `定制单数 ${row.product_commission_rate}`
+        : row.product_commission_rate_source === 'shipping_category'
+          ? `分类默认 ${row.product_commission_rate}`
+          : '未设置'
 
   if (readOnly) {
     return (
@@ -645,6 +653,156 @@ function CustomerTagsDialog({ customerTags }: { customerTags: CustomerCommission
   )
 }
 
+interface CustomOrderRateDraft {
+  key: string
+  minimum: string
+  rate: string
+}
+
+function CustomOrderCountRatesDialog({
+  rates,
+}: {
+  rates: CustomerCustomOrderCommissionRate[]
+}) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const [pending, startTransition] = useTransition()
+  const [drafts, setDrafts] = useState<CustomOrderRateDraft[]>([])
+
+  function reset() {
+    setDrafts(
+      rates.map((rate) => ({
+        key: nextTagKey(),
+        minimum: String(rate.minimum_custom_order_count),
+        rate: String(rate.product_commission_rate),
+      })),
+    )
+  }
+
+  function update(key: string, patch: Partial<CustomOrderRateDraft>) {
+    setDrafts((previous) => previous.map((row) => (row.key === key ? { ...row, ...patch } : row)))
+  }
+
+  function save() {
+    const seen = new Set<number>()
+    const nextRates: Array<{ minimum_custom_order_count: number; product_commission_rate: number }> = []
+    for (const row of drafts) {
+      const minimum = Number(row.minimum.trim())
+      const rate = Number(row.rate.trim())
+      if (!Number.isInteger(minimum) || minimum < 0) {
+        toast.error('定制单数必须是非负整数')
+        return
+      }
+      if (seen.has(minimum)) {
+        toast.error('同一定制单数只能设置一条规则')
+        return
+      }
+      if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+        toast.error('提点必须是 0~100 的数字')
+        return
+      }
+      seen.add(minimum)
+      nextRates.push({ minimum_custom_order_count: minimum, product_commission_rate: rate })
+    }
+    startTransition(async () => {
+      const result = await saveCustomerCustomOrderCommissionRates({ rates: nextRates })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '定制单数提点保存失败')
+        return
+      }
+      toast.success('定制单数提点已保存')
+      setOpen(false)
+      router.refresh()
+    })
+  }
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => {
+          reset()
+          setOpen(true)
+        }}
+      >
+        <ListOrdered className="mr-1.5 h-4 w-4" />
+        按定制单数设置提点
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>按定制单数设置产品提点</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              客户累计定制订单数达到门槛后，按不超过实际单数的最高门槛套用。优先级低于客户标记，高于发货分类默认；产品行单独设置仍优先。
+            </p>
+            <div className="space-y-2">
+              {drafts.map((row) => (
+                <div key={row.key} className="flex items-center gap-2">
+                  <Input
+                    value={row.minimum}
+                    type="number"
+                    min={0}
+                    step={1}
+                    placeholder="定制单数"
+                    aria-label="最低定制单数"
+                    onChange={(event) => update(row.key, { minimum: event.target.value })}
+                    className="h-9 flex-1"
+                  />
+                  <span className="text-sm text-muted-foreground">单及以上</span>
+                  <div className="relative w-28 shrink-0">
+                    <Input
+                      value={row.rate}
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.0001"
+                      placeholder="0"
+                      aria-label="产品提点"
+                      onChange={(event) => update(row.key, { rate: event.target.value })}
+                      className="h-9 pr-7"
+                    />
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 text-destructive"
+                    onClick={() => setDrafts((previous) => previous.filter((draft) => draft.key !== row.key))}
+                    aria-label="删除该规则"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              {drafts.length === 0 && (
+                <p className="py-2 text-center text-sm text-muted-foreground">暂无规则，点击下方按钮添加</p>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setDrafts((previous) => [...previous, { key: nextTagKey(), minimum: '', rate: '' }])}
+            >
+              <Plus className="mr-1.5 h-4 w-4" />
+              添加规则
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>取消</Button>
+            <Button type="button" disabled={pending} onClick={save}>保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 function CustomerTagsLegend({ customerTags }: { customerTags: CustomerCommissionTag[] }) {
   if (customerTags.length === 0) return null
   return (
@@ -670,6 +828,7 @@ export interface CommissionManagerProps {
   filters: BusinessOrderCommissionFilters
   categoryRates: CommissionCategoryRate[]
   customerTags: CustomerCommissionTag[]
+  customOrderRates: CustomerCustomOrderCommissionRate[]
   canManageCategoryRates: boolean
   isAdmin: boolean
   actor: Profile
@@ -686,6 +845,7 @@ export function CommissionManager({
   filters,
   categoryRates,
   customerTags,
+  customOrderRates,
   canManageCategoryRates,
   isAdmin,
   actor,
@@ -849,10 +1009,11 @@ export function CommissionManager({
         <p className="text-sm text-muted-foreground">
           已关联客户的业务订单自动进入本页。产品提成 = 产品实收金额 × 产品提点%；
           运费利润 = 运费实收 − 运费成本；运费提成 = 运费利润 × 运费提点%。
-          产品提点优先级：手动逐行 &gt; 客户标记 &gt; 发货分类默认。
+          产品提点优先级：手动逐行 &gt; 客户标记 &gt; 定制单数 &gt; 发货分类默认。
         </p>
         <div className="flex flex-wrap gap-2">
           {isAdmin && <CustomerTagsDialog customerTags={customerTags} />}
+          {canManageCategoryRates && <CustomOrderCountRatesDialog rates={customOrderRates} />}
           {canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}
         </div>
       </div>
@@ -947,12 +1108,12 @@ export function CommissionManager({
         </div>
       </form>
 
-      <div className="overflow-x-auto rounded-md border">
+      <div className="max-h-[calc(100vh-2rem)] overflow-auto rounded-md border">
         <Table className="min-w-[2700px]">
-          <TableHeader>
+          <TableHeader className="sticky top-0 z-20 bg-background shadow-sm">
             <TableRow>
               {!isSalespersonView && (
-                <TableHead className="w-12">
+                <TableHead className="w-12 bg-background">
                   {selectableRows.length > 0 && (
                     <input
                       type="checkbox"
@@ -964,7 +1125,7 @@ export function CommissionManager({
                 </TableHead>
               )}
               {BUSINESS_ORDER_COMMISSION_COLUMNS.map((label) => (
-                <TableHead key={label}>{label}</TableHead>
+                <TableHead key={label} className="bg-background">{label}</TableHead>
               ))}
             </TableRow>
           </TableHeader>

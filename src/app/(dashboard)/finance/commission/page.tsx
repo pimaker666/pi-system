@@ -40,6 +40,7 @@ export default async function FinanceCommissionPage({
         filters={filters}
         categoryRates={commissions.categoryRates}
         customerTags={commissions.customerTags}
+        customOrderRates={commissions.customOrderRates}
         canManageCategoryRates={canManageCategoryRates}
         isAdmin={isAdmin}
         options={options}

@@ -18,6 +18,7 @@ import {
   businessOrderItemCommissionSchema,
   commissionCategoryRateSchema,
   customerCommissionTagsSchema,
+  customerCustomOrderCommissionRatesSchema,
 } from '@/schemas/business-order-commission'
 import type { ActionResult } from './products'
 
@@ -158,6 +159,35 @@ export async function saveCommissionCategoryRates(input: {
     .from('finance_commission_category_rates')
     .upsert(rows, { onConflict: 'category' })
   if (error) return { ok: false, error: error.message }
+
+  revalidateCommission()
+  return { ok: true }
+}
+
+const customOrderRatesInput = z.object({ rates: customerCustomOrderCommissionRatesSchema })
+
+export async function saveCustomerCustomOrderCommissionRates(input: {
+  rates: Array<{ minimum_custom_order_count: number; product_commission_rate: number }>
+}): Promise<ActionResult> {
+  const profile = await requireFinanceAccess()
+  const parsed = customOrderRatesInput.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const { error: deleteError } = await supabase
+    .from('finance_customer_custom_order_commission_rates')
+    .delete()
+    .gte('minimum_custom_order_count', 0)
+  if (deleteError) return { ok: false, error: deleteError.message }
+
+  if (parsed.data.rates.length > 0) {
+    const { error } = await supabase.from('finance_customer_custom_order_commission_rates').insert(
+      parsed.data.rates.map((rate) => ({ ...rate, updated_by: profile.id })),
+    )
+    if (error) return { ok: false, error: error.message }
+  }
 
   revalidateCommission()
   return { ok: true }
