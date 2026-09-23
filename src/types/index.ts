@@ -266,8 +266,8 @@ export interface CustomerCommissionTag {
 }
 
 export interface CustomerCustomOrderCommissionRate {
-  /** 达到此累计定制订单数后适用；取不超过实际数量的最高门槛。 */
-  minimum_custom_order_count: number
+  /** 累计定制订单数不超过此值时适用；取满足条件的最低上限。 */
+  maximum_custom_order_count: number
   /** 产品提点（百分数，例如 5 表示 5%）。 */
   product_commission_rate: number
 }

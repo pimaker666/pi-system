@@ -167,7 +167,7 @@ export async function saveCommissionCategoryRates(input: {
 const customOrderRatesInput = z.object({ rates: customerCustomOrderCommissionRatesSchema })
 
 export async function saveCustomerCustomOrderCommissionRates(input: {
-  rates: Array<{ minimum_custom_order_count: number; product_commission_rate: number }>
+  rates: Array<{ maximum_custom_order_count: number; product_commission_rate: number }>
 }): Promise<ActionResult> {
   const profile = await requireFinanceAccess()
   const parsed = customOrderRatesInput.safeParse(input)
@@ -179,7 +179,7 @@ export async function saveCustomerCustomOrderCommissionRates(input: {
   const { error: deleteError } = await supabase
     .from('finance_customer_custom_order_commission_rates')
     .delete()
-    .gte('minimum_custom_order_count', 0)
+    .gte('maximum_custom_order_count', 0)
   if (deleteError) return { ok: false, error: deleteError.message }
 
   if (parsed.data.rates.length > 0) {

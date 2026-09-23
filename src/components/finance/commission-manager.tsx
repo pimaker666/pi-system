@@ -655,7 +655,7 @@ function CustomerTagsDialog({ customerTags }: { customerTags: CustomerCommission
 
 interface CustomOrderRateDraft {
   key: string
-  minimum: string
+  maximum: string
   rate: string
 }
 
@@ -673,7 +673,7 @@ function CustomOrderCountRatesDialog({
     setDrafts(
       rates.map((rate) => ({
         key: nextTagKey(),
-        minimum: String(rate.minimum_custom_order_count),
+        maximum: String(rate.maximum_custom_order_count),
         rate: String(rate.product_commission_rate),
       })),
     )
@@ -685,15 +685,15 @@ function CustomOrderCountRatesDialog({
 
   function save() {
     const seen = new Set<number>()
-    const nextRates: Array<{ minimum_custom_order_count: number; product_commission_rate: number }> = []
+    const nextRates: Array<{ maximum_custom_order_count: number; product_commission_rate: number }> = []
     for (const row of drafts) {
-      const minimum = Number(row.minimum.trim())
+      const maximum = Number(row.maximum.trim())
       const rate = Number(row.rate.trim())
-      if (!Number.isInteger(minimum) || minimum < 0) {
+      if (!Number.isInteger(maximum) || maximum < 0) {
         toast.error('定制单数必须是非负整数')
         return
       }
-      if (seen.has(minimum)) {
+      if (seen.has(maximum)) {
         toast.error('同一定制单数只能设置一条规则')
         return
       }
@@ -701,8 +701,8 @@ function CustomOrderCountRatesDialog({
         toast.error('提点必须是 0~100 的数字')
         return
       }
-      seen.add(minimum)
-      nextRates.push({ minimum_custom_order_count: minimum, product_commission_rate: rate })
+      seen.add(maximum)
+      nextRates.push({ maximum_custom_order_count: maximum, product_commission_rate: rate })
     }
     startTransition(async () => {
       const result = await saveCustomerCustomOrderCommissionRates({ rates: nextRates })
@@ -737,22 +737,22 @@ function CustomOrderCountRatesDialog({
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              客户累计定制订单数达到门槛后，按不超过实际单数的最高门槛套用。优先级低于客户标记，高于发货分类默认；产品行单独设置仍优先。
+              客户累计定制订单数不超过规则单数时，按满足条件的最低上限套用。优先级低于客户标记，高于发货分类默认；产品行单独设置仍优先。
             </p>
             <div className="space-y-2">
               {drafts.map((row) => (
                 <div key={row.key} className="flex items-center gap-2">
                   <Input
-                    value={row.minimum}
+                    value={row.maximum}
                     type="number"
                     min={0}
                     step={1}
                     placeholder="定制单数"
-                    aria-label="最低定制单数"
-                    onChange={(event) => update(row.key, { minimum: event.target.value })}
+                    aria-label="最高定制单数"
+                    onChange={(event) => update(row.key, { maximum: event.target.value })}
                     className="h-9 flex-1"
                   />
-                  <span className="text-sm text-muted-foreground">单及以上</span>
+                  <span className="text-sm text-muted-foreground">单及以下</span>
                   <div className="relative w-28 shrink-0">
                     <Input
                       value={row.rate}
@@ -787,7 +787,7 @@ function CustomOrderCountRatesDialog({
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => setDrafts((previous) => [...previous, { key: nextTagKey(), minimum: '', rate: '' }])}
+              onClick={() => setDrafts((previous) => [...previous, { key: nextTagKey(), maximum: '', rate: '' }])}
             >
               <Plus className="mr-1.5 h-4 w-4" />
               添加规则
@@ -1110,10 +1110,10 @@ export function CommissionManager({
 
       <div className="max-h-[calc(100vh-2rem)] overflow-auto rounded-md border">
         <Table className="min-w-[2700px]">
-          <TableHeader className="sticky top-0 z-20 bg-background shadow-sm">
+          <TableHeader>
             <TableRow>
               {!isSalespersonView && (
-                <TableHead className="w-12 bg-background">
+                <TableHead className="sticky top-0 z-20 w-12 bg-background shadow-sm">
                   {selectableRows.length > 0 && (
                     <input
                       type="checkbox"
@@ -1125,7 +1125,7 @@ export function CommissionManager({
                 </TableHead>
               )}
               {BUSINESS_ORDER_COMMISSION_COLUMNS.map((label) => (
-                <TableHead key={label} className="bg-background">{label}</TableHead>
+                <TableHead key={label} className="sticky top-0 z-20 bg-background shadow-sm">{label}</TableHead>
               ))}
             </TableRow>
           </TableHeader>

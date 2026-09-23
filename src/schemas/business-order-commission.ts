@@ -68,9 +68,9 @@ export type BusinessOrderItemCommissionInput = z.infer<typeof businessOrderItemC
 export type BusinessOrderCommissionInput = z.infer<typeof businessOrderCommissionSchema>
 export type CommissionCategoryRateInput = z.infer<typeof commissionCategoryRateSchema>
 
-/** 按客户累计定制订单数设置产品提点门槛。 */
+/** 按客户累计定制订单数设置产品提点上限。 */
 export const customerCustomOrderCommissionRateSchema = z.object({
-  minimum_custom_order_count: z.coerce
+  maximum_custom_order_count: z.coerce
     .number()
     .int('定制单数必须是整数')
     .min(0, '定制单数不能为负')
@@ -87,14 +87,14 @@ export const customerCustomOrderCommissionRatesSchema = z
   .superRefine((rates, ctx) => {
     const seen = new Set<number>()
     rates.forEach((rate, index) => {
-      if (seen.has(rate.minimum_custom_order_count)) {
+      if (seen.has(rate.maximum_custom_order_count)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: '同一定制单数只能设置一条规则',
-          path: [index, 'minimum_custom_order_count'],
+          path: [index, 'maximum_custom_order_count'],
         })
       }
-      seen.add(rate.minimum_custom_order_count)
+      seen.add(rate.maximum_custom_order_count)
     })
   })
 

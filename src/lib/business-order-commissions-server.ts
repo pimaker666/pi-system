@@ -169,14 +169,14 @@ async function fetchAllCustomerCustomOrderCommissionRates(
 ): Promise<CustomerCustomOrderCommissionRate[]> {
   const { data, error } = await supabase
     .from('finance_customer_custom_order_commission_rates')
-    .select('minimum_custom_order_count, product_commission_rate')
-    .order('minimum_custom_order_count', { ascending: true })
+    .select('maximum_custom_order_count, product_commission_rate')
+    .order('maximum_custom_order_count', { ascending: true })
   if (error) throw new Error(`定制订单数提点读取失败：${error.message}`)
   return ((data ?? []) as Array<{
-    minimum_custom_order_count: number | string
+    maximum_custom_order_count: number | string
     product_commission_rate: number | string
   }>).map((row) => ({
-    minimum_custom_order_count: Number(row.minimum_custom_order_count),
+    maximum_custom_order_count: Number(row.maximum_custom_order_count),
     product_commission_rate: Number(row.product_commission_rate),
   }))
 }
@@ -377,9 +377,8 @@ export async function fetchBusinessOrderCommissions(
     const tag = tagColor ? tagMap.get(tagColor.toLowerCase()) ?? null : null
     const tagRate = tag ? tag.product_commission_rate : null
     const customOrderCount = order.customer_id ? customOrderCounts.get(order.customer_id) ?? 0 : 0
-    const customOrderRate = [...customOrderRates]
-      .reverse()
-      .find((rate) => rate.minimum_custom_order_count <= customOrderCount)?.product_commission_rate ?? null
+    const customOrderRate = customOrderRates
+      .find((rate) => rate.maximum_custom_order_count >= customOrderCount)?.product_commission_rate ?? null
 
     const mergedItems = mergeBusinessDailyItems(order)
     const orderRowSpan = mergedItems.length
