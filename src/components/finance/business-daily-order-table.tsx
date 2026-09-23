@@ -444,7 +444,7 @@ export function BusinessDailyOrderTable({
                                 onClick={() => openCustomerDialog(order)}
                               >
                                 <UserRoundPlus className="h-3.5 w-3.5" />
-                                {order.customer_id ? '更换客户' : '添加客户'}
+                                {order.customer_id ? '更换客户' : '绑定客户'}
                               </Button>
                             )}
                           </div>
@@ -609,7 +609,7 @@ export function BusinessDailyOrderTable({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{customerOrder?.customer_id ? '更换订单客户' : '添加订单客户'}</DialogTitle>
+            <DialogTitle>{customerOrder?.customer_id ? '更换订单客户' : '绑定订单客户'}</DialogTitle>
             <DialogDescription>
               保存后立即同步订单与客户库关联，不改变订单审批状态。
             </DialogDescription>

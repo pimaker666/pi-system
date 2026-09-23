@@ -186,6 +186,11 @@ export default async function DailyOrdersPage({
           <option value="settled">已收齐</option>
           <option value="unsettled">未收齐</option>
         </select>
+        <select name="customerBindingStatus" defaultValue={filters.customerBindingStatus ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
+          <option value="">全部客户状态</option>
+          <option value="bound">已绑定客户</option>
+          <option value="unbound">未绑定客户</option>
+        </select>
         <select name="settlementStatus" defaultValue={filters.settlementStatus ?? 'unsettled'} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="all">全部结算状态</option>
           <option value="settled">已结算</option>

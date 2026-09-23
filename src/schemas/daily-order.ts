@@ -49,6 +49,7 @@ export const dailyOrderSchema = z.object({
 export const dailyOrderCompletionStatuses = ['completed', 'incomplete'] as const
 export const dailyOrderBalanceStatuses = ['settled', 'unsettled'] as const
 export const dailyOrderSettlementStatuses = ['settled', 'unsettled', 'all'] as const
+export const dailyOrderCustomerBindingStatuses = ['bound', 'unbound'] as const
 
 export const dailyOrderFilterSchema = z.object({
   q: z.string().trim().max(200).optional().default(''),
@@ -62,6 +63,7 @@ export const dailyOrderFilterSchema = z.object({
   completion: z.enum(dailyOrderCompletionStatuses).optional(),
   balanceStatus: z.enum(dailyOrderBalanceStatuses).optional(),
   settlementStatus: z.enum(dailyOrderSettlementStatuses).optional(),
+  customerBindingStatus: z.enum(dailyOrderCustomerBindingStatuses).optional(),
 })
 
 export const dailyOrderShopSchema = z.object({
