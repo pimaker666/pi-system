@@ -1021,7 +1021,7 @@ export function CommissionManager({
         <p className="text-sm text-muted-foreground">
           已收齐且已发货的产品行自动进入本页；未关联客户的订单仅供补充客户信息，不能计算或结清提成。
           产品提成 = 产品实收金额 × 产品提点%；运费利润 = 运费实收 − 运费成本；运费提成 = 运费利润 × 运费提点%。
-          产品提点优先级：手动逐行 &gt; 客户标记 &gt; 定制单数 &gt; 发货分类默认。
+          产品提点优先级：手动逐行 &gt; 客户标记 &gt; 定制单数（仅定制发货分类）&gt; 发货分类默认。
         </p>
         <div className="flex flex-wrap gap-2">
           {!readOnly && isAdmin && <CustomerTagsDialog customerTags={customerTags} />}
