@@ -12,7 +12,8 @@ const financeItems = [
   { href: '/finance/costs', label: '订单成本', financeOnly: true },
   { href: '/finance/settled-orders', label: '已结算订单', financeOnly: true },
   { href: '/finance/performance', label: '业务业绩', financeOnly: false },
-  { href: '/finance/commission', label: '业务提成', financeOnly: false },
+  { href: '/finance/commission', label: '提成计算', financeOnly: false },
+  { href: '/finance/my-commission', label: '我的提成', salesOnly: true },
   { href: '/finance/commission/settled', label: '已结清订单', financeOnly: true },
   { href: '/finance/profit', label: '利润核算', financeOnly: true },
 ] as const
@@ -30,6 +31,8 @@ export function FinanceNav({
   const items = financeItems.filter((item) => {
     if ('supervisorOnly' in item && item.supervisorOnly)
       return role === 'supervisor'
+    if ('salesOnly' in item && item.salesOnly)
+      return role === 'sales' || role === 'supervisor'
     if ('financeOnly' in item && item.financeOnly) return canManageFinance
     return true
   })
