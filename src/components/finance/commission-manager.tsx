@@ -239,7 +239,11 @@ function FreightEditor({
   const unchanged = costDraft.trim() === initialCost
 
   const cost = costDraft.trim() === '' ? 0 : Number(costDraft)
-  const freightRate = cost > 0 ? defaultFreightCommissionRate : 0
+  const freightRate = cost > 0
+    ? readOnly
+      ? row.freight_commission_rate
+      : defaultFreightCommissionRate
+    : 0
   const rateToCny = settlementExchangeRate(row, exchangeRate)
   const freightReceived = rateToCny == null ? null : round4(row.freight_received_amount * rateToCny)
   const profit = freightReceived == null ? null : round4(freightReceived - cost)

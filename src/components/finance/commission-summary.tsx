@@ -9,6 +9,10 @@ interface CommissionSummaryTotal {
   missingRateCount: number
 }
 
+function round4(value: number) {
+  return Math.round(value * 10000) / 10000
+}
+
 function summarize(rows: BusinessOrderCommissionRow[]) {
   const totals = new Map<string, CommissionSummaryTotal>()
   for (const row of rows) {
@@ -26,7 +30,10 @@ function summarize(rows: BusinessOrderCommissionRow[]) {
       total.missingRateCount += 1
     } else {
       total.productAmount += row.product_commission_amount * rate
-      if (row.is_order_lead_row) total.freightAmount += row.freight_commission_amount * rate
+      if (row.is_order_lead_row) {
+        const freightProfit = row.freight_received_amount * rate - row.freight_cost
+        total.freightAmount += round4((freightProfit * row.freight_commission_rate) / 100)
+      }
     }
     totals.set(key, total)
   }
