@@ -182,6 +182,17 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
   }
 
   function handleSubmit(formData: FormData) {
+    if (!customer) {
+      if (!form.country.trim()) {
+        toast.error('请填写国家/地区')
+        return
+      }
+      if (!form.email.trim() && !form.phone.trim()) {
+        toast.error('邮箱和电话至少填写一项')
+        return
+      }
+    }
+
     formData.set('group_id', groupId === NO_GROUP ? '' : groupId)
     startTransition(async () => {
       const result = customer
@@ -191,7 +202,8 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
         toast.success(customer ? '客户已更新' : '客户已创建')
         onSuccess?.(result.id, result.customer)
       } else {
-        toast.error(result.error ?? '保存失败')
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '保存失败')
       }
     })
   }
@@ -281,7 +293,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
         </div>
         <div className="space-y-2">
           <Label htmlFor="country" className="flex items-center gap-1.5">
-            国家/地区
+            国家/地区 {!customer && '*'}
             <CountryFlag country={form.country} />
           </Label>
           <Input
@@ -289,13 +301,14 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
             name="country"
             value={form.country}
             onChange={(e) => update('country', e.target.value)}
+            required={!customer}
           />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label htmlFor="email">邮箱</Label>
+          <Label htmlFor="email">邮箱{!customer && '（与电话至少填一项）'}</Label>
           <Input
             id="email"
             name="email"
@@ -305,7 +318,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="phone">电话</Label>
+          <Label htmlFor="phone">电话{!customer && '（与邮箱至少填一项）'}</Label>
           <Input
             id="phone"
             name="phone"

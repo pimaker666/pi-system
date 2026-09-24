@@ -15,6 +15,20 @@ export const customerSchema = z.object({
   group_id: z.string().uuid().optional().nullable().or(z.literal('')),
 })
 
+export const newCustomerSchema = customerSchema
+  .extend({
+    country: z.string().trim().min(1, '国家/地区不能为空').max(100),
+  })
+  .superRefine((data, context) => {
+    if (!data.email && !data.phone) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: '邮箱和电话至少填写一项',
+        path: ['email'],
+      })
+    }
+  })
+
 export const customerGroupSchema = z.object({
   name: z.string().trim().min(1, '分组名称不能为空').max(100),
   description: z.string().trim().max(500).optional().or(z.literal('')),

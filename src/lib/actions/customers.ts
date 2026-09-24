@@ -4,12 +4,12 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin, requireProfile } from '@/lib/auth'
 import { formatCountryName } from '@/lib/country-flags'
-import { customerSchema } from '@/schemas/customer'
+import { customerSchema, newCustomerSchema } from '@/schemas/customer'
 import type { Customer } from '@/types'
 import type { ActionResult } from './products'
 
-function parseCustomer(formData: FormData) {
-  return customerSchema.safeParse({
+function customerFormValues(formData: FormData) {
+  return {
     name: formData.get('name'),
     company: formData.get('company') || '',
     email: formData.get('email') || '',
@@ -22,7 +22,15 @@ function parseCustomer(formData: FormData) {
     contact_person: formData.get('contact_person') || '',
     remarks: formData.get('remarks') || '',
     group_id: formData.get('group_id') || '',
-  })
+  }
+}
+
+function parseCustomer(formData: FormData) {
+  return customerSchema.safeParse(customerFormValues(formData))
+}
+
+function parseNewCustomer(formData: FormData) {
+  return newCustomerSchema.safeParse(customerFormValues(formData))
 }
 
 function normalizeCountry(country: string) {
@@ -51,7 +59,7 @@ export async function createCustomer(
   formData: FormData,
 ): Promise<ActionResult & { id?: string; customer?: Customer }> {
   const profile = await requireProfile()
-  const parsed = parseCustomer(formData)
+  const parsed = parseNewCustomer(formData)
   if (!parsed.success) {
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
   }
