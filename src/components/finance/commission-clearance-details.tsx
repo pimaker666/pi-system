@@ -168,7 +168,7 @@ export function CommissionClearanceDetails({ rows }: { rows: BusinessOrderCommis
             </Button>
           </div>
 
-          <Table className="min-w-[1220px]" containerClassName="max-h-[60vh]">
+          <Table className="min-w-[1220px]">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-12">

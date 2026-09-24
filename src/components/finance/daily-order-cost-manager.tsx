@@ -387,7 +387,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
 
       <Table
         ref={tableRef}
-        containerClassName="max-h-[70vh] overflow-auto rounded-md border"
+        containerClassName="rounded-md border"
         className="min-w-[3000px]"
       >
         <TableHeader>

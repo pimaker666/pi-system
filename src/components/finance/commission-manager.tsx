@@ -1373,7 +1373,6 @@ export function CommissionManager({
       <div className="overflow-hidden rounded-md border">
         <Table
           className="w-full min-w-[1300px] table-fixed text-sm [&_th]:h-9 [&_th]:whitespace-normal [&_th]:leading-4 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-1.5"
-          containerClassName="max-h-[calc(100vh-20rem)]"
         >
           <TableHeader>
             <TableRow className="bg-background">
