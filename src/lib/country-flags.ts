@@ -65,6 +65,8 @@ export function resolveCountryCode(raw: string | null | undefined): string | nul
   if (!raw) return null
   const trimmed = raw.trim()
   if (!trimmed) return null
+  const iso2 = trimmed.toLowerCase()
+  if (Object.values(COUNTRY_ISO2).includes(iso2)) return iso2
   if (COUNTRY_ISO2[trimmed]) return COUNTRY_ISO2[trimmed]
   const canon = canonicalCountry(trimmed)
   if (canon && COUNTRY_ISO2[canon]) return COUNTRY_ISO2[canon]

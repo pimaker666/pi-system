@@ -353,6 +353,50 @@ function MultiSelect({
   )
 }
 
+const OPTIONAL_COMMISSION_COLUMNS = [
+  ['order_number', '订单号'],
+  ['order_date', '订单日期'],
+  ['shipping_date', '发货日期'],
+  ['shop', '店铺'],
+  ['shop_group', '店铺分组'],
+  ['salesperson', '业务员'],
+  ['custom_order_count', '定制订单数'],
+  ['quantity', '数量'],
+  ['unit_price', '单价'],
+] as const
+
+type OptionalCommissionColumn = (typeof OPTIONAL_COMMISSION_COLUMNS)[number][0]
+
+function DisplayColumnSelector({
+  visibleColumns,
+  onToggle,
+}: {
+  visibleColumns: Set<OptionalCommissionColumn>
+  onToggle: (column: OptionalCommissionColumn, checked: boolean) => void
+}) {
+  return (
+    <details className="group relative">
+      <summary className="flex h-10 cursor-pointer items-center justify-between gap-2 rounded-md border bg-background px-3 text-sm [&::-webkit-details-marker]:hidden">
+        <span>显示列{visibleColumns.size ? ` (${visibleColumns.size})` : ''}</span>
+        <span aria-hidden className="text-xs text-muted-foreground">▼</span>
+      </summary>
+      <div className="absolute right-0 z-50 mt-1 w-48 rounded-md border bg-background p-2 shadow-md">
+        {OPTIONAL_COMMISSION_COLUMNS.map(([column, label]) => (
+          <label key={column} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+            <input
+              type="checkbox"
+              checked={visibleColumns.has(column)}
+              onChange={(event) => onToggle(column, event.target.checked)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+    </details>
+  )
+}
+
 const CATEGORY_ORDER: DailyOrderShippingCategory[] = ['stock', 'sample', 'custom', 'purchase']
 
 function CategoryRatesDialog({
@@ -932,6 +976,7 @@ export function CommissionManager({
   const [rejectReason, setRejectReason] = useState('')
   const [exchangeRate, setExchangeRate] = useState('')
   const [exchangeRatePending, startExchangeRateTransition] = useTransition()
+  const [visibleColumns, setVisibleColumns] = useState<Set<OptionalCommissionColumn>>(new Set())
 
   const isSalespersonView = actor.role === 'sales' || actor.role === 'supervisor'
   const currentExchangeRate = useMemo(() => {
@@ -1133,6 +1178,15 @@ export function CommissionManager({
     })
   }
 
+  function toggleVisibleColumn(column: OptionalCommissionColumn, checked: boolean) {
+    setVisibleColumns((previous) => {
+      const next = new Set(previous)
+      if (checked) next.add(column)
+      else next.delete(column)
+      return next
+    })
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1249,6 +1303,9 @@ export function CommissionManager({
           options={options.groups.map((group) => ({ id: group.id, name: group.name }))}
           selected={filters.shopGroups}
         />
+        <div className="xl:col-span-2">
+          <DisplayColumnSelector visibleColumns={visibleColumns} onToggle={toggleVisibleColumn} />
+        </div>
         <div className="flex flex-wrap gap-2 xl:col-span-9">
           <Button type="submit">筛选</Button>
           <Button asChild type="button" variant="outline">
@@ -1279,6 +1336,11 @@ export function CommissionManager({
                   )}
                 </TableHead>
               )}
+              {OPTIONAL_COMMISSION_COLUMNS.filter(([column]) => visibleColumns.has(column)).map(([, label]) => (
+                <TableHead key={label} className="sticky top-0 z-20 bg-background shadow-sm">
+                  {label}
+                </TableHead>
+              ))}
               {BUSINESS_ORDER_COMMISSION_COLUMNS.map((label) => (
                 <TableHead
                   key={label}
@@ -1329,24 +1391,49 @@ export function CommissionManager({
                         />
                       </TableCell>
                     )}
+                    {isFirstRow && visibleColumns.has('order_number') && (
+                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{displayOrderNumber}</TableCell>
+                    )}
+                    {isFirstRow && visibleColumns.has('order_date') && (
+                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{row.order_date}</TableCell>
+                    )}
+                    {isFirstRow && visibleColumns.has('shipping_date') && (
+                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{row.shipping_date || '—'}</TableCell>
+                    )}
+                    {isFirstRow && visibleColumns.has('shop') && (
+                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{row.shop_name || '—'}</TableCell>
+                    )}
+                    {isFirstRow && visibleColumns.has('shop_group') && (
+                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{row.shop_group_name || '—'}</TableCell>
+                    )}
+                    {isFirstRow && visibleColumns.has('salesperson') && (
+                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{row.salesperson_name}</TableCell>
+                    )}
+                    {isFirstRow && visibleColumns.has('custom_order_count') && (
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>{row.custom_order_count}</TableCell>
+                    )}
+                    {visibleColumns.has('quantity') && (
+                      <TableCell className="tabular-nums">{quantityText(row.quantity)}</TableCell>
+                    )}
+                    {visibleColumns.has('unit_price') && (
+                      <TableCell className="tabular-nums">{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
+                    )}
                     {isFirstRow && (
-                      <>
-                        <TableCell
-                          rowSpan={rowSpan}
-                          className={mergedCellClassName}
-                          style={{ color: row.customer_tag_color ?? undefined }}
-                          title={row.customer_tag_label ?? undefined}
-                        >
-                          {row.commission_calculable ? (
-                            row.customer_name || '—'
-                          ) : (
-                            <div>
-                              <div>未关联客户</div>
-                              <div className="text-xs text-muted-foreground">补充后可计算提成</div>
-                            </div>
-                          )}
-                        </TableCell>
-                      </>
+                      <TableCell
+                        rowSpan={rowSpan}
+                        className={mergedCellClassName}
+                        style={{ color: row.customer_tag_color ?? undefined }}
+                        title={row.customer_tag_label ?? undefined}
+                      >
+                        {row.commission_calculable ? (
+                          row.customer_name || '—'
+                        ) : (
+                          <div>
+                            <div>未关联客户</div>
+                            <div className="text-xs text-muted-foreground">补充后可计算提成</div>
+                          </div>
+                        )}
+                      </TableCell>
                     )}
 
                     <TableCell>
@@ -1408,7 +1495,7 @@ export function CommissionManager({
             {rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={BUSINESS_ORDER_COMMISSION_COLUMNS.length + (isSalespersonView ? 0 : 1)}
+                  colSpan={BUSINESS_ORDER_COMMISSION_COLUMNS.length + visibleColumns.size + (readOnly ? 0 : 1)}
                   className="py-12 text-center text-muted-foreground"
                 >
                   没有符合筛选条件的订单

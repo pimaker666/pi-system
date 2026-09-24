@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { requireAdmin, requireProfile } from '@/lib/auth'
+import { formatCountryName } from '@/lib/country-flags'
 import { customerSchema } from '@/schemas/customer'
 import type { Customer } from '@/types'
 import type { ActionResult } from './products'
@@ -24,6 +25,11 @@ function parseCustomer(formData: FormData) {
   })
 }
 
+function normalizeCountry(country: string) {
+  const value = country.trim()
+  return value ? formatCountryName(value) : null
+}
+
 function normalize(data: ReturnType<typeof customerSchema.parse>) {
   return {
     name: data.name,
@@ -34,7 +40,7 @@ function normalize(data: ReturnType<typeof customerSchema.parse>) {
     city: data.city || null,
     state: data.state || null,
     postal_code: data.postal_code || null,
-    country: data.country || null,
+    country: normalizeCountry(data.country ?? ''),
     contact_person: data.contact_person || null,
     remarks: data.remarks || null,
     group_id: data.group_id ? data.group_id : null,
@@ -256,7 +262,8 @@ export async function bulkModifyCustomers(
   if (!ids.length) return { ok: false, error: '未选择任何客户' }
 
   const update: Record<string, string> = {}
-  if (patch.country && patch.country.trim()) update.country = patch.country.trim()
+  const country = patch.country ? normalizeCountry(patch.country) : null
+  if (country) update.country = country
   if (patch.company && patch.company.trim()) update.company = patch.company.trim()
   if (patch.contact_person && patch.contact_person.trim())
     update.contact_person = patch.contact_person.trim()
