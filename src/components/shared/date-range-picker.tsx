@@ -91,6 +91,10 @@ export function DateRangePicker({
   const [viewMonth, setViewMonth] = useState(() => parseDate(initialFrom || chinaToday()))
   const [preset, setPreset] = useState<Preset>('custom')
   const months = useMemo(() => [viewMonth, new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1)], [viewMonth])
+  const yearOptions = useMemo(() => {
+    const currentYear = Number(chinaToday().slice(0, 4))
+    return Array.from({ length: 41 }, (_, index) => currentYear - 20 + index)
+  }, [])
 
   function selectPreset(value: Preset) {
     setPreset(value)
@@ -161,9 +165,24 @@ export function DateRangePicker({
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-sm font-medium">
-                {preset === 'year' || preset === 'month' ? `${viewMonth.getFullYear()}年` : `${viewMonth.getFullYear()}年 ${viewMonth.getMonth() + 1}月`}
-              </span>
+              <div className="flex items-center gap-1 text-sm font-medium">
+                <select
+                  aria-label="选择年份"
+                  value={viewMonth.getFullYear()}
+                  onChange={(event) => setViewMonth(new Date(Number(event.target.value), viewMonth.getMonth(), 1))}
+                  className="rounded-md bg-transparent px-2 py-1 outline-none hover:bg-muted focus:ring-2 focus:ring-ring"
+                >
+                  {yearOptions.map((year) => <option key={year} value={year}>{year}年</option>)}
+                </select>
+                <select
+                  aria-label="选择月份"
+                  value={viewMonth.getMonth()}
+                  onChange={(event) => setViewMonth(new Date(viewMonth.getFullYear(), Number(event.target.value), 1))}
+                  className="rounded-md bg-transparent px-2 py-1 outline-none hover:bg-muted focus:ring-2 focus:ring-ring"
+                >
+                  {Array.from({ length: 12 }, (_, month) => <option key={month} value={month}>{month + 1}月</option>)}
+                </select>
+              </div>
               <Button
                 type="button"
                 variant="ghost"
