@@ -60,6 +60,31 @@ import type {
 
 const mergedCellClassName = 'bg-muted/20 align-top'
 
+function commissionColumnClassName(label: string) {
+  switch (label) {
+    case '客户':
+    case '产品实收金额':
+    case '产品提点':
+    case '产品提成':
+    case '运费实收金额':
+    case '运费成本':
+    case '运费利润':
+      return 'w-24 min-w-24'
+    case '发货分类':
+      return 'w-16 min-w-16'
+    case '产品图片':
+      return 'w-12 min-w-12'
+    case '产品名称':
+      return 'w-52 min-w-52'
+    case '运费提成':
+      return 'w-28 min-w-28'
+    case '提成结清状态':
+      return 'w-20 min-w-20'
+    default:
+      return ''
+  }
+}
+
 function quantityText(value: number) {
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 }).format(value)
 }
@@ -159,7 +184,7 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
   }
 
   return (
-    <div className="flex min-w-28 items-center gap-1">
+    <div className="flex w-24 items-center gap-1">
       <Input
         value={draft}
         type="number"
@@ -176,7 +201,7 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
             save()
           }
         }}
-        className="h-7 text-xs"
+        className="h-7 w-16 px-1 text-xs"
       />
       <Button
         type="button"
@@ -251,7 +276,7 @@ function FreightEditor({
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
           {freightReceived == null ? '请填写汇率' : formatDailyMoney(freightReceived, 'CNY')}
         </TableCell>
-        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} w-24 min-w-24 tabular-nums`}>
+        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} w-20 min-w-20 tabular-nums`}>
           {formatDailyMoney(row.freight_cost, 'CNY')}
         </TableCell>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
@@ -269,8 +294,8 @@ function FreightEditor({
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
         {freightReceived == null ? '请填写汇率' : formatDailyMoney(freightReceived, 'CNY')}
       </TableCell>
-      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} w-24 min-w-24`}>
-        <div className="w-24">
+      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} w-20 min-w-20`}>
+        <div className="w-20">
           <Input
             value={costDraft}
             type="number"
@@ -280,7 +305,7 @@ function FreightEditor({
             placeholder="未填写"
             title="运费成本（人民币）；留空按 0 计算"
             onChange={(event) => setCostDraft(event.target.value)}
-            className="h-7 w-24 text-xs"
+            className="h-7 w-20 px-1 text-xs"
           />
         </div>
       </TableCell>
@@ -1316,7 +1341,7 @@ export function CommissionManager({
 
       <div className="overflow-hidden rounded-md border">
         <Table
-          className="w-max min-w-[1800px] text-sm [&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-1.5"
+          className="w-full min-w-[1300px] table-fixed text-sm [&_th]:h-9 [&_th]:whitespace-normal [&_th]:leading-4 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-1.5"
           containerClassName="max-h-[calc(100vh-20rem)]"
         >
           <TableHeader>
@@ -1346,8 +1371,7 @@ export function CommissionManager({
                   key={label}
                   className={cn(
                     'sticky top-0 z-20 bg-background shadow-sm',
-                    label === '产品名称' && 'w-72 min-w-72',
-                    label === '运费成本' && 'w-24 min-w-24',
+                    commissionColumnClassName(label),
                   )}
                 >
                   {label}
@@ -1446,7 +1470,7 @@ export function CommissionManager({
                     <TableCell>
                       <ImagePreview src={row.image_url} alt={row.product_name} size="h-8 w-8" sizes="32px" />
                     </TableCell>
-                    <TableCell className="w-72 min-w-72 max-w-72">
+                    <TableCell className="w-52 min-w-52 max-w-52">
                       <div className="truncate" title={row.product_name}>{row.product_name}</div>
                       {row.product_sku && (
                         <div className="truncate text-xs text-muted-foreground" title={row.product_sku}>

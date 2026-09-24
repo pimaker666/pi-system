@@ -100,16 +100,36 @@ function formatUsd(amount: number) {
   return formatCurrency(amount, 'USD')
 }
 
+function multiDimensionValue(
+  row: BusinessPerformanceMultiDimensionRow,
+  index: 0 | 1 | 2,
+): Option | null {
+  const key = index === 0
+    ? row.dimension_1_key
+    : index === 1
+      ? row.dimension_2_key
+      : row.dimension_3_key
+  const label = index === 0
+    ? row.dimension_1_label
+    : index === 1
+      ? row.dimension_2_label
+      : row.dimension_3_label
+
+  return key === null || label === null ? null : { value: key, label }
+}
+
 function MultiSelect({
   options,
   value,
   onChange,
   placeholder,
+  className,
 }: {
   options: Option[]
   value: string[]
   onChange: (value: string[]) => void
   placeholder: string
+  className?: string
 }) {
   const [open, setOpen] = useState(false)
   const selectedLabels = options
@@ -123,7 +143,7 @@ function MultiSelect({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-between font-normal"
+          className={cn('w-full justify-between font-normal', className)}
         >
           <span className="truncate">
             {selectedLabels.length > 0 ? selectedLabels.join('、') : placeholder}
@@ -266,6 +286,7 @@ export function PerformanceManager({
   )
   const [exchangeRate, setExchangeRate] = useState('')
   const [selectedDimensions, setSelectedDimensions] = useState(multiDimensions)
+  const [selectedDimensionValues, setSelectedDimensionValues] = useState<[string[], string[], string[]]>([[], [], []])
 
   const rate = useMemo(() => {
     const value = Number(exchangeRate)
@@ -303,7 +324,7 @@ export function PerformanceManager({
 
   function navigate(url: string) {
     startTransition(() => {
-      router.push(url)
+      router.push(url, { scroll: false })
     })
   }
 
@@ -334,8 +355,30 @@ export function PerformanceManager({
       else used.add(dimension)
     })
     setSelectedDimensions(next)
+    setSelectedDimensionValues([[], [], []])
     navigate(buildUrl({ dimensions: next }))
   }
+
+  const multiDimensionOptions = useMemo(() => {
+    return ([0, 1, 2] as const).map((index) => {
+      if (!multiDimensions[index]) return []
+      const values = new Map<string, string>()
+      multiDimensionRows.forEach((row) => {
+        const value = multiDimensionValue(row, index)
+        if (value) values.set(value.value, value.label)
+      })
+      return [...values].map(([value, label]) => ({ value, label })).sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
+    })
+  }, [multiDimensionRows, multiDimensions])
+
+  const filteredMultiDimensionRows = useMemo(() => {
+    return multiDimensionRows.filter((row) => {
+      return ([0, 1, 2] as const).every((index) => {
+        const selected = selectedDimensionValues[index]
+        return selected.length === 0 || selected.includes(multiDimensionValue(row, index)?.value ?? '')
+      })
+    })
+  }, [multiDimensionRows, selectedDimensionValues])
 
   const consolidatedOrderTotal = rate
     ? summary.order_total_cny_native + summary.order_total_usd * rate
@@ -760,7 +803,23 @@ export function PerformanceManager({
           <Table className="min-w-[900px]">
             <TableHeader>
               <TableRow>
-                {multiDimensionLabels.map((label) => <TableHead key={label}>{label}</TableHead>)}
+                {multiDimensionLabels.map((label, index) => (
+                  <TableHead key={label} className="min-w-44">
+                    <MultiSelect
+                      options={multiDimensionOptions[index]}
+                      value={selectedDimensionValues[index]}
+                      onChange={(value) => {
+                        setSelectedDimensionValues((current) => {
+                          const next = [...current] as [string[], string[], string[]]
+                          next[index] = value
+                          return next
+                        })
+                      }}
+                      placeholder={`全部${label}`}
+                      className="h-8 bg-background px-2 text-xs"
+                    />
+                  </TableHead>
+                ))}
                 <TableHead className="text-right">订单数</TableHead>
                 <TableHead className="text-right">销售数量</TableHead>
                 <TableHead className="text-right">销售金额（CNY）</TableHead>
@@ -768,7 +827,7 @@ export function PerformanceManager({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {multiDimensionRows.map((row) => (
+              {filteredMultiDimensionRows.map((row) => (
                 <TableRow key={[row.dimension_1_key, row.dimension_2_key, row.dimension_3_key].join('|')}>
                   <TableCell className="font-medium">{row.dimension_1_label}</TableCell>
                   {multiDimensions[1] && <TableCell>{row.dimension_2_label}</TableCell>}
@@ -779,7 +838,7 @@ export function PerformanceManager({
                   <TableCell className="text-right tabular-nums">{formatUsd(row.sales_amount_usd)}</TableCell>
                 </TableRow>
               ))}
-              {multiDimensionRows.length === 0 && (
+              {filteredMultiDimensionRows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={multiDimensionLabels.length + 4} className="py-12 text-center text-muted-foreground">
                     暂无符合筛选条件的数据
