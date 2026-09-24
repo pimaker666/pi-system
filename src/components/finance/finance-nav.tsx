@@ -13,14 +13,14 @@ const financeNavGroups = [
     ],
   },
   {
-    borderClass: 'border-red-400',
+    borderClass: 'bg-red-50',
     items: [
       { href: '/finance/costs', label: '订单成本', financeOnly: true },
       { href: '/finance/settled-orders', label: '已结算订单', financeOnly: true },
     ],
   },
   {
-    borderClass: 'border-sky-500',
+    borderClass: 'bg-sky-50',
     items: [
       { href: '/finance/commission', label: '提成计算', financeOnly: false },
       { href: '/finance/my-commission', label: '我的提成', salesOnly: true },
@@ -81,8 +81,8 @@ export function FinanceNav({
           <div
             key={group.items[0].href}
             className={cn(
-              'flex gap-2',
-              borderClass && 'rounded-md border-2 p-1',
+              'flex items-center gap-1',
+              borderClass && 'rounded-md px-1',
               borderClass,
             )}
           >
