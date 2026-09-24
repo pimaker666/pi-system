@@ -25,8 +25,6 @@ export default async function FinanceProfitPage({
   const periodValue = Array.isArray(raw.period) ? raw.period[0] : raw.period
   const period = /^\d{4}-\d{2}$/.test(periodValue ?? '') ? periodValue! : currentMonth()
   const rows = await getBusinessOrderProfitRows({ period })
-  const cnyRows = rows.filter((row) => row.currency === 'CNY')
-  const usdRows = rows.filter((row) => row.currency === 'USD')
   const total = (items: typeof rows, key: 'received_amount' | 'product_cost' | 'freight_cost' | 'commission_amount' | 'fee_amount' | 'profit_amount') =>
     items.reduce((sum, row) => sum + row[key], 0)
   const dimensions = [
@@ -35,15 +33,14 @@ export default async function FinanceProfitPage({
     { label: '归属月份', value: (row: (typeof rows)[number]) => row.profit_period },
   ]
   const groupSummaries = dimensions.map((dimension) => {
-    const groups = new Map<string, { label: string; currency: 'CNY' | 'USD'; count: number; received: number; profit: number }>()
+    const groups = new Map<string, { label: string; count: number; received: number; profit: number }>()
     for (const row of rows) {
       const label = dimension.value(row)
-      const key = `${row.currency}:${label}`
-      const group = groups.get(key) ?? { label, currency: row.currency, count: 0, received: 0, profit: 0 }
+      const group = groups.get(label) ?? { label, count: 0, received: 0, profit: 0 }
       group.count += 1
       group.received += row.received_amount
       group.profit += row.profit_amount
-      groups.set(key, group)
+      groups.set(label, group)
     }
     return { label: dimension.label, rows: [...groups.values()].sort((a, b) => b.profit - a.profit) }
   })
@@ -52,7 +49,7 @@ export default async function FinanceProfitPage({
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">利润核算</h1>
-        <p className="text-sm text-muted-foreground">仅展示产品成本与提成均已结清的订单；归属月份取两者最后确认的月份。</p>
+        <p className="text-sm text-muted-foreground">仅展示产品成本与提成均已结清的订单；所有金额按结清汇率统一折算为人民币，归属月份取两者最后确认的月份。</p>
       </div>
       <form className="flex flex-wrap items-end gap-3 rounded-md border p-4">
         <div className="space-y-1.5">
@@ -63,16 +60,11 @@ export default async function FinanceProfitPage({
         <Button asChild type="button" variant="outline"><Link href="/finance/profit">本月</Link></Button>
       </form>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {(['CNY', 'USD'] as const).map((currency) => {
-          const items = currency === 'CNY' ? cnyRows : usdRows
-          return (
-            <div key={currency} className="rounded-md border p-4">
-              <div className="text-xs text-muted-foreground">{currency} 已结清订单 / 利润</div>
-              <div className="mt-1 text-xl font-semibold">{items.length} 单 / {money(total(items, 'profit_amount'), currency)}</div>
-              <div className="mt-1 text-sm text-muted-foreground">实收 {money(total(items, 'received_amount'), currency)} · 扣减 {money(total(items, 'product_cost') + total(items, 'freight_cost') + total(items, 'commission_amount') + total(items, 'fee_amount'), currency)}</div>
-            </div>
-          )
-        })}
+        <div className="rounded-md border p-4">
+          <div className="text-xs text-muted-foreground">CNY 已结清订单 / 利润</div>
+          <div className="mt-1 text-xl font-semibold">{rows.length} 单 / {money(total(rows, 'profit_amount'), 'CNY')}</div>
+          <div className="mt-1 text-sm text-muted-foreground">实收 {money(total(rows, 'received_amount'), 'CNY')} · 扣减 {money(total(rows, 'product_cost') + total(rows, 'freight_cost') + total(rows, 'commission_amount') + total(rows, 'fee_amount'), 'CNY')}</div>
+        </div>
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
         {groupSummaries.map((summary) => (
@@ -80,7 +72,7 @@ export default async function FinanceProfitPage({
             <div className="border-b bg-muted/30 px-4 py-3 text-sm font-medium">按{summary.label}汇总</div>
             <Table>
               <TableHeader><TableRow><TableHead>{summary.label}</TableHead><TableHead className="text-right">订单数</TableHead><TableHead className="text-right">实收</TableHead><TableHead className="text-right">利润</TableHead></TableRow></TableHeader>
-              <TableBody>{summary.rows.map((row) => <TableRow key={`${row.currency}:${row.label}`}><TableCell>{row.label}</TableCell><TableCell className="text-right">{row.count}</TableCell><TableCell className="text-right tabular-nums">{money(row.received, row.currency)}</TableCell><TableCell className="text-right font-medium tabular-nums">{money(row.profit, row.currency)}</TableCell></TableRow>)}{summary.rows.length === 0 && <TableRow><TableCell colSpan={4} className="py-6 text-center text-muted-foreground">暂无数据</TableCell></TableRow>}</TableBody>
+              <TableBody>{summary.rows.map((row) => <TableRow key={row.label}><TableCell>{row.label}</TableCell><TableCell className="text-right">{row.count}</TableCell><TableCell className="text-right tabular-nums">{money(row.received, 'CNY')}</TableCell><TableCell className="text-right font-medium tabular-nums">{money(row.profit, 'CNY')}</TableCell></TableRow>)}{summary.rows.length === 0 && <TableRow><TableCell colSpan={4} className="py-6 text-center text-muted-foreground">暂无数据</TableCell></TableRow>}</TableBody>
             </Table>
           </div>
         ))}
@@ -93,9 +85,9 @@ export default async function FinanceProfitPage({
           </TableRow></TableHeader>
           <TableBody>{rows.map((row) => <TableRow key={row.order_id}>
             <TableCell>{row.profit_period}</TableCell><TableCell className="font-medium">{row.external_order_number || row.order_number}</TableCell><TableCell>{row.shop_name || '—'}</TableCell><TableCell>{row.salesperson_name || '—'}</TableCell>
-            <TableCell className="text-right tabular-nums">{money(row.received_amount, row.currency)}</TableCell><TableCell className="text-right tabular-nums">{money(row.product_cost, row.currency)}</TableCell><TableCell className="text-right tabular-nums">{money(row.freight_cost, row.currency)}</TableCell><TableCell className="text-right tabular-nums">{money(row.commission_amount, row.currency)}</TableCell>
-            <TableCell className="text-right tabular-nums">{money(row.fee_amount, row.currency)}</TableCell>
-            <TableCell className="text-right font-medium tabular-nums">{money(row.profit_amount, row.currency)}</TableCell>
+            <TableCell className="text-right tabular-nums">{money(row.received_amount, 'CNY')}</TableCell><TableCell className="text-right tabular-nums">{money(row.product_cost, 'CNY')}</TableCell><TableCell className="text-right tabular-nums">{money(row.freight_cost, 'CNY')}</TableCell><TableCell className="text-right tabular-nums">{money(row.commission_amount, 'CNY')}</TableCell>
+            <TableCell className="text-right tabular-nums">{money(row.fee_amount, 'CNY')}</TableCell>
+            <TableCell className="text-right font-medium tabular-nums">{money(row.profit_amount, 'CNY')}</TableCell>
           </TableRow>)}{rows.length === 0 && <TableRow><TableCell colSpan={10} className="py-12 text-center text-muted-foreground">该月份暂无双结清订单</TableCell></TableRow>}</TableBody>
         </Table>
       </div>

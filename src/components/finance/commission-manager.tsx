@@ -1036,6 +1036,18 @@ export function CommissionManager({
     ],
     [rows],
   )
+  const lockedUsdOrderIds = useMemo(
+    () => new Set(
+      rows
+        .filter((row) => row.currency === 'USD' && ['pending', 'confirmed'].includes(row.clearance_status ?? ''))
+        .map((row) => row.order_id),
+    ),
+    [rows],
+  )
+  const editableUsdOrderIds = useMemo(
+    () => usdOrderIds.filter((orderId) => !lockedUsdOrderIds.has(orderId)),
+    [lockedUsdOrderIds, usdOrderIds],
+  )
   const freightCommissionOrderIds = useMemo(
     () => [...new Set(rows.filter((row) => row.commission_calculable).map((row) => row.order_id))],
     [rows],
@@ -1202,13 +1214,13 @@ export function CommissionManager({
       toast.error('请填写大于 0 的美元兑人民币汇率')
       return
     }
-    if (usdOrderIds.length === 0) {
-      toast.error('当前页没有美元订单')
+    if (editableUsdOrderIds.length === 0) {
+      toast.error('当前页没有可修改汇率的美元订单')
       return
     }
     startExchangeRateTransition(async () => {
       const result = await saveBusinessOrderCommissionExchangeRate({
-        business_order_ids: usdOrderIds,
+        business_order_ids: editableUsdOrderIds,
         settlement_exchange_rate_to_cny: currentExchangeRate,
       })
       if (!result.ok) {
@@ -1216,7 +1228,7 @@ export function CommissionManager({
         toast.error(firstFieldError ?? result.error ?? '汇率保存失败')
         return
       }
-      toast.success(`已将汇率应用到当前页 ${usdOrderIds.length} 个美元订单`)
+      toast.success(`已将汇率应用到当前页 ${editableUsdOrderIds.length} 个美元订单`)
       router.refresh()
     })
   }
@@ -1263,20 +1275,21 @@ export function CommissionManager({
           placeholder="填写后美元金额自动换算为人民币"
           value={exchangeRate}
           onChange={(event) => setExchangeRate(event.target.value)}
+          disabled={isSalespersonView || editableUsdOrderIds.length === 0}
           className="w-[260px]"
         />
         {!isSalespersonView && (
           <Button
             type="button"
             variant="outline"
-            disabled={exchangeRatePending || usdOrderIds.length === 0 || currentExchangeRate == null}
+            disabled={exchangeRatePending || editableUsdOrderIds.length === 0 || currentExchangeRate == null}
             onClick={saveExchangeRate}
           >
             保存并应用当前页
           </Button>
         )}
         <span className="text-xs text-muted-foreground">
-          美元订单的产品实收、提成和运费实收均按此汇率结算为人民币；运费成本始终填写人民币。
+          美元订单的产品实收、提成和运费实收均按此汇率结算为人民币；运费成本始终填写人民币。提交结清后汇率锁定。
         </span>
       </div>}
 

@@ -13,7 +13,7 @@ export interface BusinessOrderProfitRow {
   external_order_number: string | null
   shop_name: string | null
   salesperson_name: string | null
-  currency: 'CNY' | 'USD'
+  currency: 'CNY'
   received_amount: number
   product_cost: number
   freight_cost: number
