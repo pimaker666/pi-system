@@ -159,7 +159,7 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
   }
 
   return (
-    <div className="flex min-w-36 items-center gap-2">
+    <div className="flex min-w-28 items-center gap-1">
       <Input
         value={draft}
         type="number"
@@ -176,19 +176,19 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
             save()
           }
         }}
-        className="h-8"
+        className="h-7 text-xs"
       />
       <Button
         type="button"
         variant="outline"
         size="icon"
-        className="h-8 w-8 shrink-0"
+        className="h-7 w-7 shrink-0"
         disabled={pending || unchanged}
         onClick={save}
         aria-label={`保存订单 ${row.order_number} 的产品提点`}
         title="保存；留空则恢复分类默认提点"
       >
-        <Save className="h-4 w-4" />
+        <Save className="h-3.5 w-3.5" />
       </Button>
     </div>
   )
@@ -270,7 +270,7 @@ function FreightEditor({
         {freightReceived == null ? '请填写汇率' : formatDailyMoney(freightReceived, 'CNY')}
       </TableCell>
       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
-        <div className="flex min-w-36 items-center gap-2">
+        <div className="flex min-w-28 items-center gap-1">
           <Input
             value={costDraft}
             type="number"
@@ -280,7 +280,7 @@ function FreightEditor({
             placeholder="未填写"
             title="运费成本（人民币）；留空按 0 计算"
             onChange={(event) => setCostDraft(event.target.value)}
-            className="h-8"
+            className="h-7 text-xs"
           />
         </div>
       </TableCell>
@@ -288,19 +288,19 @@ function FreightEditor({
         {profit == null ? '请填写汇率' : formatDailyMoney(profit, 'CNY')}
       </TableCell>
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} bg-amber-50 font-semibold text-amber-950 tabular-nums`}>
-        <div className="flex min-w-36 items-center gap-2">
+        <div className="flex min-w-28 items-center gap-1">
           {commission == null ? '请填写汇率' : formatDailyMoney(commission, 'CNY')}
           <Button
             type="button"
             variant="outline"
             size="icon"
-            className="h-8 w-8 shrink-0"
+            className="h-7 w-7 shrink-0"
             disabled={pending || unchanged}
             onClick={save}
             aria-label={`保存订单 ${row.order_number} 的运费成本`}
             title="保存运费成本；正数成本自动套用默认运费提点"
           >
-            <Save className="h-4 w-4" />
+            <Save className="h-3.5 w-3.5" />
           </Button>
         </div>
       </TableCell>
@@ -1316,13 +1316,13 @@ export function CommissionManager({
 
       <div className="overflow-hidden rounded-md border">
         <Table
-          className="min-w-[2700px]"
+          className="w-max min-w-[1800px] text-sm [&_th]:h-9 [&_th]:whitespace-nowrap [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-1.5"
           containerClassName="max-h-[calc(100vh-20rem)]"
         >
           <TableHeader>
             <TableRow className="bg-background">
               {!readOnly && (
-                <TableHead className="sticky top-0 z-20 w-12 bg-background shadow-sm">
+                <TableHead className="sticky top-0 z-20 w-9 bg-background shadow-sm">
                   {(isSalespersonView ? confirmationSelectableRows : selectableRows).length > 0 && (
                     <input
                       type="checkbox"
@@ -1440,7 +1440,7 @@ export function CommissionManager({
                       {row.shipping_category ? SHIPPING_LABELS[row.shipping_category] : '—'}
                     </TableCell>
                     <TableCell>
-                      <ImagePreview src={row.image_url} alt={row.product_name} />
+                      <ImagePreview src={row.image_url} alt={row.product_name} size="h-8 w-8" sizes="32px" />
                     </TableCell>
                     <TableCell>
                       <div>{row.product_name}</div>
