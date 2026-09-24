@@ -116,7 +116,11 @@ as $$
     ) as missing_exchange_rate_line_count
   from normalized_items
   group by product_key
-  order by sales_amount_cny + sales_amount_usd desc, product_name, product_sku;
+  order by
+    coalesce(sum(line_amount) filter (where currency = 'CNY'), 0)
+      + coalesce(sum(line_amount) filter (where currency = 'USD'), 0) desc,
+    max(product_name),
+    max(product_sku);
 $$;
 
 revoke all on function public.get_business_performance_by_product(
