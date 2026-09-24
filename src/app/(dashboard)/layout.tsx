@@ -17,7 +17,7 @@ export default async function DashboardLayout({
         <header className="flex h-16 items-center justify-end border-b px-6">
           <LogoutButton />
         </header>
-        <main className="min-h-0 flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="min-h-0 flex-1 overflow-auto p-6">{children}</main>
       </div>
     </div>
   )

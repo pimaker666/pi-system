@@ -205,10 +205,10 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
       return
     }
     const table = tableRef.current
-    const container = table?.parentElement
+    const scrollContainer = table?.closest('main')
     const headerRow = table?.tHead?.rows[0]
-    if (!table || !container || !headerRow) return
-    const scrollLeft = container.scrollLeft
+    if (!table || !scrollContainer || !headerRow) return
+    const scrollLeft = scrollContainer.scrollLeft
     let target = 0
     for (let i = 0; i < headerRow.cells.length; i += 1) {
       if ((headerRow.cells[i] as HTMLElement).offsetLeft <= scrollLeft + 1) target = i
@@ -387,7 +387,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
 
       <Table
         ref={tableRef}
-        containerClassName="rounded-md border"
+        containerClassName="min-w-[3000px] overflow-visible rounded-md border"
         className="min-w-[3000px]"
       >
         <TableHeader>

@@ -1370,8 +1370,9 @@ export function CommissionManager({
         </div>
       </form>
 
-      <div className="overflow-hidden rounded-md border">
+      <div className="min-w-[1300px] overflow-visible rounded-md border">
         <Table
+          containerClassName="overflow-visible"
           className="w-full min-w-[1300px] table-fixed text-sm [&_th]:h-9 [&_th]:whitespace-normal [&_th]:leading-4 [&_th]:px-2 [&_th]:py-1.5 [&_td]:px-2 [&_td]:py-1.5"
         >
           <TableHeader>
