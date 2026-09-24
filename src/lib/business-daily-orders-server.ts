@@ -139,6 +139,9 @@ function buildLedgerQuery(
   if (filters.payment) query = query.eq('daily_payment_category', filters.payment)
   if (filters.customerBindingStatus === 'bound') query = query.not('customer_id', 'is', null)
   if (filters.customerBindingStatus === 'unbound') query = query.is('customer_id', null)
+  if (filters.fulfillmentStatuses.length > 0) {
+    query = query.in('fulfillment_status', filters.fulfillmentStatuses)
+  }
   if (filters.completion === 'completed') {
     query = query.eq('fulfillment_status', 'fully_shipped')
   }

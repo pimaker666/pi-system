@@ -196,6 +196,48 @@ export default async function DailyOrdersPage({
           <option value="settled">已结算</option>
           <option value="unsettled">未结算</option>
         </select>
+        <details className="group relative">
+          <summary className="flex h-10 cursor-pointer items-center justify-between gap-2 rounded-md border bg-background px-3 text-sm [&::-webkit-details-marker]:hidden">
+            <span>
+              {filters.fulfillmentStatuses.length > 0
+                ? `发货状态 (${filters.fulfillmentStatuses.length})`
+                : '全部发货状态'}
+            </span>
+            <span aria-hidden className="text-xs text-muted-foreground">▼</span>
+          </summary>
+          <div className="absolute z-50 mt-1 w-44 rounded-md border bg-background p-2 shadow-md">
+            <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+              <input
+                type="checkbox"
+                name="fulfillmentStatuses"
+                value="fully_shipped"
+                defaultChecked={filters.fulfillmentStatuses.includes('fully_shipped')}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              全部发货
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+              <input
+                type="checkbox"
+                name="fulfillmentStatuses"
+                value="partially_shipped"
+                defaultChecked={filters.fulfillmentStatuses.includes('partially_shipped')}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              部分发货
+            </label>
+            <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+              <input
+                type="checkbox"
+                name="fulfillmentStatuses"
+                value="unshipped"
+                defaultChecked={filters.fulfillmentStatuses.includes('unshipped')}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              未发货
+            </label>
+          </div>
+        </details>
         <div className="flex flex-wrap gap-2 xl:col-span-8">
           <Button type="submit">筛选</Button>
           <Button asChild type="button" variant="outline">

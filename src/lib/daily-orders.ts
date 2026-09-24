@@ -68,6 +68,11 @@ export function parseDailyOrderFilters(raw: Record<string, string | string[] | u
     const value = raw[key]
     return Array.isArray(value) ? value[0] : value
   }
+  const values = (key: string) => {
+    const value = raw[key]
+    if (Array.isArray(value)) return value
+    return value ? value.split(',').filter(Boolean) : []
+  }
   const parsed = dailyOrderFilterSchema.safeParse({
     q: scalar('q') || undefined,
     dateFrom: scalar('dateFrom') || undefined,
@@ -80,16 +85,21 @@ export function parseDailyOrderFilters(raw: Record<string, string | string[] | u
     completion: scalar('completion') || undefined,
     balanceStatus: scalar('balanceStatus') || undefined,
     customerBindingStatus: scalar('customerBindingStatus') || undefined,
+    fulfillmentStatuses: values('fulfillmentStatuses'),
     // 台账默认只展示未结算订单；显式传 all 才展示全部。
     settlementStatus: scalar('settlementStatus') || 'unsettled',
   })
-  return parsed.success ? parsed.data : { q: '', settlementStatus: 'unsettled' }
+  return parsed.success ? parsed.data : { q: '', settlementStatus: 'unsettled', fulfillmentStatuses: [] }
 }
 
 export function dailyOrderFilterQuery(filters: DailyOrderFilters) {
   const params = new URLSearchParams()
   Object.entries(filters).forEach(([key, value]) => {
-    if (value) params.set(key, value)
+    if (Array.isArray(value)) {
+      value.forEach((item) => params.append(key, item))
+    } else if (value) {
+      params.set(key, value)
+    }
   })
   return params.toString()
 }
