@@ -44,6 +44,7 @@ import {
 import { CustomerRowActions } from './customer-row-actions'
 import { CountryFlag } from '@/components/shared/country-flag'
 import { formatCountryName } from '@/lib/country-flags'
+import { formatDate } from '@/lib/utils'
 import Link from 'next/link'
 import {
   bulkTransferCustomers,
@@ -119,7 +120,7 @@ export function CustomerTable({
   const allChecked = customers.length > 0 && selected.size === customers.length
   const someChecked = selected.size > 0 && !allChecked
   const ids = useMemo(() => Array.from(selected), [selected])
-  const colCount = isAdmin ? 11 : 10
+  const colCount = isAdmin ? 12 : 11
 
   function toggleAll() {
     setSelected(allChecked ? new Set() : new Set(customers.map((c) => c.id)))
@@ -312,6 +313,7 @@ export function CustomerTable({
                 <TableHead>联系方式</TableHead>
                 <TableHead className="whitespace-nowrap text-right">近一年下单金额</TableHead>
                 <TableHead className="whitespace-nowrap">上次下单时间</TableHead>
+                <TableHead className="whitespace-nowrap">新建客户时间</TableHead>
                 <TableHead className="whitespace-nowrap text-right">定制订单数</TableHead>
                 {isAdmin && <TableHead className="whitespace-nowrap">归属账号</TableHead>}
                 <TableHead className="text-right">操作</TableHead>
@@ -361,6 +363,9 @@ export function CustomerTable({
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground tabular-nums">
                     {stats[c.id]?.lastOrderDate ?? '—'}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground tabular-nums whitespace-nowrap">
+                    {formatDate(c.created_at)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {stats[c.id]?.customOrderCount ?? 0}

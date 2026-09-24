@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Search, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
 import { Input } from '@/components/ui/input'
@@ -33,6 +33,7 @@ export function CustomerFilters({
   amountMax,
   lastOrderFrom,
   lastOrderTo,
+  createdAtOrder,
 }: {
   groups: CustomerGroup[]
   countries: string[]
@@ -46,6 +47,7 @@ export function CustomerFilters({
   amountMax: string
   lastOrderFrom: string
   lastOrderTo: string
+  createdAtOrder: '' | 'asc' | 'desc'
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -117,6 +119,14 @@ export function CustomerFilters({
 
       <Input type="number" min="0" defaultValue={amountMin} placeholder="近一年金额最低" className="w-36" onBlur={(event) => setParam('amountMin', event.target.value)} />
       <Input type="number" min="0" defaultValue={amountMax} placeholder="近一年金额最高" className="w-36" onBlur={(event) => setParam('amountMax', event.target.value)} />
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => setParam('createdAtOrder', createdAtOrder === 'desc' ? 'asc' : 'desc')}
+      >
+        {createdAtOrder === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+        新建时间{createdAtOrder === 'asc' ? '：最早' : createdAtOrder === 'desc' ? '：最新' : ''}
+      </Button>
       <DateRangePicker
         from={lastOrderFrom}
         to={lastOrderTo}

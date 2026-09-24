@@ -392,6 +392,24 @@ const OPTIONAL_COMMISSION_COLUMNS = [
 
 type OptionalCommissionColumn = (typeof OPTIONAL_COMMISSION_COLUMNS)[number][0]
 
+function optionalCommissionColumnClassName(column: OptionalCommissionColumn) {
+  switch (column) {
+    case 'order_number':
+      return 'w-28 min-w-28'
+    case 'order_date':
+    case 'shipping_date':
+    case 'shop':
+    case 'shop_group':
+    case 'salesperson':
+      return 'w-24 min-w-24'
+    case 'custom_order_count':
+    case 'quantity':
+      return 'w-16 min-w-16'
+    case 'unit_price':
+      return 'w-20 min-w-20'
+  }
+}
+
 function DisplayColumnSelector({
   visibleColumns,
   onToggle,
@@ -1361,8 +1379,14 @@ export function CommissionManager({
                   )}
                 </TableHead>
               )}
-              {OPTIONAL_COMMISSION_COLUMNS.filter(([column]) => visibleColumns.has(column)).map(([, label]) => (
-                <TableHead key={label} className="sticky top-0 z-20 bg-background shadow-sm">
+              {OPTIONAL_COMMISSION_COLUMNS.filter(([column]) => visibleColumns.has(column)).map(([column, label]) => (
+                <TableHead
+                  key={label}
+                  className={cn(
+                    'sticky top-0 z-20 bg-background shadow-sm',
+                    optionalCommissionColumnClassName(column),
+                  )}
+                >
                   {label}
                 </TableHead>
               ))}
@@ -1420,31 +1444,31 @@ export function CommissionManager({
                       </TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('order_number') && (
-                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{displayOrderNumber}</TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('order_number')}`}>{displayOrderNumber}</TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('order_date') && (
-                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{row.order_date}</TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('order_date')}`}>{row.order_date}</TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('shipping_date') && (
-                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{row.shipping_date || '—'}</TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('shipping_date')}`}>{row.shipping_date || '—'}</TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('shop') && (
-                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{row.shop_name || '—'}</TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('shop')}`}>{row.shop_name || '—'}</TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('shop_group') && (
-                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{row.shop_group_name || '—'}</TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('shop_group')}`}>{row.shop_group_name || '—'}</TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('salesperson') && (
-                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>{row.salesperson_name}</TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('salesperson')}`}>{row.salesperson_name}</TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('custom_order_count') && (
-                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>{row.custom_order_count}</TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('custom_order_count')} tabular-nums`}>{row.custom_order_count}</TableCell>
                     )}
                     {visibleColumns.has('quantity') && (
-                      <TableCell className="tabular-nums">{quantityText(row.quantity)}</TableCell>
+                      <TableCell className={`${optionalCommissionColumnClassName('quantity')} tabular-nums`}>{quantityText(row.quantity)}</TableCell>
                     )}
                     {visibleColumns.has('unit_price') && (
-                      <TableCell className="tabular-nums">{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
+                      <TableCell className={`${optionalCommissionColumnClassName('unit_price')} tabular-nums`}>{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
                     )}
                     {isFirstRow && (
                       <TableCell

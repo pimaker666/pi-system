@@ -13,9 +13,12 @@ import type { CustomerCommissionTag, CustomerGroup, Profile } from '@/types'
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; group?: string; country?: string; owner?: string; amountMin?: string; amountMax?: string; lastOrderFrom?: string; lastOrderTo?: string }>
+  searchParams: Promise<{ q?: string; group?: string; country?: string; owner?: string; amountMin?: string; amountMax?: string; lastOrderFrom?: string; lastOrderTo?: string; createdAtOrder?: string }>
 }) {
-  const { q, group, country, owner, amountMin, amountMax, lastOrderFrom, lastOrderTo } = await searchParams
+  const { q, group, country, owner, amountMin, amountMax, lastOrderFrom, lastOrderTo, createdAtOrder } = await searchParams
+  const normalizedCreatedAtOrder = createdAtOrder === 'asc' || createdAtOrder === 'desc'
+    ? createdAtOrder
+    : ''
   const profile = await getCurrentProfile()
   const isAdmin = profile?.role === 'admin'
   const supabase = await createClient()
@@ -101,6 +104,10 @@ export default async function CustomersPage({
     return true
   })
   customers.sort((left, right) => {
+    if (normalizedCreatedAtOrder) {
+      const difference = left.created_at.localeCompare(right.created_at)
+      return normalizedCreatedAtOrder === 'asc' ? difference : -difference
+    }
     const amountDifference = (statsMap[right.id]?.lastYearAmountCny ?? 0) - (statsMap[left.id]?.lastYearAmountCny ?? 0)
     if (amountDifference !== 0) return amountDifference
     return (statsMap[right.id]?.lastOrderDate ?? '').localeCompare(statsMap[left.id]?.lastOrderDate ?? '')
@@ -150,6 +157,7 @@ export default async function CustomersPage({
         amountMax={amountMax ?? ''}
         lastOrderFrom={lastOrderFrom ?? ''}
         lastOrderTo={lastOrderTo ?? ''}
+        createdAtOrder={normalizedCreatedAtOrder}
       />
 
       <CustomerTable
