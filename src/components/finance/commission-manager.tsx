@@ -1536,24 +1536,22 @@ export function CommissionManager({
                         defaultFreightCommissionRate={defaultFreightCommissionRate}
                       />
                     )}
-                    {isFirstRow && (
-                      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
-                        <div className="space-y-1">
-                          <Badge variant={clearanceVariant(row.clearance_status)}>
-                            {clearanceLabel(row.clearance_status)}
-                          </Badge>
-                          {row.clearance_period && (
-                            <div className="text-xs text-muted-foreground">{row.clearance_period}</div>
-                          )}
-                          {!readOnly && row.clearance_status === 'pending' && canConfirmClearance && (
-                            <div className="flex items-center gap-1 pt-1">
-                              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={confirmPending} onClick={() => confirmRowClearance(row)}>确认</Button>
-                              <Button type="button" variant="outline" size="sm" className="h-7 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={rejectPending} onClick={() => { setRejectingRow(row); setRejectReason('') }}>驳回</Button>
-                            </div>
-                          )}
-                        </div>
-                      </TableCell>
-                    )}
+                    <TableCell>
+                      <div className="space-y-1">
+                        <Badge variant={clearanceVariant(row.clearance_status)}>
+                          {clearanceLabel(row.clearance_status)}
+                        </Badge>
+                        {row.clearance_period && (
+                          <div className="text-xs text-muted-foreground">{row.clearance_period}</div>
+                        )}
+                        {!readOnly && row.clearance_status === 'pending' && canConfirmClearance && (
+                          <div className="flex items-center gap-1 pt-1">
+                            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={confirmPending} onClick={() => confirmRowClearance(row)}>确认</Button>
+                            <Button type="button" variant="outline" size="sm" className="h-7 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={rejectPending} onClick={() => { setRejectingRow(row); setRejectReason('') }}>驳回</Button>
+                          </div>
+                        )}
+                      </div>
+                    </TableCell>
                   </TableRow>
                 )
               })
