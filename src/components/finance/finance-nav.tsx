@@ -5,17 +5,34 @@ import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/types'
 
-const financeItems = [
-  { href: '/finance', label: '财务总览', financeOnly: true },
-  { href: '/finance/daily-orders', label: '每日订单', financeOnly: false },
-  { href: '/finance/transactions', label: '收支流水', financeOnly: true },
-  { href: '/finance/costs', label: '订单成本', financeOnly: true },
-  { href: '/finance/settled-orders', label: '已结算订单', financeOnly: true },
-  { href: '/finance/performance', label: '业务业绩', financeOnly: false },
-  { href: '/finance/commission', label: '提成计算', financeOnly: false },
-  { href: '/finance/my-commission', label: '我的提成', salesOnly: true },
-  { href: '/finance/commission/settled', label: '已结清订单', financeOnly: true },
-  { href: '/finance/profit', label: '利润核算', financeOnly: true },
+const financeNavGroups = [
+  {
+    items: [
+      { href: '/finance', label: '财务总览', financeOnly: true },
+      { href: '/finance/daily-orders', label: '每日订单', financeOnly: false },
+    ],
+  },
+  {
+    borderClass: 'border-red-400',
+    items: [
+      { href: '/finance/costs', label: '订单成本', financeOnly: true },
+      { href: '/finance/settled-orders', label: '已结算订单', financeOnly: true },
+    ],
+  },
+  {
+    borderClass: 'border-sky-500',
+    items: [
+      { href: '/finance/commission', label: '提成计算', financeOnly: false },
+      { href: '/finance/my-commission', label: '我的提成', salesOnly: true },
+      { href: '/finance/commission/settled', label: '已结清订单', financeOnly: true },
+    ],
+  },
+  {
+    items: [
+      { href: '/finance/performance', label: '业务业绩', financeOnly: false },
+      { href: '/finance/profit', label: '利润核算', financeOnly: true },
+    ],
+  },
 ] as const
 
 export function FinanceNav({
@@ -28,14 +45,20 @@ export function FinanceNav({
   const pathname = usePathname()
   const canManageFinance = role === 'admin' || role === 'finance'
   const commissionBadge = commissionAttentionCount > 99 ? '99+' : commissionAttentionCount
-  const items = financeItems.filter((item) => {
-    if ('supervisorOnly' in item && item.supervisorOnly)
-      return role === 'supervisor'
-    if ('salesOnly' in item && item.salesOnly)
-      return role === 'sales' || role === 'supervisor'
-    if ('financeOnly' in item && item.financeOnly) return canManageFinance
-    return true
-  })
+  const groups = financeNavGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => {
+        if ('supervisorOnly' in item && item.supervisorOnly)
+          return role === 'supervisor'
+        if ('salesOnly' in item && item.salesOnly)
+          return role === 'sales' || role === 'supervisor'
+        if ('financeOnly' in item && item.financeOnly) return canManageFinance
+        return true
+      }),
+    }))
+    .filter((group) => group.items.length > 0)
+  const items = groups.flatMap((group) => group.items)
 
   const activeHref = items.reduce<string>((best, item) => {
     const matches =
@@ -51,26 +74,41 @@ export function FinanceNav({
       className="mb-6 flex flex-wrap gap-2 border-b pb-3"
       aria-label="财务模块导航"
     >
-      {items.map((item) => {
-        const active = item.href === activeHref
+      {groups.map((group) => {
+        const borderClass = 'borderClass' in group ? group.borderClass : undefined
+
         return (
-          <Link
-            key={item.href}
-            href={item.href}
+          <div
+            key={group.items[0].href}
             className={cn(
-              'relative rounded-md px-3 py-2 text-sm font-medium transition-colors',
-              active
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+              'flex gap-2',
+              borderClass && 'rounded-md border-2 p-1',
+              borderClass,
             )}
           >
-            {item.label}
-            {!canManageFinance && item.href === '/finance/commission' && commissionAttentionCount > 0 && (
-              <span className="absolute -right-2 -top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold leading-5 text-destructive-foreground">
-                {commissionBadge}
-              </span>
-            )}
-          </Link>
+            {group.items.map((item) => {
+              const active = item.href === activeHref
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'relative rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    active
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                  )}
+                >
+                  {item.label}
+                  {!canManageFinance && item.href === '/finance/commission' && commissionAttentionCount > 0 && (
+                    <span className="absolute -right-2 -top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold leading-5 text-destructive-foreground">
+                      {commissionBadge}
+                    </span>
+                  )}
+                </Link>
+              )
+            })}
+          </div>
         )
       })}
     </nav>
