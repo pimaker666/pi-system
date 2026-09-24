@@ -23,7 +23,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { withdrawBusinessOrderCommissionClearance } from '@/lib/actions/commission'
+import {
+  markBusinessOrderCommissionRejectionsRead,
+  withdrawBusinessOrderCommissionClearance,
+} from '@/lib/actions/commission'
 import type { BusinessOrderCommissionClearanceDetail, CommissionClearanceStatus } from '@/types'
 
 function statusLabel(status: CommissionClearanceStatus) {
@@ -55,10 +58,14 @@ export function CommissionClearanceDetails({ rows }: { rows: BusinessOrderCommis
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [withdrawingIds, setWithdrawingIds] = useState<string[] | null>(null)
   const [pending, startTransition] = useTransition()
-  const attentionCount = useMemo(
-    () => rows.filter((row) => row.status === 'pending' || row.status === 'rejected').length,
+  const [readingRejections, startReadTransition] = useTransition()
+  const pendingCount = useMemo(() => rows.filter((row) => row.status === 'pending').length, [rows])
+  const rejectedCount = useMemo(() => rows.filter((row) => row.status === 'rejected').length, [rows])
+  const unreadRejectedCount = useMemo(
+    () => rows.filter((row) => row.status === 'rejected' && !row.rejected_read_at).length,
     [rows],
   )
+  const attentionCount = pendingCount + unreadRejectedCount
   const attentionBadge = attentionCount > 99 ? '99+' : attentionCount
   const salespeople = useMemo(
     () => [...new Set(rows.map((row) => row.salesperson_name))].sort((left, right) => left.localeCompare(right, 'zh-CN')),
@@ -114,6 +121,25 @@ export function CommissionClearanceDetails({ rows }: { rows: BusinessOrderCommis
     })
   }
 
+  function selectStatus(nextStatus: CommissionClearanceStatus | 'all') {
+    setStatus(nextStatus)
+    if (nextStatus !== 'rejected' || unreadRejectedCount === 0) return
+    startReadTransition(async () => {
+      const result = await markBusinessOrderCommissionRejectionsRead()
+      if (!result.ok) {
+        toast.error(result.error ?? '标记驳回记录已读失败')
+        return
+      }
+      router.refresh()
+    })
+  }
+
+  function statusButtonLabel(value: CommissionClearanceStatus | 'all', label: string) {
+    if (value === 'pending') return `${label} ${pendingCount}`
+    if (value === 'rejected') return `${label} ${rejectedCount}`
+    return label
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -147,9 +173,10 @@ export function CommissionClearanceDetails({ rows }: { rows: BusinessOrderCommis
                   type="button"
                   size="sm"
                   variant={status === value ? 'default' : 'outline'}
-                  onClick={() => setStatus(value)}
+                  disabled={value === 'rejected' && readingRejections}
+                  onClick={() => selectStatus(value)}
                 >
-                  {label}
+                  {statusButtonLabel(value, label)}
                 </Button>
               ))}
             </div>

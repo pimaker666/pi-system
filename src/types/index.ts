@@ -396,6 +396,7 @@ export interface BusinessOrderCommissionClearance {
   confirmed_by: string | null
   confirmed_at: string | null
   rejected_reason: string | null
+  rejected_read_at: string | null
   created_at: string
   updated_at: string
 }
@@ -416,6 +417,7 @@ export interface BusinessOrderCommissionClearanceDetail {
   confirmed_by_name: string | null
   confirmed_at: string | null
   rejected_reason: string | null
+  rejected_read_at: string | null
 }
 
 export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'

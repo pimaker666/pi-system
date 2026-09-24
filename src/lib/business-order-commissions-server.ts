@@ -310,7 +310,7 @@ export async function fetchBusinessOrderCommissionClearanceDetails(
   const { data, error } = await supabase
     .from('finance_business_order_item_commission_clearances')
     .select(
-      'business_order_item_id, period, status, submitted_at, confirmed_at, rejected_reason, item:business_order_items!inner(order_id, name_snapshot, sku_snapshot, quantity, order:business_orders!inner(order_number, external_order_number, salesperson:profiles!salesperson_id(chinese_name, full_name, email))), submitted:profiles!submitted_by(chinese_name, full_name, email), confirmer:profiles!confirmed_by(chinese_name, full_name, email)',
+      'business_order_item_id, period, status, submitted_at, confirmed_at, rejected_reason, rejected_read_at, item:business_order_items!inner(order_id, name_snapshot, sku_snapshot, quantity, order:business_orders!inner(order_number, external_order_number, salesperson:profiles!salesperson_id(chinese_name, full_name, email))), submitted:profiles!submitted_by(chinese_name, full_name, email), confirmer:profiles!confirmed_by(chinese_name, full_name, email)',
     )
     .order('submitted_at', { ascending: false })
   if (error) throw new Error(`提成结清明细读取失败：${error.message}`)
@@ -323,6 +323,7 @@ export async function fetchBusinessOrderCommissionClearanceDetails(
       submitted_at: string
       confirmed_at: string | null
       rejected_reason: string | null
+      rejected_read_at: string | null
       item: {
         order_id: string
         name_snapshot: string
@@ -353,6 +354,7 @@ export async function fetchBusinessOrderCommissionClearanceDetails(
       confirmed_by_name: clearance.confirmer ? displayProfileName(clearance.confirmer) : null,
       confirmed_at: clearance.confirmed_at,
       rejected_reason: clearance.rejected_reason,
+      rejected_read_at: clearance.rejected_read_at,
     }
   })
 }

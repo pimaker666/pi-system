@@ -414,6 +414,7 @@ export async function submitBusinessOrderCommissionClearance(input: {
     confirmed_by: null,
     confirmed_at: null,
     rejected_reason: null,
+    rejected_read_at: null,
   }))
 
   const { error } = await supabase
@@ -490,6 +491,7 @@ export async function confirmBusinessOrderCommissionClearance(input: {
       confirmed_by: profile.id,
       confirmed_at: new Date().toISOString(),
       rejected_reason: null,
+      rejected_read_at: null,
     })
     .in('business_order_item_id', itemIds)
     .eq('status', 'pending')
@@ -531,6 +533,20 @@ export async function withdrawBusinessOrderCommissionClearance(input: {
   return { ok: true }
 }
 
+export async function markBusinessOrderCommissionRejectionsRead(): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('finance_business_order_item_commission_clearances')
+    .update({ rejected_read_at: new Date().toISOString() })
+    .eq('status', 'rejected')
+    .is('rejected_read_at', null)
+  if (error) return { ok: false, error: error.message }
+
+  revalidateClearance()
+  return { ok: true }
+}
+
 export async function rejectBusinessOrderCommissionClearance(input: {
   business_order_item_ids: string[]
   reason: string
@@ -562,6 +578,7 @@ export async function rejectBusinessOrderCommissionClearance(input: {
     .update({
       status: 'rejected',
       rejected_reason: parsed.data.reason,
+      rejected_read_at: null,
       confirmed_by: null,
       confirmed_at: null,
     })
