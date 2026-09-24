@@ -44,7 +44,7 @@ import {
   businessOrderCommissionFilterQuery,
 } from '@/lib/business-order-commission'
 import { formatDailyMoney, SHIPPING_LABELS } from '@/lib/daily-orders'
-import { displayProfileName } from '@/lib/utils'
+import { cn, displayProfileName } from '@/lib/utils'
 import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-commission'
 import type {
   BusinessOrderCommissionClearanceStatus,
@@ -251,7 +251,7 @@ function FreightEditor({
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
           {freightReceived == null ? '请填写汇率' : formatDailyMoney(freightReceived, 'CNY')}
         </TableCell>
-        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
+        <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} w-24 min-w-24 tabular-nums`}>
           {formatDailyMoney(row.freight_cost, 'CNY')}
         </TableCell>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
@@ -269,8 +269,8 @@ function FreightEditor({
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
         {freightReceived == null ? '请填写汇率' : formatDailyMoney(freightReceived, 'CNY')}
       </TableCell>
-      <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
-        <div className="flex min-w-28 items-center gap-1">
+      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} w-24 min-w-24`}>
+        <div className="w-24">
           <Input
             value={costDraft}
             type="number"
@@ -280,7 +280,7 @@ function FreightEditor({
             placeholder="未填写"
             title="运费成本（人民币）；留空按 0 计算"
             onChange={(event) => setCostDraft(event.target.value)}
-            className="h-7 text-xs"
+            className="h-7 w-24 text-xs"
           />
         </div>
       </TableCell>
@@ -1344,7 +1344,11 @@ export function CommissionManager({
               {BUSINESS_ORDER_COMMISSION_COLUMNS.map((label) => (
                 <TableHead
                   key={label}
-                  className="sticky top-0 z-20 bg-background shadow-sm"
+                  className={cn(
+                    'sticky top-0 z-20 bg-background shadow-sm',
+                    label === '产品名称' && 'w-72 min-w-72',
+                    label === '运费成本' && 'w-24 min-w-24',
+                  )}
                 >
                   {label}
                 </TableHead>
@@ -1442,10 +1446,12 @@ export function CommissionManager({
                     <TableCell>
                       <ImagePreview src={row.image_url} alt={row.product_name} size="h-8 w-8" sizes="32px" />
                     </TableCell>
-                    <TableCell>
-                      <div>{row.product_name}</div>
+                    <TableCell className="w-72 min-w-72 max-w-72">
+                      <div className="truncate" title={row.product_name}>{row.product_name}</div>
                       {row.product_sku && (
-                        <div className="text-xs text-muted-foreground">{row.product_sku}</div>
+                        <div className="truncate text-xs text-muted-foreground" title={row.product_sku}>
+                          {row.product_sku}
+                        </div>
                       )}
                     </TableCell>
                     <TableCell className="tabular-nums">
