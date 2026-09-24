@@ -55,6 +55,11 @@ export function CommissionClearanceDetails({ rows }: { rows: BusinessOrderCommis
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [withdrawingIds, setWithdrawingIds] = useState<string[] | null>(null)
   const [pending, startTransition] = useTransition()
+  const attentionCount = useMemo(
+    () => rows.filter((row) => row.status === 'pending' || row.status === 'rejected').length,
+    [rows],
+  )
+  const attentionBadge = attentionCount > 99 ? '99+' : attentionCount
   const salespeople = useMemo(
     () => [...new Set(rows.map((row) => row.salesperson_name))].sort((left, right) => left.localeCompare(right, 'zh-CN')),
     [rows],
@@ -113,9 +118,14 @@ export function CommissionClearanceDetails({ rows }: { rows: BusinessOrderCommis
     <>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogTrigger asChild>
-          <Button type="button" variant="outline">
+          <Button type="button" variant="outline" className="relative">
             <ListChecks className="mr-1.5 h-4 w-4" />
             结清确认明细
+            {attentionCount > 0 && (
+              <span className="absolute -right-2 -top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold leading-5 text-destructive-foreground">
+                {attentionBadge}
+              </span>
+            )}
           </Button>
         </DialogTrigger>
         <DialogContent className="max-w-[calc(100vw-2rem)] lg:max-w-7xl">

@@ -17,9 +17,16 @@ const financeItems = [
   { href: '/finance/profit', label: '利润核算', financeOnly: true },
 ] as const
 
-export function FinanceNav({ role }: { role: UserRole }) {
+export function FinanceNav({
+  role,
+  commissionAttentionCount,
+}: {
+  role: UserRole
+  commissionAttentionCount: number
+}) {
   const pathname = usePathname()
   const canManageFinance = role === 'admin' || role === 'finance'
+  const commissionBadge = commissionAttentionCount > 99 ? '99+' : commissionAttentionCount
   const items = financeItems.filter((item) => {
     if ('supervisorOnly' in item && item.supervisorOnly)
       return role === 'supervisor'
@@ -48,13 +55,18 @@ export function FinanceNav({ role }: { role: UserRole }) {
             key={item.href}
             href={item.href}
             className={cn(
-              'rounded-md px-3 py-2 text-sm font-medium transition-colors',
+              'relative rounded-md px-3 py-2 text-sm font-medium transition-colors',
               active
                 ? 'bg-primary text-primary-foreground'
                 : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
             )}
           >
             {item.label}
+            {!canManageFinance && item.href === '/finance/commission' && commissionAttentionCount > 0 && (
+              <span className="absolute -right-2 -top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold leading-5 text-destructive-foreground">
+                {commissionBadge}
+              </span>
+            )}
           </Link>
         )
       })}

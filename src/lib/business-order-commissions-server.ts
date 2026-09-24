@@ -278,6 +278,20 @@ interface ClearanceRow {
   period: string
 }
 
+export async function fetchBusinessOrderCommissionClearanceAttentionCount(
+  supabase: SupabaseClient,
+  statuses: import('@/types').CommissionClearanceStatus[],
+): Promise<number> {
+  if (statuses.length === 0) return 0
+
+  const { count, error } = await supabase
+    .from('finance_business_order_item_commission_clearances')
+    .select('business_order_item_id', { count: 'exact', head: true })
+    .in('status', statuses)
+  if (error) throw new Error(`提成结清提醒读取失败：${error.message}`)
+  return count ?? 0
+}
+
 async function fetchAllCommissionClearances(supabase: SupabaseClient): Promise<ClearanceRow[]> {
   const rows: ClearanceRow[] = []
   const PAGE_SIZE = 1000
