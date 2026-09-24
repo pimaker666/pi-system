@@ -177,25 +177,25 @@ begin
     from base_items bi
   )
   select
-    dimension_1_key,
-    dimension_1_label,
-    dimension_2_key,
-    dimension_2_label,
-    dimension_3_key,
-    dimension_3_label,
-    count(distinct order_id),
-    coalesce(sum(quantity), 0),
-    coalesce(sum(line_amount) filter (where currency = 'CNY'), 0),
-    coalesce(sum(line_amount) filter (where currency = 'USD'), 0)
-  from dimensioned_items
+    di.dimension_1_key,
+    di.dimension_1_label,
+    di.dimension_2_key,
+    di.dimension_2_label,
+    di.dimension_3_key,
+    di.dimension_3_label,
+    count(distinct di.order_id),
+    coalesce(sum(di.quantity), 0),
+    coalesce(sum(di.line_amount) filter (where di.currency = 'CNY'), 0),
+    coalesce(sum(di.line_amount) filter (where di.currency = 'USD'), 0)
+  from dimensioned_items di
   group by
-    dimension_1_key, dimension_1_label,
-    dimension_2_key, dimension_2_label,
-    dimension_3_key, dimension_3_label
+    di.dimension_1_key, di.dimension_1_label,
+    di.dimension_2_key, di.dimension_2_label,
+    di.dimension_3_key, di.dimension_3_label
   order by
-    coalesce(sum(line_amount) filter (where currency = 'CNY'), 0) desc,
-    coalesce(sum(line_amount) filter (where currency = 'USD'), 0) desc,
-    dimension_1_label, dimension_2_label, dimension_3_label;
+    coalesce(sum(di.line_amount) filter (where di.currency = 'CNY'), 0) desc,
+    coalesce(sum(di.line_amount) filter (where di.currency = 'USD'), 0) desc,
+    di.dimension_1_label, di.dimension_2_label, di.dimension_3_label;
 end;
 $$;
 
