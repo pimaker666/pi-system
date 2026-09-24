@@ -30,6 +30,15 @@ export type BusinessPerformanceGroupBy =
   | 'catalog_product'
   | 'custom_product'
 export type BusinessPerformanceProductSource = 'catalog' | 'custom'
+export type BusinessPerformanceDimension =
+  | 'salesperson'
+  | 'shop'
+  | 'country'
+  | 'product'
+  | 'product_group'
+  | 'shipping_category'
+  | 'date'
+  | 'month'
 export type BusinessPaymentType = 'full' | 'deposit' | 'balance'
 
 export interface BusinessPerformanceSummary {
@@ -94,6 +103,19 @@ export interface BusinessPerformanceProductRow {
   settled_product_profit_cny: number
   unsettled_line_count: number
   missing_exchange_rate_line_count: number
+}
+
+export interface BusinessPerformanceMultiDimensionRow {
+  dimension_1_key: string
+  dimension_1_label: string
+  dimension_2_key: string | null
+  dimension_2_label: string | null
+  dimension_3_key: string | null
+  dimension_3_label: string | null
+  order_count: number
+  sales_quantity: number
+  sales_amount_cny: number
+  sales_amount_usd: number
 }
 
 export type BusinessOrderItemSourceType = 'catalog' | 'custom' | 'legacy'

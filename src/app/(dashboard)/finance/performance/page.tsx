@@ -2,6 +2,7 @@ import { PerformanceManager } from '@/components/finance/performance-manager'
 import {
   getBusinessPerformanceByGroup,
   getBusinessPerformanceByProduct,
+  getBusinessPerformanceMultiDimension,
   getBusinessPerformanceSummary,
 } from '@/lib/actions/business-orders'
 import { getBusinessOrderProfitRowsForPerformance } from '@/lib/actions/business-order-profit'
@@ -11,6 +12,7 @@ import { displayProfileName } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/server'
 import { requireApproved } from '@/lib/auth'
 import type {
+  BusinessPerformanceDimension,
   BusinessPerformanceGroupBy,
   BusinessPerformanceProductSource,
   DailyOrderShippingCategory,
@@ -66,6 +68,31 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
       ? (rawGroup as BusinessPerformanceGroupBy)
       : 'salesperson'
 
+  const validDimensions: BusinessPerformanceDimension[] = [
+    'salesperson',
+    'shop',
+    'country',
+    'product',
+    'product_group',
+    'shipping_category',
+    'date',
+    'month',
+  ]
+  const parseDimension = (key: string): BusinessPerformanceDimension | null => {
+    const value = scalar(key)
+    return value && validDimensions.includes(value as BusinessPerformanceDimension)
+      ? (value as BusinessPerformanceDimension)
+      : null
+  }
+  const dimension1 = parseDimension('dimension1') ?? 'salesperson'
+  const dimension2 = parseDimension('dimension2')
+  const dimension3 = parseDimension('dimension3')
+  const multiDimensions: [BusinessPerformanceDimension, BusinessPerformanceDimension | null, BusinessPerformanceDimension | null] = [
+    dimension1,
+    dimension2 === dimension1 ? null : dimension2,
+    dimension3 === dimension1 || dimension3 === dimension2 ? null : dimension3,
+  ]
+
   return {
     dateFrom,
     dateTo,
@@ -76,6 +103,7 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
       | DailyOrderShippingCategory[]
       | undefined,
     groupBy,
+    multiDimensions,
   }
 }
 
@@ -94,6 +122,7 @@ export default async function FinancePerformancePage({
     productGroupIds,
     shippingCategories,
     groupBy,
+    multiDimensions,
   } = parseSearchParams(await searchParams)
 
   const canViewProfit = profile.role === 'admin' || profile.role === 'finance'
@@ -108,7 +137,7 @@ export default async function FinancePerformancePage({
     productGroupIds,
     shippingCategories,
   }
-  const [options, productGroupsResult, summaryResult, groupResult, productResult, profitRows] = await Promise.all([
+  const [options, productGroupsResult, summaryResult, groupResult, productResult, multiDimensionResult, profitRows] = await Promise.all([
     fetchDailyOrderOptions(supabase),
     supabase.from('product_groups').select('id, name, sort_order').order('sort_order'),
     getBusinessPerformanceSummary(filters),
@@ -118,6 +147,7 @@ export default async function FinancePerformancePage({
     productSource && canViewProfit
       ? getBusinessPerformanceByProduct(productSource, filters)
       : Promise.resolve({ ok: true as const, data: [], error: undefined }),
+    getBusinessPerformanceMultiDimension(multiDimensions, filters),
     canViewProfit
       ? getBusinessOrderProfitRowsForPerformance(filters)
       : Promise.resolve([]),
@@ -131,6 +161,9 @@ export default async function FinancePerformancePage({
   }
   if (!productResult.ok || !productResult.data) {
     throw new Error(productResult.error || '产品业绩读取失败')
+  }
+  if (!multiDimensionResult.ok || !multiDimensionResult.data) {
+    throw new Error(multiDimensionResult.error || '多维销售总览读取失败')
   }
 
   if (productGroupsResult.error) {
@@ -162,6 +195,8 @@ export default async function FinancePerformancePage({
         summary={summaryResult.data}
         groupRows={groupResult.data}
         productRows={productResult.data}
+        multiDimensionRows={multiDimensionResult.data}
+        multiDimensions={multiDimensions}
         groupBy={effectiveGroupBy}
         filters={filters}
         salespeople={salespeople}

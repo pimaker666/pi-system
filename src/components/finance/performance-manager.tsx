@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
 import {
   Table,
@@ -24,8 +25,10 @@ import type { BusinessOrderProfitRow } from '@/lib/actions/business-order-profit
 import { cn, formatCurrency } from '@/lib/utils'
 import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
 import type {
+  BusinessPerformanceDimension,
   BusinessPerformanceGroupBy,
   BusinessPerformanceGroupRow,
+  BusinessPerformanceMultiDimensionRow,
   BusinessPerformanceProductRow,
   BusinessPerformanceSummary,
   DailyOrderShippingCategory,
@@ -40,6 +43,8 @@ interface PerformanceManagerProps {
   summary: BusinessPerformanceSummary
   groupRows: BusinessPerformanceGroupRow[]
   productRows: BusinessPerformanceProductRow[]
+  multiDimensionRows: BusinessPerformanceMultiDimensionRow[]
+  multiDimensions: [BusinessPerformanceDimension, BusinessPerformanceDimension | null, BusinessPerformanceDimension | null]
   groupBy: BusinessPerformanceGroupBy
   filters: BusinessPerformanceFilters
   salespeople: Option[]
@@ -78,6 +83,17 @@ const SHIPPING_OPTIONS: Option[] = [
   { value: 'stock', label: SHIPPING_LABELS.stock },
   { value: 'sample', label: SHIPPING_LABELS.sample },
   { value: 'purchase', label: SHIPPING_LABELS.purchase },
+]
+
+const DIMENSION_OPTIONS: { value: BusinessPerformanceDimension; label: string }[] = [
+  { value: 'salesperson', label: '业务' },
+  { value: 'shop', label: '渠道' },
+  { value: 'country', label: '国家' },
+  { value: 'product', label: '产品' },
+  { value: 'product_group', label: '产品分组' },
+  { value: 'shipping_category', label: '发货分类' },
+  { value: 'date', label: '日期' },
+  { value: 'month', label: '月份' },
 ]
 
 function formatUsd(amount: number) {
@@ -223,6 +239,8 @@ export function PerformanceManager({
   summary,
   groupRows,
   productRows,
+  multiDimensionRows,
+  multiDimensions,
   groupBy,
   filters,
   salespeople,
@@ -247,6 +265,7 @@ export function PerformanceManager({
     filters.shippingCategories ?? [],
   )
   const [exchangeRate, setExchangeRate] = useState('')
+  const [selectedDimensions, setSelectedDimensions] = useState(multiDimensions)
 
   const rate = useMemo(() => {
     const value = Number(exchangeRate)
@@ -254,7 +273,10 @@ export function PerformanceManager({
   }, [exchangeRate])
   const isProductView = groupBy === 'catalog_product' || groupBy === 'custom_product'
 
-  function buildUrl(overrides: { groupBy?: BusinessPerformanceGroupBy } = {}) {
+  function buildUrl(overrides: {
+    groupBy?: BusinessPerformanceGroupBy
+    dimensions?: [BusinessPerformanceDimension, BusinessPerformanceDimension | null, BusinessPerformanceDimension | null]
+  } = {}) {
     const params = new URLSearchParams()
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
@@ -271,6 +293,10 @@ export function PerformanceManager({
       params.set('shipping', selectedShipping.join(','))
     }
     params.set('groupBy', overrides.groupBy ?? groupBy)
+    const dimensions = overrides.dimensions ?? selectedDimensions
+    params.set('dimension1', dimensions[0])
+    if (dimensions[1]) params.set('dimension2', dimensions[1])
+    if (dimensions[2]) params.set('dimension3', dimensions[2])
     const qs = params.toString()
     return `/finance/performance${qs ? `?${qs}` : ''}`
   }
@@ -289,6 +315,26 @@ export function PerformanceManager({
     setSelectedProductGroups([])
     setSelectedShipping([])
     navigate('/finance/performance')
+  }
+
+  function updateDimension(index: 0 | 1 | 2, value: BusinessPerformanceDimension | null) {
+    const next = [...selectedDimensions] as [
+      BusinessPerformanceDimension,
+      BusinessPerformanceDimension | null,
+      BusinessPerformanceDimension | null,
+    ]
+    if (index === 0 && value) next[0] = value
+    if (index === 1) next[1] = value
+    if (index === 2) next[2] = value
+
+    const used = new Set<BusinessPerformanceDimension>()
+    next.forEach((dimension, position) => {
+      if (!dimension) return
+      if (used.has(dimension)) next[position] = null
+      else used.add(dimension)
+    })
+    setSelectedDimensions(next)
+    navigate(buildUrl({ dimensions: next }))
   }
 
   const consolidatedOrderTotal = rate
@@ -312,6 +358,10 @@ export function PerformanceManager({
       return bTotal - aTotal
     })
   }, [groupRows, rate])
+
+  const multiDimensionLabels = multiDimensions
+    .filter((dimension): dimension is BusinessPerformanceDimension => dimension !== null)
+    .map((dimension) => DIMENSION_OPTIONS.find((option) => option.value === dimension)?.label ?? dimension)
 
   const hasUsd =
     summary.order_total_usd > 0 ||
@@ -672,6 +722,74 @@ export function PerformanceManager({
         </Table>
       </div>
       )}
+
+      <div className="space-y-3 rounded-md border bg-card p-4">
+        <div>
+          <h2 className="font-semibold">多维销售总览</h2>
+          <p className="text-sm text-muted-foreground">按最多三层维度交叉汇总销售产品行，沿用上方筛选条件。</p>
+        </div>
+        <div className="grid gap-3 md:grid-cols-3">
+          {(['第一层维度', '第二层维度', '第三层维度'] as const).map((label, index) => (
+            <div key={label} className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">{label}</label>
+              <Select
+                value={selectedDimensions[index] ?? 'none'}
+                onValueChange={(value) => updateDimension(
+                  index as 0 | 1 | 2,
+                  value === 'none' ? null : value as BusinessPerformanceDimension,
+                )}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {index > 0 && <SelectItem value="none">不分层</SelectItem>}
+                  {DIMENSION_OPTIONS.map((option) => (
+                    <SelectItem
+                      key={option.value}
+                      value={option.value}
+                      disabled={selectedDimensions.some((dimension, position) => position !== index && dimension === option.value)}
+                    >
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ))}
+        </div>
+        <div className="overflow-x-auto rounded-md border">
+          <Table className="min-w-[900px]">
+            <TableHeader>
+              <TableRow>
+                {multiDimensionLabels.map((label) => <TableHead key={label}>{label}</TableHead>)}
+                <TableHead className="text-right">订单数</TableHead>
+                <TableHead className="text-right">销售数量</TableHead>
+                <TableHead className="text-right">销售金额（CNY）</TableHead>
+                <TableHead className="text-right">销售金额（USD）</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {multiDimensionRows.map((row) => (
+                <TableRow key={[row.dimension_1_key, row.dimension_2_key, row.dimension_3_key].join('|')}>
+                  <TableCell className="font-medium">{row.dimension_1_label}</TableCell>
+                  {multiDimensions[1] && <TableCell>{row.dimension_2_label}</TableCell>}
+                  {multiDimensions[2] && <TableCell>{row.dimension_3_label}</TableCell>}
+                  <TableCell className="text-right tabular-nums">{row.order_count.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums">{row.sales_quantity.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatCny(row.sales_amount_cny)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatUsd(row.sales_amount_usd)}</TableCell>
+                </TableRow>
+              ))}
+              {multiDimensionRows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={multiDimensionLabels.length + 4} className="py-12 text-center text-muted-foreground">
+                    暂无符合筛选条件的数据
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </div>
   )
 }

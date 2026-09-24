@@ -47,8 +47,10 @@ import type {
   BusinessOrderShipment,
   BusinessOrderShipmentItem,
   BusinessOrderStatus,
+  BusinessPerformanceDimension,
   BusinessPerformanceGroupBy,
   BusinessPerformanceGroupRow,
+  BusinessPerformanceMultiDimensionRow,
   BusinessPerformanceProductRow,
   BusinessPerformanceProductSource,
   BusinessPerformanceSummary,
@@ -115,6 +117,10 @@ export interface BusinessPerformanceSummaryResult extends ActionResult {
 
 export interface BusinessPerformanceGroupResult extends ActionResult {
   data?: BusinessPerformanceGroupRow[]
+}
+
+export interface BusinessPerformanceMultiDimensionResult extends ActionResult {
+  data?: BusinessPerformanceMultiDimensionRow[]
 }
 
 interface BusinessOrderRpcRow {
@@ -1165,6 +1171,37 @@ export async function getBusinessPerformanceByProduct(
       settled_product_profit_cny: Number(row.settled_product_profit_cny),
       unsettled_line_count: Number(row.unsettled_line_count),
       missing_exchange_rate_line_count: Number(row.missing_exchange_rate_line_count),
+    })),
+  }
+}
+
+export async function getBusinessPerformanceMultiDimension(
+  dimensions: [BusinessPerformanceDimension, BusinessPerformanceDimension | null, BusinessPerformanceDimension | null],
+  filters: BusinessPerformanceFilters,
+): Promise<BusinessPerformanceMultiDimensionResult> {
+  await requireApproved()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_business_performance_multi_dimension', {
+    p_dimension_1: dimensions[0],
+    p_dimension_2: dimensions[1],
+    p_dimension_3: dimensions[2],
+    p_date_from: filters.dateFrom ?? null,
+    p_date_to: filters.dateTo ?? null,
+    p_salesperson_ids: filters.salespersonIds ?? null,
+    p_shop_ids: filters.shopIds ?? null,
+    p_product_group_ids: filters.productGroupIds ?? null,
+    p_shipping_categories: filters.shippingCategories ?? null,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '读取多维销售总览失败') }
+
+  return {
+    ok: true,
+    data: ((data ?? []) as BusinessPerformanceMultiDimensionRow[]).map((row) => ({
+      ...row,
+      order_count: Number(row.order_count),
+      sales_quantity: Number(row.sales_quantity),
+      sales_amount_cny: Number(row.sales_amount_cny),
+      sales_amount_usd: Number(row.sales_amount_usd),
     })),
   }
 }
