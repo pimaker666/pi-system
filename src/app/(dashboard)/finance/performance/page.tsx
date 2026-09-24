@@ -1,6 +1,7 @@
 import { PerformanceManager } from '@/components/finance/performance-manager'
 import {
   getBusinessPerformanceByGroup,
+  getBusinessPerformanceByProduct,
   getBusinessPerformanceSummary,
 } from '@/lib/actions/business-orders'
 import { getBusinessOrderProfitRowsForPerformance } from '@/lib/actions/business-order-profit'
@@ -11,6 +12,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireApproved } from '@/lib/auth'
 import type {
   BusinessPerformanceGroupBy,
+  BusinessPerformanceProductSource,
   DailyOrderShippingCategory,
   ProductGroup,
 } from '@/types'
@@ -55,6 +57,8 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
     'product_group',
     'shipping_category',
     'country',
+    'catalog_product',
+    'custom_product',
   ]
   const rawGroup = scalar('groupBy')
   const groupBy: BusinessPerformanceGroupBy =
@@ -93,34 +97,29 @@ export default async function FinancePerformancePage({
   } = parseSearchParams(await searchParams)
 
   const canViewProfit = profile.role === 'admin' || profile.role === 'finance'
-  const [options, productGroupsResult, summaryResult, groupResult, profitRows] = await Promise.all([
+  const productSource: BusinessPerformanceProductSource | null =
+    groupBy === 'catalog_product' ? 'catalog' : groupBy === 'custom_product' ? 'custom' : null
+  const effectiveGroupBy = productSource && !canViewProfit ? 'salesperson' : groupBy
+  const filters = {
+    dateFrom,
+    dateTo,
+    salespersonIds,
+    shopIds,
+    productGroupIds,
+    shippingCategories,
+  }
+  const [options, productGroupsResult, summaryResult, groupResult, productResult, profitRows] = await Promise.all([
     fetchDailyOrderOptions(supabase),
     supabase.from('product_groups').select('id, name, sort_order').order('sort_order'),
-    getBusinessPerformanceSummary({
-      dateFrom,
-      dateTo,
-      salespersonIds,
-      shopIds,
-      productGroupIds,
-      shippingCategories,
-    }),
-    getBusinessPerformanceByGroup(groupBy, {
-      dateFrom,
-      dateTo,
-      salespersonIds,
-      shopIds,
-      productGroupIds,
-      shippingCategories,
-    }),
+    getBusinessPerformanceSummary(filters),
+    productSource
+      ? Promise.resolve({ ok: true as const, data: [], error: undefined })
+      : getBusinessPerformanceByGroup(effectiveGroupBy, filters),
+    productSource && canViewProfit
+      ? getBusinessPerformanceByProduct(productSource, filters)
+      : Promise.resolve({ ok: true as const, data: [], error: undefined }),
     canViewProfit
-      ? getBusinessOrderProfitRowsForPerformance({
-          dateFrom,
-          dateTo,
-          salespersonIds,
-          shopIds,
-          productGroupIds,
-          shippingCategories,
-        })
+      ? getBusinessOrderProfitRowsForPerformance(filters)
       : Promise.resolve([]),
   ])
 
@@ -129,6 +128,9 @@ export default async function FinancePerformancePage({
   }
   if (!groupResult.ok || !groupResult.data) {
     throw new Error(groupResult.error || '业绩分组读取失败')
+  }
+  if (!productResult.ok || !productResult.data) {
+    throw new Error(productResult.error || '产品业绩读取失败')
   }
 
   if (productGroupsResult.error) {
@@ -159,15 +161,9 @@ export default async function FinancePerformancePage({
       <PerformanceManager
         summary={summaryResult.data}
         groupRows={groupResult.data}
-        groupBy={groupBy}
-        filters={{
-          dateFrom,
-          dateTo,
-          salespersonIds,
-          shopIds,
-          productGroupIds,
-          shippingCategories,
-        }}
+        productRows={productResult.data}
+        groupBy={effectiveGroupBy}
+        filters={filters}
         salespeople={salespeople}
         shops={shops}
         productGroups={productGroups}

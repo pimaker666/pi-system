@@ -27,6 +27,9 @@ export type BusinessPerformanceGroupBy =
   | 'product_group'
   | 'shipping_category'
   | 'country'
+  | 'catalog_product'
+  | 'custom_product'
+export type BusinessPerformanceProductSource = 'catalog' | 'custom'
 export type BusinessPaymentType = 'full' | 'deposit' | 'balance'
 
 export interface BusinessPerformanceSummary {
@@ -77,6 +80,22 @@ export interface BusinessPerformanceGroupRow {
   outstanding_cny_native: number
   overdue_count: number
 }
+
+export interface BusinessPerformanceProductRow {
+  product_key: string
+  product_name: string
+  product_sku: string
+  sales_quantity: number
+  sales_amount_cny: number
+  sales_amount_usd: number
+  settled_sales_amount_cny: number
+  settled_quantity: number
+  settled_product_cost_cny: number
+  settled_product_profit_cny: number
+  unsettled_line_count: number
+  missing_exchange_rate_line_count: number
+}
+
 export type BusinessOrderItemSourceType = 'catalog' | 'custom' | 'legacy'
 export type BusinessApprovalStatus = 'draft' | 'submitted' | 'rejected' | 'approved'
 export type BusinessPaymentStatus = 'unpaid' | 'partially_paid' | 'fully_paid'

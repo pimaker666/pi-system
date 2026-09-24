@@ -49,6 +49,8 @@ import type {
   BusinessOrderStatus,
   BusinessPerformanceGroupBy,
   BusinessPerformanceGroupRow,
+  BusinessPerformanceProductRow,
+  BusinessPerformanceProductSource,
   BusinessPerformanceSummary,
   DailyOrderShippingCategory,
   Product,
@@ -1131,6 +1133,40 @@ export async function getBusinessPerformanceSummary(
   const summary = firstRpcRow<BusinessPerformanceSummary>(data)
   if (!summary) return { ok: false, error: '业绩汇总不存在' }
   return { ok: true, data: summary }
+}
+
+export async function getBusinessPerformanceByProduct(
+  sourceType: BusinessPerformanceProductSource,
+  filters: BusinessPerformanceFilters,
+): Promise<{ ok: boolean; data?: BusinessPerformanceProductRow[]; error?: string }> {
+  await requireFinanceAccess()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_business_performance_by_product', {
+    p_source_type: sourceType,
+    p_date_from: filters.dateFrom ?? null,
+    p_date_to: filters.dateTo ?? null,
+    p_salesperson_ids: filters.salespersonIds ?? null,
+    p_shop_ids: filters.shopIds ?? null,
+    p_product_group_ids: filters.productGroupIds ?? null,
+    p_shipping_categories: filters.shippingCategories ?? null,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '读取产品业绩失败') }
+
+  return {
+    ok: true,
+    data: ((data ?? []) as BusinessPerformanceProductRow[]).map((row) => ({
+      ...row,
+      sales_quantity: Number(row.sales_quantity),
+      sales_amount_cny: Number(row.sales_amount_cny),
+      sales_amount_usd: Number(row.sales_amount_usd),
+      settled_sales_amount_cny: Number(row.settled_sales_amount_cny),
+      settled_quantity: Number(row.settled_quantity),
+      settled_product_cost_cny: Number(row.settled_product_cost_cny),
+      settled_product_profit_cny: Number(row.settled_product_profit_cny),
+      unsettled_line_count: Number(row.unsettled_line_count),
+      missing_exchange_rate_line_count: Number(row.missing_exchange_rate_line_count),
+    })),
+  }
 }
 
 export async function getBusinessPerformanceByGroup(

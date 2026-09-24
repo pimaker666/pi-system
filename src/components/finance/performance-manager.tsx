@@ -26,6 +26,7 @@ import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
 import type {
   BusinessPerformanceGroupBy,
   BusinessPerformanceGroupRow,
+  BusinessPerformanceProductRow,
   BusinessPerformanceSummary,
   DailyOrderShippingCategory,
 } from '@/types'
@@ -38,6 +39,7 @@ interface Option {
 interface PerformanceManagerProps {
   summary: BusinessPerformanceSummary
   groupRows: BusinessPerformanceGroupRow[]
+  productRows: BusinessPerformanceProductRow[]
   groupBy: BusinessPerformanceGroupBy
   filters: BusinessPerformanceFilters
   salespeople: Option[]
@@ -55,6 +57,8 @@ const GROUP_TABS: { value: BusinessPerformanceGroupBy; label: string }[] = [
   { value: 'product_group', label: '产品分组' },
   { value: 'shipping_category', label: '发货分类' },
   { value: 'country', label: '国家' },
+  { value: 'catalog_product', label: '普通产品' },
+  { value: 'custom_product', label: '定制产品' },
 ]
 
 const GROUP_COLUMN_LABELS: Record<BusinessPerformanceGroupBy, string> = {
@@ -65,6 +69,8 @@ const GROUP_COLUMN_LABELS: Record<BusinessPerformanceGroupBy, string> = {
   product_group: '产品分组',
   shipping_category: '发货分类',
   country: '国家',
+  catalog_product: '普通产品',
+  custom_product: '定制产品',
 }
 
 const SHIPPING_OPTIONS: Option[] = [
@@ -151,9 +157,72 @@ function MultiSelect({
   )
 }
 
+function ProductPerformanceTable({ rows }: { rows: BusinessPerformanceProductRow[] }) {
+  const hasUnsettled = rows.some(
+    (row) => row.unsettled_line_count > 0 || row.missing_exchange_rate_line_count > 0,
+  )
+  return (
+    <div className="overflow-x-auto rounded-md border">
+      <Table className="min-w-[1300px]">
+        <TableHeader>
+          <TableRow>
+            <TableHead>产品</TableHead>
+            <TableHead className="text-right">销售数量</TableHead>
+            <TableHead className="text-right">销售金额（CNY）</TableHead>
+            {hasUnsettled && <TableHead className="text-right">销售金额（USD）</TableHead>}
+            <TableHead className="text-right">平均客单价（CNY）</TableHead>
+            {hasUnsettled && <TableHead className="text-right">平均客单价（USD）</TableHead>}
+            <TableHead className="text-right">产品总成本（CNY）</TableHead>
+            <TableHead className="text-right">产品总利润（CNY）</TableHead>
+            <TableHead>结算状态</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => {
+            const settled = row.unsettled_line_count === 0 && row.missing_exchange_rate_line_count === 0
+            const cnySalesAmount = hasUnsettled ? row.sales_amount_cny : row.settled_sales_amount_cny
+            const cnyAverage = hasUnsettled
+              ? (row.sales_quantity ? row.sales_amount_cny / row.sales_quantity : 0)
+              : (row.settled_quantity ? row.settled_sales_amount_cny / row.settled_quantity : 0)
+            const usdAverage = row.sales_quantity ? row.sales_amount_usd / row.sales_quantity : 0
+            return (
+              <TableRow key={row.product_key}>
+                <TableCell>
+                  <div className="font-medium">{row.product_name}</div>
+                  {row.product_sku && <div className="text-xs text-muted-foreground">{row.product_sku}</div>}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{row.sales_quantity.toLocaleString()}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatCny(cnySalesAmount)}</TableCell>
+                {hasUnsettled && <TableCell className="text-right tabular-nums">{formatUsd(row.sales_amount_usd)}</TableCell>}
+                <TableCell className="text-right tabular-nums">{formatCny(cnyAverage)}</TableCell>
+                {hasUnsettled && <TableCell className="text-right tabular-nums">{formatUsd(usdAverage)}</TableCell>}
+                <TableCell className="text-right tabular-nums">{formatCny(row.settled_product_cost_cny)}</TableCell>
+                <TableCell className="text-right tabular-nums font-medium text-green-700">{formatCny(row.settled_product_profit_cny)}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {settled
+                    ? '已结清'
+                    : row.missing_exchange_rate_line_count > 0
+                      ? '待补结清汇率'
+                      : `含 ${row.unsettled_line_count} 条未结算行`}
+                </TableCell>
+              </TableRow>
+            )
+          })}
+          {rows.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={hasUnsettled ? 9 : 7} className="py-12 text-center text-muted-foreground">暂无符合筛选条件的数据</TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
+  )
+}
+
 export function PerformanceManager({
   summary,
   groupRows,
+  productRows,
   groupBy,
   filters,
   salespeople,
@@ -183,6 +252,7 @@ export function PerformanceManager({
     const value = Number(exchangeRate)
     return Number.isFinite(value) && value > 0 ? value : null
   }, [exchangeRate])
+  const isProductView = groupBy === 'catalog_product' || groupBy === 'custom_product'
 
   function buildUrl(overrides: { groupBy?: BusinessPerformanceGroupBy } = {}) {
     const params = new URLSearchParams()
@@ -472,7 +542,7 @@ export function PerformanceManager({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {GROUP_TABS.map((tab) => (
+        {GROUP_TABS.filter((tab) => canViewProfit || !['catalog_product', 'custom_product'].includes(tab.value)).map((tab) => (
           <Button
             key={tab.value}
             variant={groupBy === tab.value ? 'default' : 'outline'}
@@ -484,6 +554,9 @@ export function PerformanceManager({
         ))}
       </div>
 
+      {isProductView ? (
+        <ProductPerformanceTable rows={productRows} />
+      ) : (
       <div className="overflow-x-auto rounded-md border">
         <Table className="min-w-[900px]">
           <TableHeader>
@@ -598,6 +671,7 @@ export function PerformanceManager({
           </TableBody>
         </Table>
       </div>
+      )}
     </div>
   )
 }
