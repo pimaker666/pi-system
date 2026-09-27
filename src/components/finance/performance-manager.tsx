@@ -443,7 +443,7 @@ export function PerformanceManager({
           placeholder="填写后美金按此汇率折算为人民币"
           value={exchangeRate}
           onChange={(event) => setExchangeRate(event.target.value)}
-          className="w-[240px]"
+          className="w-[240px] border-amber-300 bg-amber-50 font-semibold text-amber-950 focus-visible:ring-amber-400"
         />
         {rate && (
           <span className="text-sm text-muted-foreground">当前汇率：{rate}</span>
@@ -472,7 +472,7 @@ export function PerformanceManager({
                   {formatCny(Number(summary.order_total_cny_native))}
                 </div>
                 {hasUsd && (
-                  <div className="mt-0.5 text-sm font-medium tabular-nums">
+                  <div className="mt-1 text-xl font-semibold tabular-nums">
                     {formatUsd(Number(summary.order_total_usd))}
                   </div>
                 )}
@@ -493,7 +493,7 @@ export function PerformanceManager({
                   {formatCny(Number(summary.received_cny_native))}
                 </div>
                 {hasUsd && (
-                  <div className="mt-0.5 text-sm font-medium tabular-nums text-green-700">
+                  <div className="mt-1 text-xl font-semibold tabular-nums text-green-700">
                     {formatUsd(Number(summary.received_usd))}
                   </div>
                 )}
@@ -532,7 +532,7 @@ export function PerformanceManager({
                   </span>
                 </div>
                 {hasUsd && (
-                  <div className="mt-0.5 text-sm font-medium tabular-nums">
+                  <div className="mt-1 text-xl font-semibold tabular-nums">
                     {formatUsd(Number(summary.outstanding_usd))}
                   </div>
                 )}
