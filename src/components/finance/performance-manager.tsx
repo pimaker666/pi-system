@@ -822,8 +822,8 @@ export function PerformanceManager({
                 ))}
                 <TableHead className="text-right">订单数</TableHead>
                 <TableHead className="text-right">销售数量</TableHead>
-                <TableHead className="text-right">销售金额（CNY）</TableHead>
-                <TableHead className="text-right">销售金额（USD）</TableHead>
+                <TableHead className="text-right">产品销售额（不含运费，CNY）</TableHead>
+                <TableHead className="text-right">产品销售额（不含运费，USD）</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
