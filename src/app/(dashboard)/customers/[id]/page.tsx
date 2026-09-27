@@ -39,7 +39,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
             <TableBody>
               {(orders ?? []).map((order) => <TableRow key={order.id}>
                 <TableCell>{order.order_date}</TableCell>
-                <TableCell><Link className="font-medium hover:underline" href={`/finance/daily-orders/${order.id}`}>{order.order_number}</Link></TableCell>
+                <TableCell><Link className="font-medium hover:underline" href={`/finance/daily-orders/${order.id}?fromCustomer=${id}`}>{order.order_number}</Link></TableCell>
                 <TableCell>{order.external_order_number || '—'}</TableCell>
                 <TableCell>{order.status}</TableCell>
                 <TableCell className="text-right tabular-nums">{order.currency === 'CNY' ? formatCny(Number(order.total_amount)) : `${order.currency} ${Number(order.total_amount).toLocaleString('en-US', { maximumFractionDigits: 2 })}`}</TableCell>

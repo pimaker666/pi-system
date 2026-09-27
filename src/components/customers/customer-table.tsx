@@ -337,7 +337,12 @@ export function CustomerTable({
                     className="font-medium"
                     style={{ color: c.tag_color ?? undefined }}
                   >
-                    <Link href={`/customers/${c.id}`} className="hover:underline">
+                    <Link
+                      href={`/customers/${c.id}`}
+                      className="hover:underline"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
                       {c.name}
                     </Link>
                   </TableCell>

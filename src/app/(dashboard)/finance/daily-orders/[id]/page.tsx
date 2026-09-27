@@ -103,10 +103,13 @@ const lifecycleActionLabels: Record<string, string> = {
 
 export default async function BusinessOrderDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ fromCustomer?: string }>
 }) {
   const { id } = await params
+  const { fromCustomer } = await searchParams
   const profile = await requireApproved()
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -127,6 +130,9 @@ export default async function BusinessOrderDetailPage({
     closure_reason?: string | null
     business_order_returns?: BusinessOrderReturnView[]
   }
+  const returnHref = fromCustomer === order.customer_id
+    ? `/customers/${order.customer_id}`
+    : '/finance/daily-orders'
   order.business_order_items = await attachBusinessOrderItemsDisplay(
     supabase,
     order.business_order_items,
@@ -330,7 +336,9 @@ export default async function BusinessOrderDetailPage({
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Button asChild variant="ghost" size="icon" className="h-8 w-8">
-            <Link href="/finance/daily-orders"><ArrowLeft className="h-4 w-4" /></Link>
+            <Link href={returnHref} aria-label={fromCustomer === order.customer_id ? '返回客户订单明细' : '返回每日订单'}>
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
           </Button>
           <div>
             <div className="flex flex-wrap items-center gap-2">
