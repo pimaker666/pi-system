@@ -55,6 +55,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
   )
   const [draggingLogo, setDraggingLogo] = useState(false)
   const { upload: uploadLogo, uploading } = useImageUpload({ bucket: 'customer-assets', folder: 'customer-logos' })
+  const logoInputRef = useRef<HTMLInputElement>(null)
 
   const [form, setForm] = useState<FormState>({
     name: customer?.name ?? '',
@@ -383,18 +384,25 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
           onDragLeave={() => setDraggingLogo(false)}
           onDrop={handleLogoDrop}
         >
-          <div className="flex items-center gap-3">
-            <Input
-              id="logo"
-              type="file"
-              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-              multiple
-              onChange={handleLogo}
-              disabled={uploading || pending || logoUrls.length >= 10}
-              className="max-w-xs"
-            />
-            <ImageIcon className="h-5 w-5 text-muted-foreground" />
-          </div>
+          <Input
+            ref={logoInputRef}
+            id="logo"
+            type="file"
+            accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+            multiple
+            onChange={handleLogo}
+            disabled={uploading || pending || logoUrls.length >= 10}
+            className="sr-only"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => logoInputRef.current?.click()}
+            disabled={uploading || pending || logoUrls.length >= 10}
+          >
+            <ImageIcon className="mr-2 h-4 w-4" />
+            选择图片
+          </Button>
           <p className="mt-2 text-xs text-muted-foreground">支持拖放、选择多张 JPEG/PNG，单张不超过 20MB，最多 10 张。</p>
         </div>
         {uploading && <p className="flex items-center gap-1 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在上传…</p>}
