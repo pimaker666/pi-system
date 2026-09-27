@@ -219,9 +219,9 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
   }
 
   function handleLogo(event: ChangeEvent<HTMLInputElement>) {
-    const files = event.target.files
+    const files = Array.from(event.target.files ?? [])
     event.target.value = ''
-    if (files) void uploadLogoFiles(files)
+    void uploadLogoFiles(files)
   }
 
   function handleLogoDrop(event: DragEvent<HTMLDivElement>) {
