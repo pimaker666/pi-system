@@ -12,7 +12,7 @@ export const customerSchema = z.object({
   country: z.string().trim().max(100).optional().or(z.literal('')),
   contact_person: z.string().trim().max(200).optional().or(z.literal('')),
   brand_name: z.string().trim().max(200).optional().or(z.literal('')),
-  logo_url: z.string().trim().url('Logo 地址无效').max(2000).optional().or(z.literal('')),
+  logo_urls: z.array(z.string().trim().url('Logo 地址无效').max(2000)).max(10, '最多上传 10 张 Logo'),
   remarks: z.string().trim().max(2000).optional().or(z.literal('')),
   group_id: z.string().uuid().optional().nullable().or(z.literal('')),
 })

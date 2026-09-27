@@ -1201,6 +1201,7 @@ export interface Customer {
   contact_person: string | null
   brand_name: string | null
   logo_url: string | null
+  logo_urls: string[]
   remarks: string | null
   group_id: string | null
   tag_color: string | null

@@ -3,7 +3,7 @@
 import { useState, useTransition, useEffect, useRef, type ChangeEvent, type DragEvent } from 'react'
 import Image from 'next/image'
 import { toast } from 'sonner'
-import { ImageIcon, Loader2, MapPin, Sparkles } from 'lucide-react'
+import { ImageIcon, Loader2, MapPin, Sparkles, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -50,7 +50,9 @@ interface FormState {
 export function CustomerFormFields({ customer, groups, onSuccess }: CustomerFormProps) {
   const [pending, startTransition] = useTransition()
   const [groupId, setGroupId] = useState(customer?.group_id ?? NO_GROUP)
-  const [logoUrl, setLogoUrl] = useState(customer?.logo_url ?? '')
+  const [logoUrls, setLogoUrls] = useState(
+    customer?.logo_urls?.length ? customer.logo_urls : customer?.logo_url ? [customer.logo_url] : [],
+  )
   const [draggingLogo, setDraggingLogo] = useState(false)
   const { upload: uploadLogo, uploading } = useImageUpload({ bucket: 'customer-assets', folder: 'customer-logos' })
 
@@ -190,35 +192,45 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
     }
   }
 
-  async function uploadLogoFile(file: File) {
-    if (!['image/jpeg', 'image/png'].includes(file.type)) {
-      toast.error('仅支持 JPEG 或 PNG 图片')
+  async function uploadLogoFiles(files: FileList | File[]) {
+    const selected = Array.from(files)
+    if (!selected.length) return
+    if (logoUrls.length + selected.length > 10) {
+      toast.error('最多上传 10 张 Logo')
       return
     }
-    if (file.size > MAX_LOGO_SIZE) {
-      toast.error('Logo 图片不能超过 20MB')
+    const invalid = selected.find(
+      (file) => !['image/jpeg', 'image/png'].includes(file.type) || file.size > MAX_LOGO_SIZE,
+    )
+    if (invalid) {
+      toast.error(`${invalid.name} 不是 JPEG/PNG 或超过 20MB`)
       return
     }
 
     try {
-      setLogoUrl(await uploadLogo(file))
-      toast.success('Logo 已上传')
+      const uploadedUrls: string[] = []
+      for (const file of selected) uploadedUrls.push(await uploadLogo(file))
+      setLogoUrls((current) => [...current, ...uploadedUrls])
+      toast.success(`已上传 ${uploadedUrls.length} 张 Logo`)
     } catch {
       toast.error('Logo 上传失败，请稍后重试')
     }
   }
 
   function handleLogo(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
+    const files = event.target.files
     event.target.value = ''
-    if (file) void uploadLogoFile(file)
+    if (files) void uploadLogoFiles(files)
   }
 
   function handleLogoDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault()
     setDraggingLogo(false)
-    const file = event.dataTransfer.files?.[0]
-    if (file) void uploadLogoFile(file)
+    void uploadLogoFiles(event.dataTransfer.files)
+  }
+
+  function removeLogo(url: string) {
+    setLogoUrls((current) => current.filter((item) => item !== url))
   }
 
   function handleSubmit(formData: FormData) {
@@ -358,7 +370,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
 
       <div className="space-y-2">
         <Label htmlFor="logo">上传 Logo</Label>
-        <Input type="hidden" name="logo_url" value={logoUrl} />
+        <Input type="hidden" name="logo_urls" value={JSON.stringify(logoUrls)} />
         <div
           className={`rounded-md border border-dashed p-4 transition-colors ${
             draggingLogo ? 'border-primary bg-primary/5' : 'border-input'
@@ -376,16 +388,36 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
               id="logo"
               type="file"
               accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+              multiple
               onChange={handleLogo}
-              disabled={uploading || pending}
+              disabled={uploading || pending || logoUrls.length >= 10}
               className="max-w-xs"
             />
             <ImageIcon className="h-5 w-5 text-muted-foreground" />
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">支持拖放、选择 JPEG/PNG，单张不超过 20MB。</p>
+          <p className="mt-2 text-xs text-muted-foreground">支持拖放、选择多张 JPEG/PNG，单张不超过 20MB，最多 10 张。</p>
         </div>
         {uploading && <p className="flex items-center gap-1 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在上传…</p>}
-        {logoUrl && <div className="relative h-28 w-28 overflow-hidden rounded-md border bg-muted"><Image src={toImageSrc(logoUrl)} alt="客户 Logo 预览" fill className="object-contain p-2" sizes="112px" /></div>}
+        {logoUrls.length > 0 && (
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+            {logoUrls.map((url, index) => (
+              <div key={url} className="group relative aspect-square overflow-hidden rounded-md border bg-muted">
+                <Image src={toImageSrc(url)} alt={`客户 Logo ${index + 1}`} fill className="object-contain p-2" sizes="112px" />
+                <Button
+                  type="button"
+                  variant="destructive"
+                  size="icon"
+                  className="absolute right-1 top-1 h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
+                  onClick={() => removeLogo(url)}
+                  disabled={pending || uploading}
+                  aria-label={`删除 Logo ${index + 1}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">

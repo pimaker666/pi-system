@@ -98,6 +98,7 @@ export default async function EditBusinessOrderPage({
       ...order.customer_snapshot,
       brand_name: null,
       logo_url: null,
+      logo_urls: [],
       remarks: null,
       group_id: null,
       created_by: order.salesperson_id,

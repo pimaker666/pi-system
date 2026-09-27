@@ -27,6 +27,11 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   if (!customer) notFound()
 
   const customerRecord = customer as Customer
+  const logoUrls = customerRecord.logo_urls.length
+    ? customerRecord.logo_urls
+    : customerRecord.logo_url
+      ? [customerRecord.logo_url]
+      : []
   const address = [customerRecord.address, customerRecord.city, customerRecord.state, customerRecord.postal_code]
     .filter(Boolean)
     .join(' · ')
@@ -59,9 +64,13 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
         </CardHeader>
         <CardContent>
           <div className="flex flex-col gap-5 sm:flex-row">
-            {customerRecord.logo_url && (
-              <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-md border bg-muted">
-                <Image src={toImageSrc(customerRecord.logo_url)} alt={`${customerRecord.name} Logo`} fill className="object-contain p-2" sizes="112px" />
+            {logoUrls.length > 0 && (
+              <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3">
+                {logoUrls.map((url, index) => (
+                  <div key={url} className="relative h-20 w-20 overflow-hidden rounded-md border bg-muted">
+                    <Image src={toImageSrc(url)} alt={`${customerRecord.name} Logo ${index + 1}`} fill className="object-contain p-2" sizes="80px" />
+                  </div>
+                ))}
               </div>
             )}
             <dl className="grid flex-1 gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">

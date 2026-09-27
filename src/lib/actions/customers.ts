@@ -2,11 +2,21 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { requireAdmin, requireProfile } from '@/lib/auth'
 import { formatCountryName } from '@/lib/country-flags'
 import { customerSchema, newCustomerSchema } from '@/schemas/customer'
 import type { Customer } from '@/types'
 import type { ActionResult } from './products'
+
+function parseLogoUrls(value: FormDataEntryValue | null): unknown {
+  if (typeof value !== 'string') return []
+  try {
+    return JSON.parse(value)
+  } catch {
+    return null
+  }
+}
 
 function customerFormValues(formData: FormData) {
   return {
@@ -21,7 +31,7 @@ function customerFormValues(formData: FormData) {
     country: formData.get('country') || '',
     contact_person: formData.get('contact_person') || '',
     brand_name: formData.get('brand_name') || '',
-    logo_url: formData.get('logo_url') || '',
+    logo_urls: parseLogoUrls(formData.get('logo_urls')),
     remarks: formData.get('remarks') || '',
     group_id: formData.get('group_id') || '',
   }
@@ -33,6 +43,23 @@ function parseCustomer(formData: FormData) {
 
 function parseNewCustomer(formData: FormData) {
   return newCustomerSchema.safeParse(customerFormValues(formData))
+}
+
+const CUSTOMER_ASSET_PREFIX = '/storage/v1/object/public/customer-assets/'
+
+function customerLogoObjectPath(url: string) {
+  const index = url.indexOf(CUSTOMER_ASSET_PREFIX)
+  if (index < 0) return null
+  try {
+    return url
+      .slice(index + CUSTOMER_ASSET_PREFIX.length)
+      .split(/[?#]/, 1)[0]
+      .split('/')
+      .map(decodeURIComponent)
+      .join('/')
+  } catch {
+    return null
+  }
 }
 
 function normalizeCountry(country: string) {
@@ -53,7 +80,8 @@ function normalize(data: ReturnType<typeof customerSchema.parse>) {
     country: normalizeCountry(data.country ?? ''),
     contact_person: data.contact_person || null,
     brand_name: data.brand_name || null,
-    logo_url: data.logo_url || null,
+    logo_urls: data.logo_urls,
+    logo_url: data.logo_urls[0] ?? null,
     remarks: data.remarks || null,
     group_id: data.group_id ? data.group_id : null,
   }
@@ -66,6 +94,9 @@ export async function createCustomer(
   const parsed = parseNewCustomer(formData)
   if (!parsed.success) {
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+  if (parsed.data.logo_urls.some((url) => !customerLogoObjectPath(url))) {
+    return { ok: false, error: 'Logo 必须通过客户资料上传' }
   }
 
   const supabase = await createClient()
@@ -89,10 +120,34 @@ export async function updateCustomer(
   if (!parsed.success) {
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
   }
+  if (parsed.data.logo_urls.some((url) => !customerLogoObjectPath(url))) {
+    return { ok: false, error: 'Logo 必须通过客户资料上传' }
+  }
 
   const supabase = await createClient()
+  const { data: current, error: currentError } = await supabase
+    .from('customers')
+    .select('logo_urls, logo_url')
+    .eq('id', id)
+    .single()
+  if (currentError) return { ok: false, error: currentError.message }
+
   const { error } = await supabase.from('customers').update(normalize(parsed.data)).eq('id', id)
   if (error) return { ok: false, error: error.message }
+
+  const currentLogoUrls = current as { logo_urls: string[] | null; logo_url: string | null }
+  const previousUrls: string[] = currentLogoUrls.logo_urls?.length
+    ? currentLogoUrls.logo_urls
+    : currentLogoUrls.logo_url
+      ? [currentLogoUrls.logo_url]
+      : []
+  const removedPaths = previousUrls
+    .filter((url) => !parsed.data.logo_urls.includes(url))
+    .map(customerLogoObjectPath)
+    .filter((path): path is string => path !== null)
+  if (removedPaths.length) {
+    await createAdminClient().storage.from('customer-assets').remove(removedPaths)
+  }
 
   revalidatePath('/customers')
   revalidatePath(`/customers/${id}`)
