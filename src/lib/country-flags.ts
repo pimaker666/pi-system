@@ -80,3 +80,8 @@ export function formatCountryName(raw: string | null | undefined): string {
   const code = resolveCountryCode(raw)
   return code ? chineseCountryNames.of(code.toUpperCase()) ?? raw : raw
 }
+
+export function formatCountryEnglishName(raw: string | null | undefined): string {
+  if (!raw?.trim()) return ''
+  return canonicalCountry(raw) ?? raw.trim()
+}

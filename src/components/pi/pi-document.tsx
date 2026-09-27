@@ -14,6 +14,7 @@ import {
   Image,
 } from '@react-pdf/renderer'
 import { registerPdfFonts } from '@/lib/pdf-fonts'
+import { formatCountryEnglishName } from '@/lib/country-flags'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { derivePalette, type PiPalette } from '@/lib/pi-theme'
 import { toServerImageSrc } from '@/lib/supabase/image'
@@ -386,7 +387,7 @@ export function PiDocument({ pi, company }: PiDocumentProps) {
               <Text style={styles.billName}>{c.name}</Text>
               {c.company && <Text style={styles.billLine}>{c.company}</Text>}
               {c.address && <Text style={styles.billLine}>{c.address}</Text>}
-              {c.country && <Text style={styles.billLine}>{c.country}</Text>}
+              {c.country && <Text style={styles.billLine}>{formatCountryEnglishName(c.country)}</Text>}
               {c.phone && <Text style={[styles.billLine, styles.latin]}>Tel: {c.phone}</Text>}
               {c.email && <Text style={[styles.billLine, styles.latin]}>{c.email}</Text>}
             </View>

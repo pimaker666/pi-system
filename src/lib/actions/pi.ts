@@ -43,23 +43,27 @@ export async function createProformaInvoice(rawInput: unknown): Promise<CreatePi
         .filter((v): v is string => typeof v === 'string' && v.length > 0),
     ),
   )
-  let existingIds = new Set<string>()
+  const productNames = new Map<string, string>()
   if (candidateIds.length) {
     const { data: existing } = await supabase
       .from('products')
-      .select('id')
+      .select('id, name')
       .in('id', candidateIds)
-    existingIds = new Set((existing ?? []).map((r) => r.id as string))
+    for (const product of existing ?? []) {
+      productNames.set(product.id as string, product.name as string)
+    }
   }
   const resolveProductId = (id: string | null | undefined) =>
-    id && existingIds.has(id) ? id : null
+    id && productNames.has(id) ? id : null
+  const resolveProductName = (id: string | null | undefined, fallback: string) =>
+    id ? productNames.get(id) ?? fallback : fallback
 
   // Server-side recomputation of every monetary value.
   const totals = calcPiTotals(
     input.items.map((i) => ({
       product_id: resolveProductId(i.product_id),
       sku: i.sku,
-      name: i.name,
+      name: resolveProductName(i.product_id, i.name),
       description: i.description ?? null,
       image_url: i.image_url ?? null,
       remark_image_url: i.remark_image_url ?? null,
@@ -76,7 +80,7 @@ export async function createProformaInvoice(rawInput: unknown): Promise<CreatePi
   const itemsPayload = input.items.map((i, idx) => ({
     product_id: resolveProductId(i.product_id),
     sku: i.sku,
-    name: i.name,
+    name: resolveProductName(i.product_id, i.name),
     description: i.description ?? null,
     image_url: i.image_url ?? null,
     remark_image_url: i.remark_image_url ?? null,

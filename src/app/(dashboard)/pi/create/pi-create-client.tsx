@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { usePiCartStore } from '@/stores/pi-cart-store'
 import { createProformaInvoice } from '@/lib/actions/pi'
 import { calcPiTotals } from '@/lib/calc'
+import { formatCountryEnglishName } from '@/lib/country-flags'
 import { formatCurrency } from '@/lib/utils'
 import { ProductSelector } from '@/components/products/product-selector'
 import { CustomerCombobox } from '@/components/customers/customer-combobox'
@@ -49,7 +50,7 @@ function toSnapshot(c: Customer): CustomerSnapshot {
     city: c.city,
     state: c.state,
     postal_code: c.postal_code,
-    country: c.country,
+    country: formatCountryEnglishName(c.country) || null,
     contact_person: c.contact_person,
     tag_color: c.tag_color,
   }
