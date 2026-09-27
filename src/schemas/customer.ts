@@ -11,6 +11,8 @@ export const customerSchema = z.object({
   postal_code: z.string().trim().max(20).optional().or(z.literal('')),
   country: z.string().trim().max(100).optional().or(z.literal('')),
   contact_person: z.string().trim().max(200).optional().or(z.literal('')),
+  brand_name: z.string().trim().max(200).optional().or(z.literal('')),
+  logo_url: z.string().trim().url('Logo 地址无效').max(2000).optional().or(z.literal('')),
   remarks: z.string().trim().max(2000).optional().or(z.literal('')),
   group_id: z.string().uuid().optional().nullable().or(z.literal('')),
 })

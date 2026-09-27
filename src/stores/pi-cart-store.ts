@@ -271,6 +271,8 @@ export const usePiCartStore = create<PiCartState>()(
                 postal_code: pi.customer_snapshot.postal_code ?? null,
                 country: pi.customer_snapshot.country,
                 contact_person: pi.customer_snapshot.contact_person,
+                brand_name: null,
+                logo_url: null,
                 remarks: null,
                 group_id: null,
                 tag_color: pi.customer_snapshot.tag_color ?? null,

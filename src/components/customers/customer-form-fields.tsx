@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useTransition, useEffect, useRef } from 'react'
+import { useState, useTransition, useEffect, useRef, type ChangeEvent, type DragEvent } from 'react'
+import Image from 'next/image'
 import { toast } from 'sonner'
-import { Sparkles, MapPin } from 'lucide-react'
+import { ImageIcon, Loader2, MapPin, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,10 +18,13 @@ import {
 import { createCustomer, updateCustomer } from '@/lib/actions/customers'
 import { parseCustomerText } from '@/lib/parse-customer'
 import { CountryFlag } from '@/components/shared/country-flag'
+import { useImageUpload } from '@/lib/hooks/use-image-upload'
 import { usePostalLookup, type PostalResult } from '@/hooks/use-postal-lookup'
+import { toImageSrc } from '@/lib/supabase/image'
 import type { Customer, CustomerGroup } from '@/types'
 
 const NO_GROUP = '__none__'
+const MAX_LOGO_SIZE = 20 * 1024 * 1024
 
 interface CustomerFormProps {
   customer?: Customer
@@ -33,6 +37,7 @@ interface FormState {
   company: string
   contact_person: string
   country: string
+  brand_name: string
   email: string
   phone: string
   address: string
@@ -45,12 +50,16 @@ interface FormState {
 export function CustomerFormFields({ customer, groups, onSuccess }: CustomerFormProps) {
   const [pending, startTransition] = useTransition()
   const [groupId, setGroupId] = useState(customer?.group_id ?? NO_GROUP)
+  const [logoUrl, setLogoUrl] = useState(customer?.logo_url ?? '')
+  const [draggingLogo, setDraggingLogo] = useState(false)
+  const { upload: uploadLogo, uploading } = useImageUpload({ bucket: 'customer-assets', folder: 'customer-logos' })
 
   const [form, setForm] = useState<FormState>({
     name: customer?.name ?? '',
     company: customer?.company ?? '',
     contact_person: customer?.contact_person ?? '',
     country: customer?.country ?? '',
+    brand_name: customer?.brand_name ?? '',
     email: customer?.email ?? '',
     phone: customer?.phone ?? '',
     address: customer?.address ?? '',
@@ -181,6 +190,37 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
     }
   }
 
+  async function uploadLogoFile(file: File) {
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      toast.error('仅支持 JPEG 或 PNG 图片')
+      return
+    }
+    if (file.size > MAX_LOGO_SIZE) {
+      toast.error('Logo 图片不能超过 20MB')
+      return
+    }
+
+    try {
+      setLogoUrl(await uploadLogo(file))
+      toast.success('Logo 已上传')
+    } catch {
+      toast.error('Logo 上传失败，请稍后重试')
+    }
+  }
+
+  function handleLogo(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (file) void uploadLogoFile(file)
+  }
+
+  function handleLogoDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setDraggingLogo(false)
+    const file = event.dataTransfer.files?.[0]
+    if (file) void uploadLogoFile(file)
+  }
+
   function handleSubmit(formData: FormData) {
     if (!customer) {
       if (!form.country.trim()) {
@@ -281,6 +321,16 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
         </div>
       </div>
 
+      <div className="space-y-2">
+        <Label htmlFor="brand_name">品牌名字</Label>
+        <Input
+          id="brand_name"
+          name="brand_name"
+          value={form.brand_name}
+          onChange={(e) => update('brand_name', e.target.value)}
+        />
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="contact_person">联系人</Label>
@@ -304,6 +354,38 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
             required={!customer}
           />
         </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="logo">上传 Logo</Label>
+        <Input type="hidden" name="logo_url" value={logoUrl} />
+        <div
+          className={`rounded-md border border-dashed p-4 transition-colors ${
+            draggingLogo ? 'border-primary bg-primary/5' : 'border-input'
+          }`}
+          onDragEnter={(event) => {
+            event.preventDefault()
+            setDraggingLogo(true)
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDragLeave={() => setDraggingLogo(false)}
+          onDrop={handleLogoDrop}
+        >
+          <div className="flex items-center gap-3">
+            <Input
+              id="logo"
+              type="file"
+              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+              onChange={handleLogo}
+              disabled={uploading || pending}
+              className="max-w-xs"
+            />
+            <ImageIcon className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">支持拖放、选择 JPEG/PNG，单张不超过 20MB。</p>
+        </div>
+        {uploading && <p className="flex items-center gap-1 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在上传…</p>}
+        {logoUrl && <div className="relative h-28 w-28 overflow-hidden rounded-md border bg-muted"><Image src={toImageSrc(logoUrl)} alt="客户 Logo 预览" fill className="object-contain p-2" sizes="112px" /></div>}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -446,8 +528,8 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
         />
       </div>
 
-      <Button type="submit" disabled={pending} className="w-full">
-        {pending ? '保存中…' : '保存'}
+      <Button type="submit" disabled={pending || uploading} className="w-full">
+        {pending ? '保存中…' : uploading ? '上传中…' : '保存'}
       </Button>
     </form>
   )

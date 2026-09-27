@@ -1,21 +1,22 @@
+import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { CustomerDetailEditButton } from '@/components/customers/customer-detail-edit-button'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatCountryName } from '@/lib/country-flags'
 import { formatCny } from '@/lib/finance'
+import { toImageSrc } from '@/lib/supabase/image'
 import { createClient } from '@/lib/supabase/server'
+import type { Customer, CustomerGroup } from '@/types'
 
 export default async function CustomerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const supabase = await createClient()
-  const [{ data: customer }, { data: orders }] = await Promise.all([
-    supabase
-      .from('customers')
-      .select('id, name, company, country, contact_person, email, phone, address, city, state, postal_code, remarks, customer_groups(name)')
-      .eq('id', id)
-      .maybeSingle(),
+  const [{ data: customer }, { data: groups }, { data: orders }] = await Promise.all([
+    supabase.from('customers').select('*').eq('id', id).maybeSingle(),
+    supabase.from('customer_groups').select('*').order('name'),
     supabase
       .from('business_orders')
       .select('id, order_number, external_order_number, order_date, currency, total_amount, total_cny, status')
@@ -25,41 +26,53 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
   ])
   if (!customer) notFound()
 
-  const address = [customer.address, customer.city, customer.state, customer.postal_code]
+  const customerRecord = customer as Customer
+  const address = [customerRecord.address, customerRecord.city, customerRecord.state, customerRecord.postal_code]
     .filter(Boolean)
     .join(' · ')
   const details = [
-    ['客户名称', customer.name],
-    ['公司', customer.company],
-    ['联系人', customer.contact_person],
-    ['国家', formatCountryName(customer.country)],
-    ['邮箱', customer.email],
-    ['电话', customer.phone],
+    ['客户名称', customerRecord.name],
+    ['公司', customerRecord.company],
+    ['品牌名字', customerRecord.brand_name],
+    ['联系人', customerRecord.contact_person],
+    ['国家', formatCountryName(customerRecord.country)],
+    ['邮箱', customerRecord.email],
+    ['电话', customerRecord.phone],
     ['地址', address || null],
-    ['备注', customer.remarks],
+    ['备注', customerRecord.remarks],
   ]
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold">{customer.name}</h1>
+          <h1 className="text-2xl font-semibold">{customerRecord.name}</h1>
           <p className="text-sm text-muted-foreground">客户下单明细</p>
         </div>
         <Button asChild variant="outline"><Link href="/customers">返回客户列表</Link></Button>
       </div>
 
       <Card>
-        <CardHeader><CardTitle>客户信息</CardTitle></CardHeader>
+        <CardHeader className="flex-row items-center justify-between space-y-0">
+          <CardTitle>客户信息</CardTitle>
+          <CustomerDetailEditButton customer={customerRecord} groups={(groups ?? []) as CustomerGroup[]} />
+        </CardHeader>
         <CardContent>
-          <dl className="grid gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
-            {details.map(([label, value]) => (
-              <div key={label} className={label === '备注' ? 'sm:col-span-2 lg:col-span-4' : ''}>
-                <dt className="text-sm text-muted-foreground">{label}</dt>
-                <dd className="mt-1 whitespace-pre-wrap break-words font-medium">{value || '—'}</dd>
+          <div className="flex flex-col gap-5 sm:flex-row">
+            {customerRecord.logo_url && (
+              <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-md border bg-muted">
+                <Image src={toImageSrc(customerRecord.logo_url)} alt={`${customerRecord.name} Logo`} fill className="object-contain p-2" sizes="112px" />
               </div>
-            ))}
-          </dl>
+            )}
+            <dl className="grid flex-1 gap-x-8 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+              {details.map(([label, value]) => (
+                <div key={label} className={label === '备注' ? 'sm:col-span-2 lg:col-span-4' : ''}>
+                  <dt className="text-sm text-muted-foreground">{label}</dt>
+                  <dd className="mt-1 whitespace-pre-wrap break-words font-medium">{value || '—'}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </CardContent>
       </Card>
 

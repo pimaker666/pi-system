@@ -1199,6 +1199,8 @@ export interface Customer {
   postal_code: string | null
   country: string | null
   contact_person: string | null
+  brand_name: string | null
+  logo_url: string | null
   remarks: string | null
   group_id: string | null
   tag_color: string | null

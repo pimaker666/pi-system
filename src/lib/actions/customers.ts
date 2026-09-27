@@ -20,6 +20,8 @@ function customerFormValues(formData: FormData) {
     postal_code: formData.get('postal_code') || '',
     country: formData.get('country') || '',
     contact_person: formData.get('contact_person') || '',
+    brand_name: formData.get('brand_name') || '',
+    logo_url: formData.get('logo_url') || '',
     remarks: formData.get('remarks') || '',
     group_id: formData.get('group_id') || '',
   }
@@ -50,6 +52,8 @@ function normalize(data: ReturnType<typeof customerSchema.parse>) {
     postal_code: data.postal_code || null,
     country: normalizeCountry(data.country ?? ''),
     contact_person: data.contact_person || null,
+    brand_name: data.brand_name || null,
+    logo_url: data.logo_url || null,
     remarks: data.remarks || null,
     group_id: data.group_id ? data.group_id : null,
   }
@@ -91,6 +95,7 @@ export async function updateCustomer(
   if (error) return { ok: false, error: error.message }
 
   revalidatePath('/customers')
+  revalidatePath(`/customers/${id}`)
   return { ok: true, id }
 }
 

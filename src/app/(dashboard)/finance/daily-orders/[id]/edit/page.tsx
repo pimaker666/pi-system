@@ -96,6 +96,8 @@ export default async function EditBusinessOrderPage({
     customers.push({
       id: order.customer_id,
       ...order.customer_snapshot,
+      brand_name: null,
+      logo_url: null,
       remarks: null,
       group_id: null,
       created_by: order.salesperson_id,
