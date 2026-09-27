@@ -117,8 +117,8 @@ export function CustomerFilters({
         </SelectContent>
       </Select>
 
-      <Input type="number" min="0" defaultValue={amountMin} placeholder="近一年金额最低" className="w-36" onBlur={(event) => setParam('amountMin', event.target.value)} />
-      <Input type="number" min="0" defaultValue={amountMax} placeholder="近一年金额最高" className="w-36" onBlur={(event) => setParam('amountMax', event.target.value)} />
+      <Input type="number" min="0" defaultValue={amountMin} placeholder="近一年 CNY 最低" className="w-36" onBlur={(event) => setParam('amountMin', event.target.value)} />
+      <Input type="number" min="0" defaultValue={amountMax} placeholder="近一年 CNY 最高" className="w-36" onBlur={(event) => setParam('amountMax', event.target.value)} />
       <Button
         type="button"
         variant="outline"

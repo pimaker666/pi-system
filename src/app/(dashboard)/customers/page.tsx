@@ -82,11 +82,13 @@ export default async function CustomersPage({
     for (const s of (statsData ?? []) as {
       customer_id: string
       last_year_amount_cny: number | string | null
+      last_year_amount_usd: number | string | null
       last_order_date: string | null
       custom_order_count: number | null
     }[]) {
       statsMap[s.customer_id] = {
         lastYearAmountCny: Number(s.last_year_amount_cny ?? 0),
+        lastYearAmountUsd: Number(s.last_year_amount_usd ?? 0),
         lastOrderDate: s.last_order_date,
         customOrderCount: Number(s.custom_order_count ?? 0),
       }

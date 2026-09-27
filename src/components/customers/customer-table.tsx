@@ -62,6 +62,7 @@ export interface CustomerRow extends Customer {
 
 export interface CustomerOrderStats {
   lastYearAmountCny: number
+  lastYearAmountUsd: number
   lastOrderDate: string | null
   customOrderCount: number
 }
@@ -71,11 +72,12 @@ export type CustomerOrderStatsMap = Record<string, CustomerOrderStats>
 const KEEP = '__keep__'
 const NO_GROUP = '__none__'
 
-const cnyFormatter = new Intl.NumberFormat('zh-CN', {
-  style: 'currency',
-  currency: 'CNY',
-  maximumFractionDigits: 2,
-})
+function formatAmount(amount: number, currency: 'CNY' | 'USD') {
+  return `${currency} ${amount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+}
 
 export function CustomerTable({
   customers,
@@ -357,9 +359,16 @@ export function CustomerTable({
                     {c.email ?? c.phone ?? '—'}
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
-                    {stats[c.id]?.lastYearAmountCny
-                      ? cnyFormatter.format(stats[c.id].lastYearAmountCny)
-                      : '—'}
+                    {stats[c.id]?.lastYearAmountCny || stats[c.id]?.lastYearAmountUsd ? (
+                      <div className="space-y-0.5 whitespace-nowrap">
+                        {stats[c.id]?.lastYearAmountCny ? (
+                          <div>{formatAmount(stats[c.id].lastYearAmountCny, 'CNY')}</div>
+                        ) : null}
+                        {stats[c.id]?.lastYearAmountUsd ? (
+                          <div>{formatAmount(stats[c.id].lastYearAmountUsd, 'USD')}</div>
+                        ) : null}
+                      </div>
+                    ) : '—'}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground tabular-nums">
                     {stats[c.id]?.lastOrderDate ?? '—'}
