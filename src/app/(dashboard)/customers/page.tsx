@@ -6,19 +6,27 @@ import { displayProfileName } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { NewCustomerButton } from '@/components/customers/new-customer-button'
 import { CustomerFilters } from '@/components/customers/customer-filters'
-import { CustomerTable, type CustomerRow, type CustomerOrderStatsMap } from '@/components/customers/customer-table'
+import {
+  CustomerTable,
+  type CustomerOrderStatsMap,
+  type CustomerRow,
+  type CustomerSortField,
+} from '@/components/customers/customer-table'
 import type { OwnerOption } from '@/components/shared/owner-filter'
 import type { CustomerCommissionTag, CustomerGroup, Profile } from '@/types'
+
+const customerSortFields: CustomerSortField[] = ['amount', 'lastOrder', 'createdAt', 'customOrderCount']
 
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; group?: string; country?: string; owner?: string; amountMin?: string; amountMax?: string; lastOrderFrom?: string; lastOrderTo?: string; createdAtOrder?: string }>
+  searchParams: Promise<{ q?: string; group?: string; country?: string; owner?: string; amountMin?: string; amountMax?: string; lastOrderFrom?: string; lastOrderTo?: string; sortBy?: string; sortDirection?: string }>
 }) {
-  const { q, group, country, owner, amountMin, amountMax, lastOrderFrom, lastOrderTo, createdAtOrder } = await searchParams
-  const normalizedCreatedAtOrder = createdAtOrder === 'asc' || createdAtOrder === 'desc'
-    ? createdAtOrder
-    : ''
+  const { q, group, country, owner, amountMin, amountMax, lastOrderFrom, lastOrderTo, sortBy: rawSortBy, sortDirection: rawSortDirection } = await searchParams
+  const sortBy = customerSortFields.includes(rawSortBy as CustomerSortField)
+    ? rawSortBy as CustomerSortField
+    : 'amount'
+  const sortDirection = rawSortDirection === 'asc' ? 'asc' : 'desc'
   const profile = await getCurrentProfile()
   const isAdmin = profile?.role === 'admin'
   const supabase = await createClient()
@@ -106,13 +114,23 @@ export default async function CustomersPage({
     return true
   })
   customers.sort((left, right) => {
-    if (normalizedCreatedAtOrder) {
-      const difference = left.created_at.localeCompare(right.created_at)
-      return normalizedCreatedAtOrder === 'asc' ? difference : -difference
+    const sortValue = (customer: CustomerRow): number | string | undefined => {
+      const stats = statsMap[customer.id]
+      if (sortBy === 'amount') return stats?.lastYearAmountCny || stats?.lastYearAmountUsd || 0
+      if (sortBy === 'lastOrder') return stats?.lastOrderDate ?? undefined
+      if (sortBy === 'createdAt') return customer.created_at
+      return stats?.customOrderCount ?? 0
     }
-    const amountDifference = (statsMap[right.id]?.lastYearAmountCny ?? 0) - (statsMap[left.id]?.lastYearAmountCny ?? 0)
-    if (amountDifference !== 0) return amountDifference
-    return (statsMap[right.id]?.lastOrderDate ?? '').localeCompare(statsMap[left.id]?.lastOrderDate ?? '')
+    const leftValue = sortValue(left)
+    const rightValue = sortValue(right)
+    if (leftValue === undefined || rightValue === undefined) {
+      if (leftValue === rightValue) return 0
+      return leftValue === undefined ? 1 : -1
+    }
+    const difference = typeof leftValue === 'number' && typeof rightValue === 'number'
+      ? leftValue - rightValue
+      : String(leftValue).localeCompare(String(rightValue))
+    return sortDirection === 'asc' ? difference : -difference
   })
 
   const owners: OwnerOption[] = profiles.map((p) => ({
@@ -159,7 +177,6 @@ export default async function CustomersPage({
         amountMax={amountMax ?? ''}
         lastOrderFrom={lastOrderFrom ?? ''}
         lastOrderTo={lastOrderTo ?? ''}
-        createdAtOrder={normalizedCreatedAtOrder}
       />
 
       <CustomerTable
@@ -170,6 +187,8 @@ export default async function CustomersPage({
         isAdmin={isAdmin}
         stats={statsMap}
         customerTags={customerTags}
+        sortBy={sortBy}
+        sortDirection={sortDirection}
       />
     </div>
   )

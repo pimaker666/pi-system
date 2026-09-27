@@ -1,8 +1,8 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
-import { ArrowRightLeft, Copy, Pencil, Tags, Trash2 } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ArrowDown, ArrowRightLeft, ArrowUp, ArrowUpDown, Copy, Pencil, Tags, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -45,7 +45,6 @@ import { CustomerRowActions } from './customer-row-actions'
 import { CountryFlag } from '@/components/shared/country-flag'
 import { formatCountryName } from '@/lib/country-flags'
 import { formatDate } from '@/lib/utils'
-import Link from 'next/link'
 import {
   bulkTransferCustomers,
   bulkCopyCustomers,
@@ -68,6 +67,8 @@ export interface CustomerOrderStats {
 }
 
 export type CustomerOrderStatsMap = Record<string, CustomerOrderStats>
+export type CustomerSortField = 'amount' | 'lastOrder' | 'createdAt' | 'customOrderCount'
+export type CustomerSortDirection = 'asc' | 'desc'
 
 const KEEP = '__keep__'
 const NO_GROUP = '__none__'
@@ -87,6 +88,8 @@ export function CustomerTable({
   isAdmin = false,
   stats = {},
   customerTags = [],
+  sortBy,
+  sortDirection,
 }: {
   customers: CustomerRow[]
   groups: CustomerGroup[]
@@ -95,8 +98,11 @@ export function CustomerTable({
   isAdmin?: boolean
   stats?: CustomerOrderStatsMap
   customerTags?: CustomerCommissionTag[]
+  sortBy: CustomerSortField
+  sortDirection: CustomerSortDirection
 }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [pending, startTransition] = useTransition()
 
@@ -237,6 +243,32 @@ export function CustomerTable({
     })
   }
 
+  function toggleSort(field: CustomerSortField) {
+    const params = new URLSearchParams(searchParams.toString())
+    const nextDirection = sortBy === field && sortDirection === 'desc' ? 'asc' : 'desc'
+    params.set('sortBy', field)
+    params.set('sortDirection', nextDirection)
+    router.push(`/customers?${params.toString()}`)
+  }
+
+  function sortableHeader(label: string, field: CustomerSortField, align = 'left') {
+    const Icon = sortBy === field ? (sortDirection === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
+    return (
+      <TableHead className={`whitespace-nowrap ${align === 'right' ? 'text-right' : ''}`}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className={`h-auto px-0 py-0 font-medium text-muted-foreground hover:bg-transparent hover:text-foreground ${align === 'right' ? 'ml-auto' : ''}`}
+          onClick={() => toggleSort(field)}
+        >
+          {label}
+          <Icon className="h-3.5 w-3.5" />
+        </Button>
+      </TableHead>
+    )
+  }
+
   return (
     <div className="space-y-3">
       {customerTags.length > 0 && (
@@ -313,10 +345,10 @@ export function CustomerTable({
                 <TableHead>国家</TableHead>
                 <TableHead className="whitespace-nowrap">分组</TableHead>
                 <TableHead>联系方式</TableHead>
-                <TableHead className="whitespace-nowrap text-right">近一年下单金额</TableHead>
-                <TableHead className="whitespace-nowrap">上次下单时间</TableHead>
-                <TableHead className="whitespace-nowrap">新建客户时间</TableHead>
-                <TableHead className="whitespace-nowrap text-right">定制订单数</TableHead>
+                {sortableHeader('近一年下单金额', 'amount', 'right')}
+                {sortableHeader('上次下单时间', 'lastOrder')}
+                {sortableHeader('新建客户时间', 'createdAt')}
+                {sortableHeader('定制订单数', 'customOrderCount', 'right')}
                 {isAdmin && <TableHead className="whitespace-nowrap">归属账号</TableHead>}
                 <TableHead className="text-right">操作</TableHead>
               </TableRow>
@@ -333,18 +365,14 @@ export function CustomerTable({
                       aria-label={`选择 ${c.name}`}
                     />
                   </TableCell>
-                  <TableCell
-                    className="font-medium"
-                    style={{ color: c.tag_color ?? undefined }}
-                  >
-                    <Link
-                      href={`/customers/${c.id}`}
-                      className="hover:underline"
-                      target="_blank"
-                      rel="noopener noreferrer"
+                  <TableCell className="font-medium" style={{ color: c.tag_color ?? undefined }}>
+                    <button
+                      type="button"
+                      className="w-full cursor-pointer text-left hover:underline"
+                      onClick={() => window.open(`/customers/${c.id}`, '_blank', 'noopener,noreferrer')}
                     >
                       {c.name}
-                    </Link>
+                    </button>
                   </TableCell>
                   <TableCell>{c.company ?? '—'}</TableCell>
                   <TableCell>
