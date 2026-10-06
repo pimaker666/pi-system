@@ -87,9 +87,17 @@ const NAV: NavItem[] = [
   { href: '/settings', label: '公司设置', icon: Settings },
   {
     href: '/users',
-    label: '用户管理',
+    label: '账号管理',
     icon: ShieldCheck,
     allowedRoles: ['admin', 'finance'],
+    match: (p) => p === '/users' || /^\/users\/[^/]+\/permissions$/.test(p),
+  },
+  {
+    href: '/users/permissions',
+    label: '权限管理',
+    icon: ShieldCheck,
+    allowedRoles: ['admin'],
+    match: (p) => p.startsWith('/users/permissions') || p.startsWith('/users/approval-flow') || p.startsWith('/users/audit-logs'),
   },
 ]
 

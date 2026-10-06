@@ -1,5 +1,17 @@
 export type UserRole = 'admin' | 'finance' | 'sales' | 'supervisor'
 export type UserStatus = 'pending' | 'approved' | 'disabled'
+export type PermissionDataScope = 'self' | 'self_and_subordinates' | 'team' | 'all'
+export type PermissionAuditEntityType =
+  | 'permission_template'
+  | 'profile_permission_override'
+  | 'order_edit_approval_rule'
+export type OrderEditApprovalTarget = 'business_order' | 'daily_order'
+export type OrderEditApprovalTrigger =
+  | 'order_edit'
+  | 'amount_or_rate_change'
+  | 'shipment_change'
+  | 'void_order'
+export type ApprovalMode = 'any' | 'sequential'
 export type CurrencyCode = 'USD' | 'EUR' | 'CNY' | 'GBP' | 'JPY'
 export type PiStatus = 'active' | 'void'
 export type FinanceRecordStatus = 'active' | 'void'
@@ -1081,6 +1093,69 @@ export interface Profile {
   disabled_by: string | null
   created_at: string
   updated_at: string
+}
+
+export interface PermissionTemplate {
+  id: string
+  system_role: UserRole
+  name: string
+  description: string
+  permissions: Record<string, unknown>
+  data_scope: PermissionDataScope
+  sensitive_fields: Record<string, unknown>
+  created_at: string
+  updated_at: string
+  updated_by: string | null
+}
+
+export interface ProfilePermissionOverride {
+  profile_id: string
+  allowed_permissions: string[]
+  denied_permissions: string[]
+  data_scope: PermissionDataScope | null
+  sensitive_fields: Record<string, unknown>
+  expires_at: string | null
+  created_at: string
+  updated_at: string
+  updated_by: string | null
+}
+
+export interface ResolvedProfilePermission {
+  profile_id: string
+  role: UserRole
+  template_permissions: Record<string, unknown>
+  allowed_permissions: string[]
+  denied_permissions: string[]
+  data_scope: PermissionDataScope
+  sensitive_fields: Record<string, unknown>
+  override_expires_at: string | null
+}
+
+export interface OrderEditApprovalRule {
+  id: string
+  name: string
+  enabled: boolean
+  target: OrderEditApprovalTarget
+  trigger_actions: OrderEditApprovalTrigger[]
+  conditions: Record<string, unknown>
+  reviewer_roles: UserRole[]
+  reviewer_ids: string[]
+  approval_mode: ApprovalMode
+  created_at: string
+  updated_at: string
+  updated_by: string | null
+}
+
+export interface PermissionAuditLog {
+  id: number
+  entity_type: PermissionAuditEntityType
+  entity_id: string
+  action: 'create' | 'update' | 'delete'
+  old_data: Record<string, unknown> | null
+  new_data: Record<string, unknown> | null
+  actor_id: string | null
+  actor_snapshot: Record<string, unknown>
+  created_at: string
 }
 
 export interface CompanySettings {

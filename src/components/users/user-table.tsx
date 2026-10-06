@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Check, Save, Trash2 } from 'lucide-react'
@@ -288,6 +289,12 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
                             disabled={isDisabled}
                             canDisable={!lastAdmin}
                           />
+                        )}
+
+                        {canAdministerUsers && (
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={`/users/${u.id}/permissions`}>权限详情</Link>
+                          </Button>
                         )}
 
                         <ResetPasswordDialog userId={u.id} email={u.email} />

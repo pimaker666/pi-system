@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireFinanceAccess } from '@/lib/auth'
 import { UserTable } from '@/components/users/user-table'
+import { PermissionPageNav } from '@/components/users/permission-page-nav'
 import type { Profile } from '@/types'
 
 export default async function UsersPage() {
@@ -20,12 +21,13 @@ export default async function UsersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">用户管理</h1>
+        <h1 className="text-2xl font-semibold">账号管理</h1>
         <p className="text-sm text-muted-foreground">
-          公司账号继承时直接修改中文名：新记录使用新姓名，历史订单和业绩保持原姓名。员工离职请使用交接并停用；永久删除仅用于无业务数据的待审核误建账号。
+          管理账号状态、基础角色、组织上级和离职交接。账号例外权限与审批记录可从下方导航进入。
         </p>
       </div>
 
+      <PermissionPageNav active="/users" showConfiguration={me.role === 'admin'} />
       <UserTable users={users} currentUserId={me.id} currentUserRole={me.role} />
     </div>
   )
