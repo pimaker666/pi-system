@@ -461,7 +461,9 @@ export function BusinessDailyOrderTable({
                             )}
                           </div>
                           <div className="mt-1 flex flex-wrap items-center gap-1">
-                            {order.closed_at ? (
+                            {order.voided_at ? (
+                              <Badge variant="destructive">已作废</Badge>
+                            ) : order.closed_at ? (
                               <Badge variant="secondary">特殊关闭</Badge>
                             ) : (
                               <Badge variant={BUSINESS_ORDER_STATUS_VARIANTS[order.status]}>

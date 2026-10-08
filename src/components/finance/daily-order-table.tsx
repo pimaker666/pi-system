@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Eye, Pencil, Trash2 } from 'lucide-react'
 import { useMemo, useTransition } from 'react'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getDailyOrderScreenshotUrl, voidDailyOrder } from '@/lib/actions/daily-orders'
@@ -123,6 +124,7 @@ export function DailyOrderTable({ orders, readOnly = false }: { orders: DailyOrd
                       <TableCell rowSpan={rowSpan} className={mergedCellClassName}><MergedValues values={salespeople} /></TableCell>
                       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} font-medium`}>
                         <MergedValues values={orderNumbers} />
+                        {order.status === 'void' && <div className="mt-1"><Badge variant="destructive">已作废</Badge></div>}
                         {rowSpan > 1 && <div className="mt-1 text-xs font-normal text-muted-foreground">{rowSpan} 个产品</div>}
                       </TableCell>
                       <TableCell rowSpan={rowSpan} className={mergedCellClassName}><MergedValues values={shippingDates} /></TableCell>

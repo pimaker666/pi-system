@@ -61,6 +61,11 @@ export default async function LegacyDailyOrdersPage({
           <option value="deposit">定金</option>
           <option value="balance">尾款</option>
         </select>
+        <select name="recordStatus" defaultValue={filters.recordStatus ?? 'active'} className="h-10 rounded-md border bg-background px-3 text-sm">
+          <option value="active">正常订单</option>
+          <option value="voided">仅已作废</option>
+          <option value="all">所有订单记录</option>
+        </select>
         <div className="flex gap-2 xl:col-span-8">
           <Button type="submit">筛选</Button>
           <Button asChild type="button" variant="outline"><Link href="/finance/daily-orders/legacy">清空</Link></Button>

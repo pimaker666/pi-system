@@ -85,6 +85,7 @@ export function parseDailyOrderFilters(raw: Record<string, string | string[] | u
     completion: scalar('completion') || undefined,
     balanceStatus: scalar('balanceStatus') || undefined,
     customerBindingStatus: scalar('customerBindingStatus') || undefined,
+    recordStatus: scalar('recordStatus') || undefined,
     fulfillmentStatuses: values('fulfillmentStatuses'),
     // 台账默认只展示未结算订单；显式传 all 才展示全部。
     settlementStatus: scalar('settlementStatus') || 'unsettled',

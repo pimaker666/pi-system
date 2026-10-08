@@ -181,6 +181,12 @@ export default async function DailyOrdersPage({
           <option value="completed">已完成</option>
           <option value="incomplete">未完成</option>
         </select>
+        <select name="recordStatus" defaultValue={filters.recordStatus ?? 'active'} className="h-10 rounded-md border bg-background px-3 text-sm">
+          <option value="active">正常订单（含特殊关闭）</option>
+          <option value="special_closed">仅特殊关闭</option>
+          <option value="voided">仅已作废</option>
+          <option value="all">所有订单记录</option>
+        </select>
         <select name="balanceStatus" defaultValue={filters.balanceStatus ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="">全部尾款状态</option>
           <option value="settled">已收齐</option>

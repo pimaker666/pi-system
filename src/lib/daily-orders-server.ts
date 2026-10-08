@@ -34,13 +34,14 @@ export async function fetchDailyOrders(
         ? `*, finance_daily_order_screenshots(*), ${SALESPERSON_EMBED}`
         : `*, ${SALESPERSON_EMBED}`,
     )
-    .eq('status', 'active')
     .order('order_date', { ascending: false })
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .limit(Math.min(limit, DAILY_ORDER_EXPORT_LIMIT))
 
   if (includeScreenshots) query = query.eq('finance_daily_order_screenshots.status', 'active')
+  if (filters.recordStatus === 'voided') query = query.eq('status', 'void')
+  if (!filters.recordStatus || filters.recordStatus === 'active') query = query.eq('status', 'active')
   if (filters.dateFrom) query = query.gte('order_date', filters.dateFrom)
   if (filters.dateTo) query = query.lte('order_date', filters.dateTo)
   if (filters.shop) query = query.eq('shop_id', filters.shop)

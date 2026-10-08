@@ -121,7 +121,6 @@ function buildLedgerQuery(
   let query = supabase
     .from('business_orders')
     .select(`*, ${itemsEmbed}, ${LEDGER_TAIL}`)
-    .is('voided_at', null)
     // 内嵌过滤只筛子行，不会误删没有附件的订单。
     .eq('business_order_attachments.status', 'active')
     .order('order_date', { ascending: false })
@@ -136,6 +135,11 @@ function buildLedgerQuery(
   if (filters.shop) query = query.eq('shop_id', filters.shop)
   if (filters.shopGroup) query = query.eq('shop_group_id', filters.shopGroup)
   if (filters.salesperson) query = query.eq('salesperson_id', filters.salesperson)
+  if (filters.recordStatus === 'voided') query = query.not('voided_at', 'is', null)
+  if (!filters.recordStatus || filters.recordStatus === 'active' || filters.recordStatus === 'special_closed') {
+    query = query.is('voided_at', null)
+  }
+  if (filters.recordStatus === 'special_closed') query = query.not('closed_at', 'is', null)
   if (filters.payment) query = query.eq('daily_payment_category', filters.payment)
   if (filters.customerBindingStatus === 'bound') query = query.not('customer_id', 'is', null)
   if (filters.customerBindingStatus === 'unbound') query = query.is('customer_id', null)
