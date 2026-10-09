@@ -1,6 +1,6 @@
 import { CommissionClearanceDetails } from '@/components/finance/commission-clearance-details'
 import { CommissionManager } from '@/components/finance/commission-manager'
-import { requireApproved } from '@/lib/auth'
+import { hasCurrentPermission, requireApproved } from '@/lib/auth'
 import {
   fetchBusinessOrderCommissionClearanceDetails,
   fetchBusinessOrderCommissions,
@@ -15,6 +15,7 @@ export default async function FinanceCommissionPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const profile = await requireApproved()
+  const canManageExchangeRate = await hasCurrentPermission('finance.exchange_rate')
   const parsedFilters = parseBusinessOrderCommissionFilters(await searchParams)
   const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
   const filters = isSalesperson
@@ -51,6 +52,7 @@ export default async function FinanceCommissionPage({
         customOrderRates={commissions.customOrderRates}
         defaultFreightCommissionRate={commissions.defaultFreightCommissionRate}
         canManageCategoryRates={canManageCategoryRates}
+        canManageExchangeRate={canManageExchangeRate}
         isAdmin={isAdmin}
         options={options}
         actor={profile}

@@ -40,6 +40,7 @@ export default async function MyCommissionPage({
         customOrderRates={commissions.customOrderRates}
         defaultFreightCommissionRate={commissions.defaultFreightCommissionRate}
         canManageCategoryRates={false}
+        canManageExchangeRate={false}
         isAdmin={false}
         actor={profile}
         readOnly

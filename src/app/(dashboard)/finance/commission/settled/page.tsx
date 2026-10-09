@@ -36,6 +36,7 @@ export default async function SettledCommissionPage({
         customOrderRates={commissions.customOrderRates}
         defaultFreightCommissionRate={commissions.defaultFreightCommissionRate}
         canManageCategoryRates={false}
+        canManageExchangeRate={false}
         isAdmin={false}
         actor={profile}
         readOnly

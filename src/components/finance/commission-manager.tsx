@@ -985,6 +985,7 @@ export interface CommissionManagerProps {
   customOrderRates: CustomerCustomOrderCommissionRate[]
   defaultFreightCommissionRate: number
   canManageCategoryRates: boolean
+  canManageExchangeRate: boolean
   isAdmin: boolean
   actor: Profile
   readOnly?: boolean
@@ -1004,6 +1005,7 @@ export function CommissionManager({
   customOrderRates,
   defaultFreightCommissionRate,
   canManageCategoryRates,
+  canManageExchangeRate,
   isAdmin,
   actor,
   readOnly = false,
@@ -1279,10 +1281,10 @@ export function CommissionManager({
           placeholder="填写后美元金额自动换算为人民币"
           value={exchangeRate}
           onChange={(event) => setExchangeRate(event.target.value)}
-          disabled={isSalespersonView || editableUsdOrderIds.length === 0}
+          disabled={!canManageExchangeRate || editableUsdOrderIds.length === 0}
           className="w-[260px]"
         />
-        {!isSalespersonView && (
+        {canManageExchangeRate && (
           <Button
             type="button"
             variant="outline"

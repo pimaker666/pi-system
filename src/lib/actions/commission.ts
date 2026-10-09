@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { requireAdmin, requireApproved, requireFinanceAccess } from '@/lib/auth'
+import { hasCurrentPermission, requireAdmin, requireApproved, requireFinanceAccess } from '@/lib/auth'
 import {
   isMergedBusinessDailyItemFullyPaid,
   isMergedBusinessDailyItemPaidAndShipped,
@@ -139,6 +139,9 @@ export async function saveBusinessOrderCommissionExchangeRate(input: {
   settlement_exchange_rate_to_cny: number
 }): Promise<ActionResult> {
   const profile = await requireApproved()
+  if (!await hasCurrentPermission('finance.exchange_rate')) {
+    return { ok: false, error: '当前账号没有维护结清汇率权限' }
+  }
   const parsed = commissionExchangeRateSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
