@@ -10,10 +10,13 @@ import type { Product, ProductFinancial, ProductGroup } from '@/types'
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; category?: string; group?: string }>
+  searchParams: Promise<{ q?: string; group?: string; financialNumber?: string }>
 }) {
-  const { q, category, group } = await searchParams
+  const { q, group, financialNumber } = await searchParams
   const term = q?.trim() ?? ''
+  const financialNumberFilter = financialNumber === 'has' || financialNumber === 'missing'
+    ? financialNumber
+    : ''
   const profile = await getCurrentProfile()
   const isAdmin = profile?.status === 'approved' && profile.role === 'admin'
   const canManageFinancials =
@@ -24,25 +27,16 @@ export default async function ProductsPage({
   if (term && !canManageFinancials) {
     query = query.or(`sku.ilike.%${term}%,name.ilike.%${term}%`)
   }
-  if (category) query = query.eq('category', category)
   if (group === '__none__') query = query.is('group_id', null)
   else if (group) query = query.eq('group_id', group)
 
-  const [{ data }, { data: groupData }, { data: catData }] = await Promise.all([
+  const [{ data }, { data: groupData }] = await Promise.all([
     query,
     supabase.from('product_groups').select('*').order('sort_order'),
-    supabase.from('products').select('category'),
   ])
 
   let products = (data ?? []) as Product[]
   const groups = (groupData ?? []) as ProductGroup[]
-  const categories = Array.from(
-    new Set(
-      (catData ?? [])
-        .map((r: { category: string | null }) => r.category)
-        .filter(Boolean) as string[],
-    ),
-  ).sort()
 
   let financials: ProductFinancial[] = []
   if (canManageFinancials && products.length > 0) {
@@ -55,11 +49,11 @@ export default async function ProductsPage({
     if (financialError) throw new Error('加载产品财务资料失败')
     financials = (financialData ?? []) as ProductFinancial[]
 
+    const financialByProductId = new Map(
+      financials.map((financial) => [financial.product_id, financial]),
+    )
     if (term) {
       const keyword = term.toLocaleLowerCase()
-      const financialByProductId = new Map(
-        financials.map((financial) => [financial.product_id, financial]),
-      )
       products = products.filter((product) => {
         const financial = financialByProductId.get(product.id)
         return [
@@ -68,6 +62,14 @@ export default async function ProductsPage({
           financial?.financial_number,
           financial?.product_name,
         ].some((value) => value?.toLocaleLowerCase().includes(keyword))
+      })
+    }
+    if (financialNumberFilter) {
+      products = products.filter((product) => {
+        const hasFinancialNumber = Boolean(
+          financialByProductId.get(product.id)?.financial_number?.trim(),
+        )
+        return financialNumberFilter === 'has' ? hasFinancialNumber : !hasFinancialNumber
       })
     }
 
@@ -88,11 +90,10 @@ export default async function ProductsPage({
       </div>
 
       <ProductFilters
-        categories={categories}
         groups={groups}
         q={q ?? ''}
-        category={category ?? ''}
         group={group ?? ''}
+        financialNumber={financialNumberFilter}
         canSearchFinancials={canManageFinancials}
       />
 
