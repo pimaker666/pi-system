@@ -1461,7 +1461,17 @@ export function CommissionManager({
                       </TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('order_number') && (
-                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('order_number')}`}>{displayOrderNumber}</TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('order_number')}`}>
+                        {readOnly ? (
+                          <Link
+                            href={`/finance/daily-orders/${row.order_id}`}
+                            className="font-medium hover:underline"
+                            title="打开订单详情，可按权限作废订单"
+                          >
+                            {displayOrderNumber}
+                          </Link>
+                        ) : displayOrderNumber}
+                      </TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('order_date') && (
                       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('order_date')}`}>{row.order_date}</TableCell>
