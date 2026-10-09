@@ -2,9 +2,19 @@
 
 import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
-import { CheckCircle2, ListOrdered, Plus, Save, SlidersHorizontal, Tag, Trash2 } from 'lucide-react'
+import { CheckCircle2, ListOrdered, Plus, RotateCcw, Save, SlidersHorizontal, Tag, Trash2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
@@ -27,6 +37,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import {
+  cancelBusinessOrderCommissionClearance,
   confirmBusinessOrderCommissionClearance,
   rejectBusinessOrderCommissionClearance,
   saveBusinessOrderCommission,
@@ -988,6 +999,7 @@ export interface CommissionManagerProps {
   isAdmin: boolean
   actor: Profile
   readOnly?: boolean
+  canCancelClearances?: boolean
   options: {
     shops: DailyOrderShop[]
     groups: DailyOrderShopGroup[]
@@ -1007,6 +1019,7 @@ export function CommissionManager({
   isAdmin,
   actor,
   readOnly = false,
+  canCancelClearances = false,
   options,
 }: CommissionManagerProps) {
   const router = useRouter()
@@ -1014,9 +1027,12 @@ export function CommissionManager({
   const totalPages = Math.max(1, Math.ceil(totalCount / COMMISSION_PAGE_SIZE))
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
   const [selectedConfirmationItemIds, setSelectedConfirmationItemIds] = useState<Set<string>>(new Set())
+  const [selectedCancelledClearanceItemIds, setSelectedCancelledClearanceItemIds] = useState<Set<string>>(new Set())
+  const [cancelClearanceDialogOpen, setCancelClearanceDialogOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
   const [submitPending, startSubmitTransition] = useTransition()
+  const [cancelClearancePending, startCancelClearanceTransition] = useTransition()
   const [confirmPending, startConfirmTransition] = useTransition()
   const [rejectPending, startRejectTransition] = useTransition()
   const [rejectingRow, setRejectingRow] = useState<BusinessOrderCommissionRow | null>(null)
@@ -1087,6 +1103,21 @@ export function CommissionManager({
   const allConfirmationSelected =
     confirmationSelectableRows.length > 0 &&
     confirmationSelectableRows.every((row) => row.item_ids.every((id) => selectedConfirmationItemIds.has(id)))
+  const cancelClearanceSelectableRows = useMemo(
+    () => rows.filter((row) => row.clearance_status === 'confirmed'),
+    [rows],
+  )
+  const selectedCancelledClearanceCount = useMemo(
+    () => cancelClearanceSelectableRows.filter((row) =>
+      row.item_ids.every((id) => selectedCancelledClearanceItemIds.has(id)),
+    ).length,
+    [cancelClearanceSelectableRows, selectedCancelledClearanceItemIds],
+  )
+  const allCancelledClearancesSelected =
+    cancelClearanceSelectableRows.length > 0 &&
+    cancelClearanceSelectableRows.every((row) =>
+      row.item_ids.every((id) => selectedCancelledClearanceItemIds.has(id)),
+    )
 
   function toggleRow(row: BusinessOrderCommissionRow, checked: boolean) {
     setSelectedItemIds((previous) => {
@@ -1129,6 +1160,45 @@ export function CommissionManager({
         for (const id of row.item_ids) next.add(id)
       }
       return next
+    })
+  }
+
+  function toggleCancelledClearanceRow(row: BusinessOrderCommissionRow, checked: boolean) {
+    setSelectedCancelledClearanceItemIds((previous) => {
+      const next = new Set(previous)
+      for (const id of row.item_ids) {
+        if (checked) next.add(id)
+        else next.delete(id)
+      }
+      return next
+    })
+  }
+
+  function toggleSelectAllCancelledClearances(checked: boolean) {
+    setSelectedCancelledClearanceItemIds(() => {
+      if (!checked) return new Set()
+      const next = new Set<string>()
+      for (const row of cancelClearanceSelectableRows) {
+        for (const id of row.item_ids) next.add(id)
+      }
+      return next
+    })
+  }
+
+  function confirmCancelClearances() {
+    const itemIds = [...selectedCancelledClearanceItemIds]
+    if (itemIds.length === 0) return
+    startCancelClearanceTransition(async () => {
+      const result = await cancelBusinessOrderCommissionClearance({ business_order_item_ids: itemIds })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '取消结清失败')
+        return
+      }
+      toast.success(`已取消 ${selectedCancelledClearanceCount} 个产品行结清`)
+      setSelectedCancelledClearanceItemIds(new Set())
+      setCancelClearanceDialogOpen(false)
+      router.refresh()
     })
   }
 
@@ -1331,6 +1401,22 @@ export function CommissionManager({
         </div>
       )}
 
+      {readOnly && canCancelClearances && cancelClearanceSelectableRows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card p-3">
+          <span className="text-sm text-muted-foreground">已选 {selectedCancelledClearanceCount} 个产品行</span>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={selectedCancelledClearanceCount === 0 || cancelClearancePending}
+            onClick={() => setCancelClearanceDialogOpen(true)}
+          >
+            <RotateCcw className="mr-1.5 h-4 w-4" />
+            取消结清
+          </Button>
+          <span className="text-xs text-muted-foreground">仅可取消当前页已结清的产品行。</span>
+        </div>
+      )}
+
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
         <input type="hidden" name="page" value="1" />
         <Input
@@ -1381,15 +1467,24 @@ export function CommissionManager({
         >
           <TableHeader>
             <TableRow className="bg-background">
-              {!readOnly && (
+              {(!readOnly || canCancelClearances) && (
                 <TableHead className="sticky top-0 z-20 w-9 bg-background shadow-sm">
-                  {(isSalespersonView ? confirmationSelectableRows : selectableRows).length > 0 && (
+                  {(readOnly
+                    ? cancelClearanceSelectableRows
+                    : isSalespersonView
+                      ? confirmationSelectableRows
+                      : selectableRows).length > 0 && (
                     <input
                       type="checkbox"
                       aria-label="全选"
-                      checked={isSalespersonView ? allConfirmationSelected : allSelected}
+                      checked={readOnly
+                        ? allCancelledClearancesSelected
+                        : isSalespersonView
+                          ? allConfirmationSelected
+                          : allSelected}
                       onChange={(event) => {
-                        if (isSalespersonView) toggleSelectAllConfirmation(event.target.checked)
+                        if (readOnly) toggleSelectAllCancelledClearances(event.target.checked)
+                        else if (isSalespersonView) toggleSelectAllConfirmation(event.target.checked)
                         else toggleSelectAll(event.target.checked)
                       }}
                     />
@@ -1431,17 +1526,26 @@ export function CommissionManager({
                     key={row.item_id}
                     className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
                   >
-                    {!readOnly && isFirstRow && (
+                    {(!readOnly || canCancelClearances) && isFirstRow && (
                       <TableCell rowSpan={rowSpan} className={mergedCellClassName}>
                         <input
                           type="checkbox"
                           aria-label={`选择产品行 ${row.product_name}`}
-                          checked={isSalespersonView
-                            ? row.item_ids.every((id) => selectedConfirmationItemIds.has(id))
-                            : row.item_ids.every((id) => selectedItemIds.has(id))}
-                          disabled={isSalespersonView ? row.clearance_status !== 'pending' : !isClearanceSelectable(row)}
-                          title={
-                            isSalespersonView
+                          checked={readOnly
+                            ? row.item_ids.every((id) => selectedCancelledClearanceItemIds.has(id))
+                            : isSalespersonView
+                              ? row.item_ids.every((id) => selectedConfirmationItemIds.has(id))
+                              : row.item_ids.every((id) => selectedItemIds.has(id))}
+                          disabled={readOnly
+                            ? row.clearance_status !== 'confirmed'
+                            : isSalespersonView
+                              ? row.clearance_status !== 'pending'
+                              : !isClearanceSelectable(row)}
+                          title={readOnly
+                            ? row.clearance_status === 'confirmed'
+                              ? '取消该产品行提成结清'
+                              : '仅已结清的产品行可取消结清'
+                            : isSalespersonView
                               ? row.clearance_status === 'pending'
                                 ? '批量确认该产品行提成结清'
                                 : '仅待确认的产品行可批量确认'
@@ -1451,10 +1555,10 @@ export function CommissionManager({
                                   ? '请先保存美元兑人民币汇率，计算产品提成后再提交结清'
                                   : isClearanceSelectable(row)
                                     ? '提交该产品行提成结清'
-                                    : '已结清的产品行不可重复选择'
-                          }
+                                    : '已结清的产品行不可重复选择'}
                           onChange={(event) => {
-                            if (isSalespersonView) toggleConfirmationRow(row, event.target.checked)
+                            if (readOnly) toggleCancelledClearanceRow(row, event.target.checked)
+                            else if (isSalespersonView) toggleConfirmationRow(row, event.target.checked)
                             else toggleRow(row, event.target.checked)
                           }}
                         />
@@ -1574,7 +1678,7 @@ export function CommissionManager({
             {rows.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={BUSINESS_ORDER_COMMISSION_COLUMNS.length + visibleColumns.size + (readOnly ? 0 : 1)}
+                  colSpan={BUSINESS_ORDER_COMMISSION_COLUMNS.length + visibleColumns.size + (!readOnly || canCancelClearances ? 1 : 0)}
                   className="py-12 text-center text-muted-foreground"
                 >
                   没有符合筛选条件的订单
@@ -1634,6 +1738,26 @@ export function CommissionManager({
           </div>
         </div>
       )}
+
+      <AlertDialog
+        open={cancelClearanceDialogOpen}
+        onOpenChange={(open) => !open && setCancelClearanceDialogOpen(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认取消结清？</AlertDialogTitle>
+            <AlertDialogDescription>
+              将取消 {selectedCancelledClearanceCount} 个产品行的提成结清，产品行会回到提成计算页。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelClearancePending}>取消</AlertDialogCancel>
+            <AlertDialogAction disabled={cancelClearancePending} onClick={confirmCancelClearances}>
+              确认取消结清
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-sm">

@@ -29,6 +29,7 @@ interface SettlementQueryRow {
       external_order_number: string | null
       order_date: string
       currency: CurrencyCode
+      voided_at: string | null
       shop_name_snapshot: string | null
       shop_group_name_snapshot: string | null
       customer_snapshot: unknown
@@ -49,7 +50,7 @@ const SELECT = `
   item:business_order_items!inner(
     id, name_snapshot, sku_snapshot, daily_shipping_category,
     order:business_orders!inner(
-      id, order_number, external_order_number, order_date, currency,
+      id, order_number, external_order_number, order_date, currency, voided_at,
       shop_name_snapshot, shop_group_name_snapshot, customer_snapshot,
       salesperson_name_snapshot, salesperson_display_name_snapshot,
       salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)
@@ -84,12 +85,17 @@ export async function fetchSettledPeriods(supabase: SupabaseClient): Promise<str
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
       .from('finance_business_order_item_settlements')
-      .select('period')
+      .select('period, item:business_order_items!inner(order:business_orders!inner(voided_at))')
       .order('period', { ascending: false })
       .range(from, from + PAGE_SIZE - 1)
     if (error) throw new Error(`结算年月读取失败：${error.message}`)
-    const page = (data ?? []) as Array<{ period: string }>
-    for (const row of page) periods.add(String(row.period).slice(0, 7))
+    const page = (data ?? []) as unknown as Array<{
+      period: string
+      item: { order: { voided_at: string | null } | null } | null
+    }>
+    for (const row of page) {
+      if (!row.item?.order?.voided_at) periods.add(String(row.period).slice(0, 7))
+    }
     if (page.length < PAGE_SIZE) break
   }
   return [...periods].sort((a, b) => (a < b ? 1 : -1))
@@ -118,7 +124,7 @@ export async function fetchSettledOrderRows(
     for (const record of page) {
       const item = record.item
       const order = item?.order
-      if (!item || !order) continue
+      if (!item || !order || order.voided_at) continue
 
       const unitCost = record.unit_cost == null ? null : Number(record.unit_cost)
       const quantity = Number(record.quantity)

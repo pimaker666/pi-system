@@ -412,7 +412,7 @@ export async function fetchBusinessOrderCommissions(
       order,
       items: mergeBusinessDailyItems(order).filter(isMergedBusinessDailyItemPaidAndShipped),
     }))
-    .filter((entry) => entry.items.length > 0)
+    .filter((entry) => !entry.order.voided_at && entry.items.length > 0)
   const scopedOrders = eligibleOrders.filter(({ items }) => {
     const settled = items.every((item) =>
       item.item_ids.every((id) => clearanceMap.get(id)?.status === 'confirmed'),

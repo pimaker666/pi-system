@@ -39,6 +39,7 @@ export default async function SettledCommissionPage({
         isAdmin={false}
         actor={profile}
         readOnly
+        canCancelClearances
         options={options}
       />
     </div>
