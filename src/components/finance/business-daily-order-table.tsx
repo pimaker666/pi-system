@@ -69,12 +69,18 @@ export interface BusinessDailyOrderTableProps {
   filterQuery?: string
   settledItemIds?: string[]
   confirmedCommissionItemIds?: string[]
+  canShip: boolean
 }
 
-function canBulkShipOrder(order: BusinessOrder, actor: Pick<Profile, 'id' | 'role'>) {
-  if (!['admin', 'finance'].includes(actor.role)) return false
-  if (order.closed_at || order.voided_at) return false
-  return order.status === 'approved'
+function canBulkShipOrder(
+  order: BusinessOrder,
+  actor: Pick<Profile, 'id' | 'role'>,
+  canShip: boolean,
+) {
+  if (!canShip || order.closed_at || order.voided_at) return false
+  if (order.status !== 'approved' || order.approval_status !== 'approved') return false
+  if (actor.role === 'admin' || actor.role === 'finance') return true
+  return (actor.role === 'sales' || actor.role === 'supervisor') && order.salesperson_id === actor.id
 }
 
 function canSetOrderCustomer(order: BusinessOrder, actor: Pick<Profile, 'id' | 'role'>) {
@@ -100,6 +106,7 @@ export function BusinessDailyOrderTable({
   filterQuery = '',
   settledItemIds = [],
   confirmedCommissionItemIds = [],
+  canShip,
 }: BusinessDailyOrderTableProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -160,10 +167,10 @@ export function BusinessDailyOrderTable({
     [orders],
   )
 
-  const canManageShipments = actor.role === 'admin' || actor.role === 'finance'
+  const canManageShipments = canShip
   const shippableOrders = useMemo(
-    () => orders.filter((order) => canBulkShipOrder(order, actor)),
-    [orders, actor],
+    () => orders.filter((order) => canBulkShipOrder(order, actor, canShip)),
+    [orders, actor, canShip],
   )
   const selectableOrders = canManageShipments ? shippableOrders : orders
   const selectableIds = useMemo(
@@ -337,8 +344,8 @@ export function BusinessDailyOrderTable({
               const rows = items.length > 0 ? items : [null]
               const rowSpan = rows.length
               const canEdit = canEditBusinessDailyOrder(order, actor)
-              const canShip = canBulkShipOrder(order, actor)
-              const canSelect = canManageShipments ? canShip : true
+              const canShipOrder = canBulkShipOrder(order, actor, canShip)
+              const canSelect = canManageShipments ? canShipOrder : true
               const canSetCustomer = canSetOrderCustomer(order, actor)
               const isSelected = selectedIds.has(order.id)
               const salesperson = displayProfileName(

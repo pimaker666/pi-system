@@ -5,7 +5,7 @@ import { DateRangePicker } from '@/components/shared/date-range-picker'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { requireApproved } from '@/lib/auth'
+import { hasCurrentPermission, requireApproved } from '@/lib/auth'
 import {
   businessDailyCurrencyOrder,
   businessDailyOrderTotals,
@@ -88,6 +88,7 @@ export default async function DailyOrdersPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const profile = await requireApproved()
+  const canShip = await hasCurrentPermission('orders.ship')
   const filters = parseDailyOrderFilters(await searchParams)
   const supabase = await createClient()
   const customersQuery = supabase.from('customers').select('*')
@@ -278,6 +279,7 @@ export default async function DailyOrdersPage({
         filterQuery={query}
         settledItemIds={settledItemIds}
         confirmedCommissionItemIds={confirmedCommissionItemIds}
+        canShip={canShip}
       />
     </div>
   )
