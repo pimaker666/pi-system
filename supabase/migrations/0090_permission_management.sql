@@ -233,7 +233,7 @@ as $$
 declare
   v_old jsonb;
   v_row public.order_edit_approval_rules%rowtype;
-  v_id uuid := coalesce(p_id, uuid_generate_v4());
+  v_id uuid := coalesce(p_id, pg_catalog.gen_random_uuid());
 begin
   perform public.permission_require_admin();
   if p_target not in ('business_order', 'daily_order') or p_approval_mode not in ('any', 'sequential') then
