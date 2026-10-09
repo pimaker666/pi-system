@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { requireAdmin, requireApproved, requireFinanceAccess } from '@/lib/auth'
+import { hasCurrentPermission, requireAdmin, requireApproved, requireFinanceAccess } from '@/lib/auth'
 import {
   businessCustomerTransferAllocationInputSchema,
   businessCustomerTransferInputSchema,
@@ -886,9 +886,9 @@ export async function createBusinessOrderShipment(
   orderId: string,
   rawInput: unknown,
 ): Promise<BusinessOrderShipmentActionResult> {
-  const profile = await requireApproved()
-  if (!['admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '仅管理员或财务可以创建发货批次' }
+  await requireApproved()
+  if (!await hasCurrentPermission('orders.ship')) {
+    return { ok: false, error: '当前账号没有登记发货权限' }
   }
 
   const parsed = businessOrderShipmentInputSchema.safeParse(rawInput)
@@ -924,9 +924,9 @@ export async function bulkShipBusinessOrders(
   orderIds: string[],
   shippedAt: string,
 ): Promise<BulkShipBusinessOrdersResult> {
-  const profile = await requireApproved()
-  if (!['admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '仅管理员或财务可以执行整单发货' }
+  await requireApproved()
+  if (!await hasCurrentPermission('orders.ship')) {
+    return { ok: false, error: '当前账号没有登记发货权限' }
   }
 
   const validIds = orderIds.filter((id) => z.string().uuid().safeParse(id).success)
@@ -998,9 +998,9 @@ export async function voidBusinessOrderShipment(
   shipmentId: string,
   reason: string,
 ): Promise<ActionResult> {
-  const profile = await requireApproved()
-  if (!['admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '仅管理员或财务可以作废发货批次' }
+  await requireApproved()
+  if (!await hasCurrentPermission('orders.ship')) {
+    return { ok: false, error: '当前账号没有登记发货权限' }
   }
   const parsedReason = businessOrderVoidReasonSchema.safeParse(reason)
   if (!parsedReason.success) return { ok: false, error: firstValidationError(parsedReason.error) }
