@@ -11,6 +11,7 @@ begin
       from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'
+        and p.prokind = 'f'
         and pg_get_functiondef(p.oid) like '%not in (''stock'', ''sample'', ''custom'', ''purchase'')%'
     loop
       execute replace(
@@ -25,6 +26,7 @@ begin
       from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'
+        and p.prokind = 'f'
         and pg_get_functiondef(p.oid) like '%when ''sample'' then ''样品''%'
     loop
       execute replace(
