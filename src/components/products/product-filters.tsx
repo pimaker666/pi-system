@@ -18,18 +18,16 @@ const ALL = '__all__'
 const NO_GROUP = '__none__'
 
 export function ProductFilters({
-  categories,
   groups,
   q,
-  category,
   group,
+  financialNumber,
   canSearchFinancials,
 }: {
-  categories: string[]
   groups: ProductGroup[]
   q: string
-  category: string
   group: string
+  financialNumber: 'has' | 'missing' | ''
   canSearchFinancials: boolean
 }) {
   const router = useRouter()
@@ -49,7 +47,7 @@ export function ProductFilters({
     setParam('q', keyword.trim())
   }
 
-  const hasFilter = Boolean(q || category || group)
+  const hasFilter = Boolean(q || group || financialNumber)
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -69,19 +67,18 @@ export function ProductFilters({
         </Button>
       </form>
 
-      <Select value={category || ALL} onValueChange={(v) => setParam('category', v)}>
-        <SelectTrigger className="w-48">
-          <SelectValue placeholder="全部品类" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL}>全部品类</SelectItem>
-          {categories.map((c) => (
-            <SelectItem key={c} value={c}>
-              {c}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      {canSearchFinancials && (
+        <Select value={financialNumber || ALL} onValueChange={(v) => setParam('financialNumber', v)}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="全部财务编号" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>全部财务编号</SelectItem>
+            <SelectItem value="has">有财务编号</SelectItem>
+            <SelectItem value="missing">无财务编号</SelectItem>
+          </SelectContent>
+        </Select>
+      )}
 
       <Select value={group || ALL} onValueChange={(v) => setParam('group', v)}>
         <SelectTrigger className="w-48">
