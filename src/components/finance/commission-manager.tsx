@@ -193,7 +193,7 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
         step="0.0001"
         disabled={pending}
         placeholder={placeholder}
-        title="产品提点（百分数）；留空保存则恢复发货分类默认值"
+        title={`${placeholder}${row.product_commission_rate_source === 'none' ? '' : '%'}；留空保存则恢复发货分类默认值`}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={(event) => {
           if (event.key === 'Enter' && !pending && !unchanged) {
