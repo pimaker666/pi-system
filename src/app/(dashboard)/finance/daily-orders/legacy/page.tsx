@@ -51,7 +51,8 @@ export default async function LegacyDailyOrdersPage({
         <select name="category" defaultValue={filters.category ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="">全部发货分类</option>
           <option value="stock">现货</option>
-          <option value="sample">样品</option>
+          <option value="sample">现货样品</option>
+          <option value="custom_sample">定制打样</option>
           <option value="custom">定制</option>
           <option value="purchase">外采</option>
         </select>

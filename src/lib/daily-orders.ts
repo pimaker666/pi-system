@@ -21,7 +21,7 @@ export const DAILY_ORDER_COLUMNS = [
 ] as const
 
 export const SHIPPING_LABELS: Record<DailyOrderShippingCategory, string> = {
-  stock: '现货', sample: '样品', custom: '定制', purchase: '外采',
+  stock: '现货', sample: '现货样品', custom_sample: '定制打样', custom: '定制', purchase: '外采',
 }
 export const PAYMENT_LABELS: Record<DailyOrderPaymentCategory, string> = {
   full: '全款', deposit: '定金', balance: '尾款',

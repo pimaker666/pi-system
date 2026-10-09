@@ -455,7 +455,7 @@ function DisplayColumnSelector({
   )
 }
 
-const CATEGORY_ORDER: DailyOrderShippingCategory[] = ['stock', 'sample', 'custom', 'purchase']
+const CATEGORY_ORDER: DailyOrderShippingCategory[] = ['stock', 'sample', 'custom_sample', 'custom', 'purchase']
 
 function CategoryRatesDialog({
   categoryRates,

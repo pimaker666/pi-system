@@ -82,6 +82,7 @@ const SHIPPING_OPTIONS: Option[] = [
   { value: 'custom', label: SHIPPING_LABELS.custom },
   { value: 'stock', label: SHIPPING_LABELS.stock },
   { value: 'sample', label: SHIPPING_LABELS.sample },
+  { value: 'custom_sample', label: SHIPPING_LABELS.custom_sample },
   { value: 'purchase', label: SHIPPING_LABELS.purchase },
 ]
 

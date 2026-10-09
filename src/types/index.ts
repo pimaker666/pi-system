@@ -434,7 +434,7 @@ export interface BusinessOrderCommissionClearanceDetail {
   rejected_read_at: string | null
 }
 
-export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'
+export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom_sample' | 'custom' | 'purchase'
 export type DailyOrderPaymentCategory = 'full' | 'deposit' | 'balance'
 
 export interface DailyOrderShop {

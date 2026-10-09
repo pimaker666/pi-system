@@ -181,7 +181,8 @@ function parseMoney(value: unknown): { amount: string; currency: CurrencyCode | 
 function shippingValue(value: unknown): DailyOrderShippingCategory | '' {
   const text = normalizedHeader(value)
   if (['stock', '现货'].includes(text)) return 'stock'
-  if (['sample', '样品', '样板'].includes(text)) return 'sample'
+  if (['sample', '样品', '样板', '现货样品'].includes(text)) return 'sample'
+  if (['custom_sample', '定制打样'].includes(text)) return 'custom_sample'
   if (['custom', '定制'].includes(text)) return 'custom'
   if (['purchase', '外采', '外购', '采购'].includes(text)) return 'purchase'
   return ''
@@ -237,7 +238,7 @@ export function validateBusinessDailyImportRow(
     errors.push('产品不存在或已停用')
   }
   if (!row.external_order_number.trim()) errors.push('请填写订单号')
-  if (!row.daily_shipping_category) errors.push('发货分类只能是现货/样品/定制/外采')
+  if (!row.daily_shipping_category) errors.push('发货分类只能是现货/现货样品/定制打样/定制/外采')
   if (!row.daily_payment_category) errors.push('收款分类只能是全款/定金/尾款')
 
   const quantity = numberOrNull(row.quantity)

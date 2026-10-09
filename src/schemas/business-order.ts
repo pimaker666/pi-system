@@ -15,6 +15,7 @@ export const businessOrderItemSourceTypes = ['catalog', 'custom', 'legacy'] as c
 export const businessOrderDailyShippingCategories = [
   'stock',
   'sample',
+  'custom_sample',
   'custom',
   'purchase',
 ] as const
