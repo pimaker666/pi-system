@@ -36,7 +36,6 @@ import type {
   BusinessOrderItem,
   BusinessOrderShipment,
   BusinessOrderShipmentItem,
-  Profile,
 } from '@/types'
 
 interface BusinessShipmentManagerProps {
@@ -44,7 +43,7 @@ interface BusinessShipmentManagerProps {
     BusinessOrder,
     'id' | 'status' | 'approval_status' | 'salesperson_id' | 'completion_gate_version'
   > & { closed_at?: string | null; voided_at?: string | null }
-  profile: Pick<Profile, 'id' | 'role'>
+  canShip: boolean
   orderItems: BusinessOrderItem[]
   shipments: BusinessOrderShipment[]
   shipmentItems: BusinessOrderShipmentItem[]
@@ -69,7 +68,7 @@ function formatQuantity(value: number) {
 
 export function BusinessShipmentManager({
   order,
-  profile,
+  canShip,
   orderItems,
   shipments,
   shipmentItems,
@@ -116,9 +115,8 @@ export function BusinessShipmentManager({
   })
 
   const hasRemaining = itemRows.some((row) => row.remaining > 0)
-  const hasRolePermission = profile.role === 'admin' || profile.role === 'finance'
   const canManage =
-    hasRolePermission &&
+    canShip &&
     !order.closed_at &&
     !order.voided_at &&
     order.status === 'approved' &&

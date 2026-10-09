@@ -52,3 +52,13 @@ export async function requireFinanceAccess(): Promise<Profile> {
   }
   return profile
 }
+
+export async function hasCurrentPermission(permission: string): Promise<boolean> {
+  const profile = await requireApproved()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('has_current_permission', {
+    p_permission: permission,
+  })
+  if (error) throw new Error(`读取账号权限失败：${error.message}`)
+  return data === true
+}

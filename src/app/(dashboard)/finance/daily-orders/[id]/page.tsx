@@ -30,7 +30,7 @@ import {
   getBusinessOrderEditConstraints,
   getBusinessOrderSettlementSummary,
 } from '@/lib/actions/business-orders'
-import { requireApproved } from '@/lib/auth'
+import { hasCurrentPermission, requireApproved } from '@/lib/auth'
 import { sortedBusinessDailyItems } from '@/lib/business-daily-orders'
 import { fetchCurrentCustomerCountries } from '@/lib/business-daily-orders-server'
 import {
@@ -111,6 +111,7 @@ export default async function BusinessOrderDetailPage({
   const { id } = await params
   const { fromCustomer } = await searchParams
   const profile = await requireApproved()
+  const canShip = await hasCurrentPermission('orders.ship')
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('business_orders')
@@ -745,7 +746,7 @@ export default async function BusinessOrderDetailPage({
 
           <BusinessShipmentManager
             order={order}
-            profile={profile}
+            canShip={canShip}
             orderItems={order.business_order_items}
             shipments={shipments}
             shipmentItems={shipmentItems}
