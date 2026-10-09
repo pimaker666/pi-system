@@ -2,7 +2,14 @@ import { z } from 'zod'
 
 export const permissionDataScopes = ['self', 'self_and_subordinates', 'team', 'all'] as const
 export const approvalTargets = ['business_order', 'daily_order'] as const
-export const approvalTriggerActions = ['order_edit', 'amount_or_rate_change', 'shipment_change', 'void_order'] as const
+export const approvalTriggerActions = [
+  'order_edit',
+  'amount_or_rate_change',
+  'shipment_change',
+  'void_order',
+  'commission_clearance_cancel',
+  'item_settlement_cancel',
+] as const
 export const approvalModes = ['any', 'sequential'] as const
 export const permissionAuditEntityTypes = ['permission_template', 'profile_permission_override', 'order_edit_approval_rule'] as const
 

@@ -9,8 +9,8 @@ export default async function ApprovalFlowPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">订单编辑审批流</h1>
-        <p className="text-sm text-muted-foreground">查看当前订单审批流程，并为后续自定义审核规则预留配置入口。</p>
+        <h1 className="text-2xl font-semibold">订单操作审批流</h1>
+        <p className="text-sm text-muted-foreground">配置订单编辑、取消结清和取消结算的审核规则。</p>
       </div>
       <PermissionPageNav active="/users/approval-flow" />
       <ApprovalFlowOverview rules={rules} />

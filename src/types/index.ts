@@ -11,6 +11,8 @@ export type OrderEditApprovalTrigger =
   | 'amount_or_rate_change'
   | 'shipment_change'
   | 'void_order'
+  | 'commission_clearance_cancel'
+  | 'item_settlement_cancel'
 export type ApprovalMode = 'any' | 'sequential'
 export type CurrencyCode = 'USD' | 'EUR' | 'CNY' | 'GBP' | 'JPY'
 export type PiStatus = 'active' | 'void'
