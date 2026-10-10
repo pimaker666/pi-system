@@ -193,15 +193,22 @@ export async function updateCustomerTagColor(
   return { ok: true, id, customer: data }
 }
 
-export async function deleteCustomer(id: string): Promise<ActionResult> {
+/**
+ * 将客户移入回收站（软删除）。订单与 PI 的关联和快照全部保留，
+ * 可在回收站恢复或彻底删除。数据库 RPC 会把写操作限定在本人客户或管理员。
+ */
+export async function deleteCustomer(
+  id: string,
+): Promise<ActionResult & { count?: number }> {
   await requireProfile()
   const supabase = await createClient()
-  // PIs keep customer_snapshot; FK is ON DELETE SET NULL so history survives.
-  const { error } = await supabase.from('customers').delete().eq('id', id)
+  const { data, error } = await supabase.rpc('soft_delete_customers', {
+    p_customer_ids: [id],
+  })
   if (error) return { ok: false, error: error.message }
 
   revalidatePath('/customers')
-  return { ok: true }
+  return { ok: true, count: data ?? 0 }
 }
 
 /**
@@ -297,18 +304,60 @@ export async function bulkCopyCustomers(
 }
 
 /**
- * 批量删除客户。已生成的 PI 保留客户快照（FK on delete set null）。
+ * 批量将客户移入回收站（软删除）。订单与 PI 的关联和快照全部保留。
  */
-export async function bulkDeleteCustomers(ids: string[]): Promise<ActionResult> {
+export async function bulkDeleteCustomers(
+  ids: string[],
+): Promise<ActionResult & { count?: number }> {
   await requireProfile()
   if (!ids.length) return { ok: false, error: '未选择任何客户' }
 
   const supabase = await createClient()
-  const { error } = await supabase.from('customers').delete().in('id', ids)
+  const { data, error } = await supabase.rpc('soft_delete_customers', {
+    p_customer_ids: ids,
+  })
   if (error) return { ok: false, error: error.message }
 
   revalidatePath('/customers')
-  return { ok: true }
+  return { ok: true, count: data ?? 0 }
+}
+
+/** 从回收站恢复客户；恢复后重新出现在客户列表与订单绑定选择中。 */
+export async function restoreCustomers(
+  ids: string[],
+): Promise<ActionResult & { count?: number }> {
+  await requireProfile()
+  if (!ids.length) return { ok: false, error: '未选择任何客户' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('restore_customers', {
+    p_customer_ids: ids,
+  })
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/customers')
+  return { ok: true, count: data ?? 0 }
+}
+
+/**
+ * 从回收站彻底删除客户（不可恢复）。存在定制产品档案或收款转账记录时数据库会拒绝，
+ * 相关订单与 PI 改为解绑并保留名称快照。
+ */
+export async function purgeCustomers(
+  ids: string[],
+): Promise<ActionResult & { count?: number }> {
+  await requireProfile()
+  if (!ids.length) return { ok: false, error: '未选择任何客户' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('purge_customers', {
+    p_customer_ids: ids,
+  })
+  if (error) return { ok: false, error: error.message }
+
+  revalidatePath('/customers')
+  revalidatePath('/pi/history')
+  return { ok: true, count: data ?? 0 }
 }
 
 export interface BulkModifyPatch {

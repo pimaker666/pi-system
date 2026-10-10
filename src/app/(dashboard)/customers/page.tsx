@@ -2,10 +2,12 @@ import Link from 'next/link'
 import { UsersRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
-import { displayProfileName } from '@/lib/utils'
+import { cn, displayProfileName } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { NewCustomerButton } from '@/components/customers/new-customer-button'
 import { CustomerFilters } from '@/components/customers/customer-filters'
+import { CustomerRecycleBin } from '@/components/customers/customer-recycle-bin'
 import {
   CustomerTable,
   type CustomerOrderStatsMap,
@@ -20,13 +22,14 @@ const customerSortFields: CustomerSortField[] = ['amount', 'lastOrder', 'created
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; group?: string; country?: string; owner?: string; amountMin?: string; amountMax?: string; lastOrderFrom?: string; lastOrderTo?: string; sortBy?: string; sortDirection?: string }>
+  searchParams: Promise<{ q?: string; group?: string; country?: string; owner?: string; amountMin?: string; amountMax?: string; lastOrderFrom?: string; lastOrderTo?: string; sortBy?: string; sortDirection?: string; view?: string }>
 }) {
-  const { q, group, country, owner, amountMin, amountMax, lastOrderFrom, lastOrderTo, sortBy: rawSortBy, sortDirection: rawSortDirection } = await searchParams
+  const { q, group, country, owner, amountMin, amountMax, lastOrderFrom, lastOrderTo, sortBy: rawSortBy, sortDirection: rawSortDirection, view } = await searchParams
   const sortBy = customerSortFields.includes(rawSortBy as CustomerSortField)
     ? rawSortBy as CustomerSortField
     : 'amount'
   const sortDirection = rawSortDirection === 'asc' ? 'asc' : 'desc'
+  const isTrash = view === 'trash'
   const profile = await getCurrentProfile()
   const isAdmin = profile?.role === 'admin'
   const supabase = await createClient()
@@ -34,7 +37,11 @@ export default async function CustomersPage({
   let customerQuery = supabase
     .from('customers')
     .select('*, customer_groups(name)')
-    .order('created_at', { ascending: false })
+    .order(isTrash ? 'deleted_at' : 'created_at', { ascending: false })
+
+  customerQuery = isTrash
+    ? customerQuery.not('deleted_at', 'is', null)
+    : customerQuery.is('deleted_at', null)
 
   if (q?.trim()) {
     const term = q.trim()
@@ -42,9 +49,11 @@ export default async function CustomersPage({
       `name.ilike.%${term}%,company.ilike.%${term}%,email.ilike.%${term}%,phone.ilike.%${term}%`,
     )
   }
-  if (group === '__none__') customerQuery = customerQuery.is('group_id', null)
-  else if (group) customerQuery = customerQuery.eq('group_id', group)
-  if (country) customerQuery = customerQuery.eq('country', country)
+  if (!isTrash) {
+    if (group === '__none__') customerQuery = customerQuery.is('group_id', null)
+    else if (group) customerQuery = customerQuery.eq('group_id', group)
+    if (country) customerQuery = customerQuery.eq('country', country)
+  }
   if (isAdmin && owner) customerQuery = customerQuery.eq('created_by', owner)
 
   const [{ data: customerData }, { data: groupData }, { data: profileData }, { data: countryData }, { data: tagData }] = await Promise.all([
@@ -54,7 +63,7 @@ export default async function CustomersPage({
       .from('profiles')
       .select('id, full_name, email, chinese_name, role, status')
       .order('full_name'),
-    supabase.from('customers').select('country'),
+    supabase.from('customers').select('country').is('deleted_at', null),
     supabase
       .from('finance_customer_commission_tags')
       .select('tag_color, label, product_commission_rate, sort_order')
@@ -83,7 +92,7 @@ export default async function CustomersPage({
   >[]
 
   const statsMap: CustomerOrderStatsMap = {}
-  if (customers.length > 0) {
+  if (!isTrash && customers.length > 0) {
     const { data: statsData } = await supabase.rpc('get_customer_order_stats', {
       p_customer_ids: customers.map((c) => c.id),
     })
@@ -105,33 +114,35 @@ export default async function CustomersPage({
 
   const minAmount = Number(amountMin)
   const maxAmount = Number(amountMax)
-  customers = customers.filter((customer) => {
-    const stats = statsMap[customer.id]
-    if (Number.isFinite(minAmount) && minAmount > 0 && (stats?.lastYearAmountCny ?? 0) < minAmount) return false
-    if (Number.isFinite(maxAmount) && maxAmount > 0 && (stats?.lastYearAmountCny ?? 0) > maxAmount) return false
-    if (lastOrderFrom && (!stats?.lastOrderDate || stats.lastOrderDate < lastOrderFrom)) return false
-    if (lastOrderTo && (!stats?.lastOrderDate || stats.lastOrderDate > lastOrderTo)) return false
-    return true
-  })
-  customers.sort((left, right) => {
-    const sortValue = (customer: CustomerRow): number | string | undefined => {
+  if (!isTrash) {
+    customers = customers.filter((customer) => {
       const stats = statsMap[customer.id]
-      if (sortBy === 'amount') return stats?.lastYearAmountCny || stats?.lastYearAmountUsd || 0
-      if (sortBy === 'lastOrder') return stats?.lastOrderDate ?? undefined
-      if (sortBy === 'createdAt') return customer.created_at
-      return stats?.customOrderCount ?? 0
-    }
-    const leftValue = sortValue(left)
-    const rightValue = sortValue(right)
-    if (leftValue === undefined || rightValue === undefined) {
-      if (leftValue === rightValue) return 0
-      return leftValue === undefined ? 1 : -1
-    }
-    const difference = typeof leftValue === 'number' && typeof rightValue === 'number'
-      ? leftValue - rightValue
-      : String(leftValue).localeCompare(String(rightValue))
-    return sortDirection === 'asc' ? difference : -difference
-  })
+      if (Number.isFinite(minAmount) && minAmount > 0 && (stats?.lastYearAmountCny ?? 0) < minAmount) return false
+      if (Number.isFinite(maxAmount) && maxAmount > 0 && (stats?.lastYearAmountCny ?? 0) > maxAmount) return false
+      if (lastOrderFrom && (!stats?.lastOrderDate || stats.lastOrderDate < lastOrderFrom)) return false
+      if (lastOrderTo && (!stats?.lastOrderDate || stats.lastOrderDate > lastOrderTo)) return false
+      return true
+    })
+    customers.sort((left, right) => {
+      const sortValue = (customer: CustomerRow): number | string | undefined => {
+        const stats = statsMap[customer.id]
+        if (sortBy === 'amount') return stats?.lastYearAmountCny || stats?.lastYearAmountUsd || 0
+        if (sortBy === 'lastOrder') return stats?.lastOrderDate ?? undefined
+        if (sortBy === 'createdAt') return customer.created_at
+        return stats?.customOrderCount ?? 0
+      }
+      const leftValue = sortValue(left)
+      const rightValue = sortValue(right)
+      if (leftValue === undefined || rightValue === undefined) {
+        if (leftValue === rightValue) return 0
+        return leftValue === undefined ? 1 : -1
+      }
+      const difference = typeof leftValue === 'number' && typeof rightValue === 'number'
+        ? leftValue - rightValue
+        : String(leftValue).localeCompare(String(rightValue))
+      return sortDirection === 'asc' ? difference : -difference
+    })
+  }
 
   const owners: OwnerOption[] = profiles.map((p) => ({
     id: p.id,
@@ -149,47 +160,82 @@ export default async function CustomersPage({
     ),
   ).sort()
 
+  const viewTab = (href: string, active: boolean, label: string) => (
+    <Link
+      href={href}
+      className={cn(
+        'rounded px-3 py-1 text-sm',
+        active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground',
+      )}
+    >
+      {label}
+    </Link>
+  )
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">客户</h1>
-        <div className="flex gap-2">
-          <Button asChild variant="outline">
-            <Link href="/customers/groups">
-              <UsersRound className="h-4 w-4" />
-              管理分组
-            </Link>
-          </Button>
-          <NewCustomerButton groups={groups} />
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold">{isTrash ? '客户回收站' : '客户'}</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 rounded-md border p-0.5">
+            {viewTab('/customers', !isTrash, '客户列表')}
+            {viewTab('/customers?view=trash', isTrash, '回收站')}
+          </div>
+          {!isTrash && (
+            <>
+              <Button asChild variant="outline">
+                <Link href="/customers/groups">
+                  <UsersRound className="h-4 w-4" />
+                  管理分组
+                </Link>
+              </Button>
+              <NewCustomerButton groups={groups} />
+            </>
+          )}
         </div>
       </div>
 
-      <CustomerFilters
-        groups={groups}
-        countries={countries}
-        owners={owners}
-        isAdmin={isAdmin}
-        q={q ?? ''}
-        group={group ?? ''}
-        country={country ?? ''}
-        owner={owner ?? ''}
-        amountMin={amountMin ?? ''}
-        amountMax={amountMax ?? ''}
-        lastOrderFrom={lastOrderFrom ?? ''}
-        lastOrderTo={lastOrderTo ?? ''}
-      />
+      {isTrash ? (
+        <>
+          <form className="flex gap-2" action="/customers">
+            <input type="hidden" name="view" value="trash" />
+            <Input name="q" defaultValue={q ?? ''} placeholder="按客户名称/公司搜索…" className="max-w-xs" />
+            <Button type="submit" variant="outline">
+              搜索
+            </Button>
+          </form>
+          <CustomerRecycleBin customers={customers} owners={owners} isAdmin={isAdmin} />
+        </>
+      ) : (
+        <>
+          <CustomerFilters
+            groups={groups}
+            countries={countries}
+            owners={owners}
+            isAdmin={isAdmin}
+            q={q ?? ''}
+            group={group ?? ''}
+            country={country ?? ''}
+            owner={owner ?? ''}
+            amountMin={amountMin ?? ''}
+            amountMax={amountMax ?? ''}
+            lastOrderFrom={lastOrderFrom ?? ''}
+            lastOrderTo={lastOrderTo ?? ''}
+          />
 
-      <CustomerTable
-        customers={customers}
-        groups={groups}
-        owners={owners}
-        transferOwners={transferOwners}
-        isAdmin={isAdmin}
-        stats={statsMap}
-        customerTags={customerTags}
-        sortBy={sortBy}
-        sortDirection={sortDirection}
-      />
+          <CustomerTable
+            customers={customers}
+            groups={groups}
+            owners={owners}
+            transferOwners={transferOwners}
+            isAdmin={isAdmin}
+            stats={statsMap}
+            customerTags={customerTags}
+            sortBy={sortBy}
+            sortDirection={sortDirection}
+          />
+        </>
+      )}
     </div>
   )
 }

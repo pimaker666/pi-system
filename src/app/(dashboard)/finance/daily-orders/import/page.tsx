@@ -16,7 +16,7 @@ export default async function ImportDailyOrdersPage() {
   }
 
   const supabase = await createClient()
-  const customersQuery = supabase.from('customers').select('id, name')
+  const customersQuery = supabase.from('customers').select('id, name').is('deleted_at', null)
   const [dailyOptions, customersResult] = await Promise.all([
     fetchDailyOrderOptions(supabase),
     // 客户可见范围与新建订单页一致：管理员看全部，其余只看自己创建的客户。

@@ -7,7 +7,7 @@ export default async function CreatePiPage() {
 
   const [products, customers, groups, productGroups, company] = await Promise.all([
     supabase.from('products').select('*').eq('is_active', true).order('name'),
-    supabase.from('customers').select('*').order('name'),
+    supabase.from('customers').select('*').is('deleted_at', null).order('name'),
     supabase.from('customer_groups').select('*').order('name'),
     supabase.from('product_groups').select('*').order('sort_order'),
     supabase.from('company_settings').select('default_terms').eq('id', 1).maybeSingle(),

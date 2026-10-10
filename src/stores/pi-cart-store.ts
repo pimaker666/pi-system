@@ -280,6 +280,8 @@ export const usePiCartStore = create<PiCartState>()(
                 created_by: null,
                 created_at: '',
                 updated_at: '',
+                deleted_at: null,
+                deleted_by: null,
               }
             : null
 

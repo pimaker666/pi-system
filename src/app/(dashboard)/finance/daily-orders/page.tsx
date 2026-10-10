@@ -91,7 +91,7 @@ export default async function DailyOrdersPage({
   const canShip = await hasCurrentPermission('orders.ship')
   const filters = parseDailyOrderFilters(await searchParams)
   const supabase = await createClient()
-  const customersQuery = supabase.from('customers').select('*')
+  const customersQuery = supabase.from('customers').select('*').is('deleted_at', null)
   const [orders, options, customersResult, customerGroupsResult] = await Promise.all([
     fetchBusinessDailyLedger(supabase, filters),
     fetchDailyOrderOptions(supabase),

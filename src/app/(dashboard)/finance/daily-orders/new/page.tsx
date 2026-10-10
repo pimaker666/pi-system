@@ -15,7 +15,7 @@ export default async function NewBusinessOrderPage() {
   }
 
   const supabase = await createClient()
-  const customersQuery = supabase.from('customers').select('*')
+  const customersQuery = supabase.from('customers').select('*').is('deleted_at', null)
   const [customersResult, customerGroupsResult, productsResult, productGroupsResult, financialsResult, dailyOptions] =
     await Promise.all([
       ['admin', 'finance'].includes(profile.role)

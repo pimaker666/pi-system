@@ -65,8 +65,8 @@ export default async function EditBusinessOrderPage({
     profile.role === 'finance'
       ? Promise.resolve({ data: [] as Customer[], error: null })
       : profile.role === 'admin'
-        ? supabase.from('customers').select('*').order('name')
-        : supabase.from('customers').select('*').eq('created_by', profile.id).order('name'),
+        ? supabase.from('customers').select('*').is('deleted_at', null).order('name')
+        : supabase.from('customers').select('*').is('deleted_at', null).eq('created_by', profile.id).order('name'),
     profile.role === 'finance'
       ? Promise.resolve({ data: [] as CustomerGroup[], error: null })
       : supabase.from('customer_groups').select('*').order('name'),
@@ -104,6 +104,8 @@ export default async function EditBusinessOrderPage({
       created_by: order.salesperson_id,
       created_at: order.created_at,
       updated_at: order.updated_at,
+      deleted_at: null,
+      deleted_by: null,
     })
   }
 

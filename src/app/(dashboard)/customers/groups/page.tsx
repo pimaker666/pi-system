@@ -7,7 +7,7 @@ export default async function CustomerGroupsPage() {
 
   const [{ data: groupData }, { data: customerData }] = await Promise.all([
     supabase.from('customer_groups').select('*').order('name'),
-    supabase.from('customers').select('group_id'),
+    supabase.from('customers').select('group_id').is('deleted_at', null),
   ])
 
   const groups = (groupData ?? []) as CustomerGroup[]

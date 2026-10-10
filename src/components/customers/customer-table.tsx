@@ -233,7 +233,12 @@ export function CustomerTable({
     startTransition(async () => {
       const result = await bulkDeleteCustomers(ids)
       if (result.ok) {
-        toast.success(`已删除 ${ids.length} 个客户`)
+        const count = result.count ?? ids.length
+        toast.success(
+          count === ids.length
+            ? `已将 ${count} 个客户移入回收站`
+            : `已将 ${count} 个客户移入回收站，其余无权限`,
+        )
         setDelOpen(false)
         setSelected(new Set())
         router.refresh()
@@ -314,7 +319,7 @@ export function CustomerTable({
               onClick={() => setDelOpen(true)}
             >
               <Trash2 className="h-3.5 w-3.5" />
-              删除
+              移入回收站
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
               取消选择
@@ -582,13 +587,13 @@ export function CustomerTable({
         </DialogContent>
       </Dialog>
 
-      {/* 批量删除 */}
+      {/* 批量移入回收站 */}
       <AlertDialog open={delOpen} onOpenChange={setDelOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除所选 {selected.size} 个客户？</AlertDialogTitle>
+            <AlertDialogTitle>将所选 {selected.size} 个客户移入回收站？</AlertDialogTitle>
             <AlertDialogDescription>
-              已生成的 PI 会保留客户信息快照，不受影响。此操作不可撤销。
+              客户会先从客户列表、订单绑定和 PI 选择中隐藏，历史订单与 PI 保持不变；可在「回收站」恢复或彻底删除。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -600,7 +605,7 @@ export function CustomerTable({
               }}
               disabled={pending}
             >
-              {pending ? '删除中…' : '删除'}
+              {pending ? '处理中…' : '移入回收站'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -65,7 +65,7 @@ export function CustomerRowActions({
     startTransition(async () => {
       const result = await deleteCustomer(customer.id)
       if (result.ok) {
-        toast.success('客户已删除')
+        toast.success('客户已移入回收站')
         setDelOpen(false)
         router.refresh()
       } else {
@@ -283,9 +283,9 @@ export function CustomerRowActions({
       <AlertDialog open={delOpen} onOpenChange={setDelOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除客户「{customer.name}」？</AlertDialogTitle>
+            <AlertDialogTitle>将客户「{customer.name}」移入回收站？</AlertDialogTitle>
             <AlertDialogDescription>
-              已生成的 PI 会保留客户信息快照，不受影响。此操作不可撤销。
+              客户会先从客户列表、订单绑定和 PI 选择中隐藏，历史订单与 PI 保持不变；可在「回收站」恢复或彻底删除。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -297,7 +297,7 @@ export function CustomerRowActions({
               }}
               disabled={pending}
             >
-              {pending ? '删除中…' : '删除'}
+              {pending ? '处理中…' : '移入回收站'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -67,7 +67,7 @@ export async function POST(request: Request) {
 
   const supabase = await createClient()
   // 客户可见范围与新建订单页保持一致：管理员看全部，其余只看自己创建的客户。
-  const customersQuery = supabase.from('customers').select('id, name')
+  const customersQuery = supabase.from('customers').select('id, name').is('deleted_at', null)
   const [options, customersResult] = await Promise.all([
     fetchDailyOrderOptions(supabase),
     profile.role === 'admin'

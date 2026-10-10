@@ -1280,6 +1280,9 @@ export interface Customer {
   remarks: string | null
   group_id: string | null
   tag_color: string | null
+  /** 回收站标记。null = 正常客户，非 null = 已移入回收站。 */
+  deleted_at: string | null
+  deleted_by: string | null
   created_by: string | null
   created_at: string
   updated_at: string
