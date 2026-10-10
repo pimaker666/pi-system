@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import { usePiCartStore } from '@/stores/pi-cart-store'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import { useFileDrop, validateImageFile } from '@/lib/hooks/use-file-drop'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -62,21 +63,34 @@ function LineImageThumb({
     folder: 'pi-overrides',
   })
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      try {
-        const url = await upload(file)
-        onChange(url)
-      } catch {
-        /* error surfaced via hook state; ignore here */
-      }
+  const handleFile = async (file: File) => {
+    const invalidReason = validateImageFile(file)
+    if (invalidReason) {
+      toast.error(invalidReason)
+      return
     }
-    e.target.value = ''
+    try {
+      const url = await upload(file)
+      onChange(url)
+    } catch {
+      /* error surfaced via hook state; ignore here */
+    }
   }
 
+  const { dragging, dropProps } = useFileDrop({
+    onFile: (file) => handleFile(file),
+    disabled: uploading,
+  })
+
   return (
-    <div className="group relative h-12 w-12 shrink-0 overflow-hidden rounded border bg-muted">
+    <div
+      className={cn(
+        'group relative h-12 w-12 shrink-0 overflow-hidden rounded border bg-muted',
+        dragging && 'border-primary ring-2 ring-primary',
+      )}
+      title="支持拖放或点击上传图片（最大 20MB）"
+      {...dropProps}
+    >
       {src ? (
         <Image src={toImageSrc(src)} alt={alt} fill className="object-cover" sizes="48px" />
       ) : (
@@ -102,7 +116,11 @@ function LineImageThumb({
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={handleFile}
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (file) void handleFile(file)
+        }}
       />
     </div>
   )
@@ -122,23 +140,36 @@ function RemarkImage({
     folder: 'pi-remarks',
   })
 
-  const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      try {
-        const url = await upload(file)
-        onChange(url)
-      } catch {
-        /* error surfaced via hook state; ignore here */
-      }
+  const handleFile = async (file: File) => {
+    const invalidReason = validateImageFile(file)
+    if (invalidReason) {
+      toast.error(invalidReason)
+      return
     }
-    e.target.value = ''
+    try {
+      const url = await upload(file)
+      onChange(url)
+    } catch {
+      /* error surfaced via hook state; ignore here */
+    }
   }
+
+  const { dragging, dropProps } = useFileDrop({
+    onFile: (file) => handleFile(file),
+    disabled: uploading,
+  })
 
   return (
     <div className="flex items-center gap-2">
       {src ? (
-        <div className="group relative h-16 w-16 shrink-0 overflow-hidden rounded border bg-muted">
+        <div
+          className={cn(
+            'group relative h-16 w-16 shrink-0 overflow-hidden rounded border bg-muted',
+            dragging && 'border-primary ring-2 ring-primary',
+          )}
+          title="支持拖放或点击上传图片（最大 20MB）"
+          {...dropProps}
+        >
           <Image src={toImageSrc(src)} alt="备注图片" fill className="object-cover" sizes="64px" />
           <button
             type="button"
@@ -154,9 +185,10 @@ function RemarkImage({
           type="button"
           size="sm"
           variant="outline"
-          className="h-8"
+          className={cn('h-8', dragging && 'border-primary bg-primary/5')}
           disabled={uploading}
           onClick={() => inputRef.current?.click()}
+          {...dropProps}
         >
           {uploading ? (
             <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
@@ -171,7 +203,11 @@ function RemarkImage({
         type="file"
         accept="image/*"
         className="hidden"
-        onChange={handleFile}
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (file) void handleFile(file)
+        }}
       />
     </div>
   )

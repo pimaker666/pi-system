@@ -9,6 +9,7 @@ import Image from 'next/image'
 import { productSchema, type ProductInput, CURRENCIES } from '@/schemas/product'
 import { createProduct, updateProduct } from '@/lib/actions/products'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import { useFileDrop, validateImageFile } from '@/lib/hooks/use-file-drop'
 import { toImageSrc } from '@/lib/supabase/image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,6 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { cn } from '@/lib/utils'
 import type { Product, ProductGroup } from '@/types'
 
 const NO_GROUP = '__none__'
@@ -64,9 +66,12 @@ export function ProductForm({
   const groupId = watch('group_id')
   const isActive = watch('is_active')
 
-  async function handleImage(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function handleImage(file: File) {
+    const invalidReason = validateImageFile(file)
+    if (invalidReason) {
+      toast.error(invalidReason)
+      return
+    }
     try {
       const url = await upload(file)
       setImageUrl(url)
@@ -76,6 +81,17 @@ export function ProductForm({
       toast.error('图片上传失败')
     }
   }
+
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) void handleImage(file)
+  }
+
+  const { dragging: imageDragging, dropProps: imageDropProps } = useFileDrop({
+    onFile: (file) => handleImage(file),
+    disabled: uploading,
+  })
 
   function onSubmit(values: ProductInput) {
     const fd = new FormData()
@@ -186,7 +202,16 @@ export function ProductForm({
 
       <div className="space-y-2">
         <Label htmlFor="image">产品图片</Label>
-        <Input id="image" type="file" accept="image/*" onChange={handleImage} disabled={uploading} />
+        <div
+          className={cn(
+            'rounded-md border border-dashed p-3 transition-colors',
+            imageDragging ? 'border-primary bg-primary/5' : 'border-input',
+          )}
+          {...imageDropProps}
+        >
+          <Input id="image" type="file" accept="image/*" onChange={handleImageChange} disabled={uploading} />
+          <p className="mt-1 text-xs text-muted-foreground">支持拖放或选择 JPG/PNG/WebP 图片，最大 20MB。</p>
+        </div>
         {uploading && <p className="text-sm text-muted-foreground">上传中…</p>}
         {imageUrl && (
           <div className="relative mt-2 h-32 w-32 overflow-hidden rounded-md border">

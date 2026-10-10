@@ -379,6 +379,7 @@ export function BusinessOrderForm({
     initialOrder?.business_order_attachments?.filter((item) => item.status === 'active') ?? [],
   )
   const [customVersionPendingKey, setCustomVersionPendingKey] = useState<string | null>(null)
+  const [customImageDragKey, setCustomImageDragKey] = useState<string | null>(null)
   const { upload: uploadCustomProductImage, uploading: customProductImageUploading } = useImageUpload({
     bucket: 'product-images',
     folder: 'business-custom-products',
@@ -1267,7 +1268,30 @@ export function BusinessOrderForm({
                                 disabled={identityLocked || pending || customProductImageUploading}
                               />
                             </div>
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div
+                              className={cn(
+                                'flex flex-wrap items-center gap-2 rounded-md border border-dashed p-2 transition-colors',
+                                customImageDragKey === item.key
+                                  ? 'border-primary bg-primary/5'
+                                  : 'border-transparent',
+                              )}
+                              onDragEnter={(event) => {
+                                event.preventDefault()
+                                if (identityLocked || pending || customProductImageUploading) return
+                                setCustomImageDragKey(item.key)
+                              }}
+                              onDragOver={(event) => event.preventDefault()}
+                              onDragLeave={() =>
+                                setCustomImageDragKey((key) => (key === item.key ? null : key))
+                              }
+                              onDrop={(event) => {
+                                event.preventDefault()
+                                setCustomImageDragKey(null)
+                                if (identityLocked || pending || customProductImageUploading) return
+                                const file = event.dataTransfer.files?.[0]
+                                if (file) void handleCustomProductImage(item, file)
+                              }}
+                            >
                               <Input
                                 id={`custom-product-image-${item.key}`}
                                 aria-label={`${item.product_name} 产品图片`}
@@ -1308,7 +1332,7 @@ export function BusinessOrderForm({
                               </Button>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              {item.image_url ? '点击图片可查看大图；' : '暂未上传图片。'}修改编码或图片后保存，会留存为同一产品的新版本。
+                              {item.image_url ? '点击图片可查看大图；' : '暂未上传图片。'}可拖放图片到此处或点击上传；修改编码或图片后保存，会留存为同一产品的新版本。
                             </p>
                           </div>
                         </div>

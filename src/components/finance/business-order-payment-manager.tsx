@@ -45,6 +45,7 @@ import {
   businessOrderItemDisplaySku,
   type BusinessOrderItemWithDisplay,
 } from '@/lib/business-order-financials'
+import { useFileDrop } from '@/lib/hooks/use-file-drop'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type {
@@ -157,6 +158,7 @@ export function BusinessOrderPaymentManager({
 
   const [formOpen, setFormOpen] = useState(false)
   const [paymentType, setPaymentType] = useState<BusinessPaymentType>('full')
+  const [proofFileName, setProofFileName] = useState('')
   const [amount, setAmount] = useState('')
   const [exchangeRate, setExchangeRate] = useState(currency === 'CNY' ? '1' : '')
   const [receivedAt, setReceivedAt] = useState(getBusinessDateTimeLocal())
@@ -165,6 +167,10 @@ export function BusinessOrderPaymentManager({
   const [correctionReason, setCorrectionReason] = useState('')
   const [idempotencyKey, setIdempotencyKey] = useState('')
   const [uploadedProofPath, setUploadedProofPath] = useState<string | null>(null)
+  const { dragging: proofDragging, dropProps: proofDropProps } = useFileDrop({
+    onFile: handleProofFileSelected,
+    disabled: Boolean(uploadedProofPath),
+  })
 
   const [allocatingTransfer, setAllocatingTransfer] = useState<BusinessCustomerTransfer | null>(null)
   const [extraAllocationDraft, setExtraAllocationDraft] = useState<AllocationDraft>({})
@@ -501,7 +507,17 @@ export function BusinessOrderPaymentManager({
       })
     }
     if (fileRef.current) fileRef.current.value = ''
+    setProofFileName('')
     setFormOpen(true)
+  }
+
+  function handleProofFileSelected(file: File) {
+    const input = fileRef.current
+    if (!input) return
+    const transfer = new DataTransfer()
+    transfer.items.add(file)
+    input.files = transfer.files
+    setProofFileName(file.name)
   }
 
   function closeForm() {
@@ -1047,19 +1063,29 @@ export function BusinessOrderPaymentManager({
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="proof">收款截图（最大 20MB）</Label>
-                <Input
-                  ref={fileRef}
-                  id="proof"
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                  required={!uploadedProofPath}
-                  disabled={Boolean(uploadedProofPath)}
-                />
-                {uploadedProofPath && (
-                  <p className="text-xs text-muted-foreground">
-                    凭证已上传；再次提交会复用同一文件，关闭表单后可重新选择。
-                  </p>
-                )}
+                <div
+                  className={`rounded-md border border-dashed p-3 transition-colors ${proofDragging ? 'border-primary bg-primary/5' : 'border-input'}`}
+                  {...proofDropProps}
+                >
+                  <Input
+                    ref={fileRef}
+                    id="proof"
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                    required={!uploadedProofPath}
+                    disabled={Boolean(uploadedProofPath)}
+                    onChange={(event) => setProofFileName(event.target.files?.[0]?.name ?? '')}
+                  />
+                  {uploadedProofPath ? (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      凭证已上传；再次提交会复用同一文件，关闭表单后可重新选择。
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      {proofFileName ? `已选择：${proofFileName}。` : ''}支持拖放或选择 JPG/PNG/WebP 截图，最大 20MB。
+                    </p>
+                  )}
+                </div>
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="transfer_notes">备注</Label>

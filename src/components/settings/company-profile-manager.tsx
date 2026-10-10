@@ -12,6 +12,7 @@ import {
   setActiveCompanyProfile,
 } from '@/lib/actions/company'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import { useFileDrop, validateImageFile } from '@/lib/hooks/use-file-drop'
 import { toImageSrc } from '@/lib/supabase/image'
 import { AccentColorField } from '@/components/settings/accent-color-field'
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -277,9 +279,12 @@ function CompanyProfileForm({
   const [logoUrl, setLogoUrl] = useState(src?.logo_url ?? '')
   const { upload, uploading } = useImageUpload({ bucket: 'company-assets' })
 
-  async function handleLogo(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+  async function handleLogo(file: File) {
+    const invalidReason = validateImageFile(file)
+    if (invalidReason) {
+      toast.error(invalidReason)
+      return
+    }
     try {
       const url = await upload(file)
       setLogoUrl(url)
@@ -288,6 +293,17 @@ function CompanyProfileForm({
       toast.error('Logo 上传失败')
     }
   }
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) void handleLogo(file)
+  }
+
+  const { dragging: logoDragging, dropProps: logoDropProps } = useFileDrop({
+    onFile: (file) => handleLogo(file),
+    disabled: uploading,
+  })
 
   function handleSubmit(formData: FormData) {
     formData.set('logo_url', logoUrl)
@@ -357,7 +373,16 @@ function CompanyProfileForm({
 
           <div className="space-y-2">
             <Label htmlFor="logo">Logo</Label>
-            <Input id="logo" type="file" accept="image/*" onChange={handleLogo} disabled={uploading} />
+            <div
+              className={cn(
+                'rounded-md border border-dashed p-3 transition-colors',
+                logoDragging ? 'border-primary bg-primary/5' : 'border-input',
+              )}
+              {...logoDropProps}
+            >
+              <Input id="logo" type="file" accept="image/*" onChange={handleLogoChange} disabled={uploading} />
+              <p className="mt-1 text-xs text-muted-foreground">支持拖放或选择 JPG/PNG/WebP 图片，最大 20MB。</p>
+            </div>
             {uploading && <p className="text-sm text-muted-foreground">上传中…</p>}
             {logoUrl && (
               <div className="relative mt-2 h-20 w-40 overflow-hidden rounded-md border bg-white">
