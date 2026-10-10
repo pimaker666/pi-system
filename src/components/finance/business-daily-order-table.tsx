@@ -607,7 +607,9 @@ export function BusinessDailyOrderTable({
           </TableBody>
         </Table>
 
+      {/* modal 弹窗的滚动锁会 preventDefault 掉 portal 到 body 的下拉列表 wheel 事件，客户列表将滚不动 */}
       <Dialog
+        modal={false}
         open={Boolean(customerOrder)}
         onOpenChange={(open) => {
           if (!open) {
