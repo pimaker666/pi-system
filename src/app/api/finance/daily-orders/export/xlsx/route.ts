@@ -26,8 +26,10 @@ import { displayProfileName } from '@/lib/utils'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+/** 导出列把「截图」挪到表尾：截图横向延伸时不会盖住结算/提成列。 */
+const EXPORT_COLUMNS = [...DAILY_ORDER_COLUMNS.filter((name) => name !== '截图'), '截图']
 /** 截图列的 0 基列号，用于 addImage 定位。 */
-const SCREENSHOT_COLUMN_INDEX = DAILY_ORDER_COLUMNS.indexOf('截图')
+const SCREENSHOT_COLUMN_INDEX = EXPORT_COLUMNS.indexOf('截图')
 
 export async function GET(request: Request) {
   // 每日订单台账对所有已审核角色开放（业务员也要能导出自己可见的订单），
@@ -67,9 +69,9 @@ export async function GET(request: Request) {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'PI System'
   const sheet = workbook.addWorksheet('每日订单台账', { views: [{ state: 'frozen', ySplit: 1 }] })
-  sheet.columns = [6, 13, 16, 16, 18, 13, 20, 12, 28, 12, 18, 18, 20, 18, 18, 18, 12, 30, 28, 10, 10]
+  sheet.columns = [6, 13, 16, 16, 18, 13, 20, 12, 28, 12, 18, 18, 20, 18, 18, 18, 12, 30, 10, 10, 28]
     .map((width) => ({ width }))
-  const header = sheet.addRow([...DAILY_ORDER_COLUMNS])
+  const header = sheet.addRow([...EXPORT_COLUMNS])
   header.height = 24
   header.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
@@ -99,30 +101,26 @@ export async function GET(request: Request) {
       exportRow.outstandingAmount,
       exportRow.paymentCategory,
       exportRow.remarks,
-      '',
       exportRow.settlementStatus,
       exportRow.commissionClearanceStatus,
+      '',
     ])
-    const imageRows = [row]
-    for (let index = 1; index < attachments.length; index += 1) {
-      imageRows.push(sheet.addRow(Array(DAILY_ORDER_COLUMNS.length).fill('')))
-    }
-    for (const imageRow of imageRows) {
-      imageRow.alignment = { vertical: 'middle', wrapText: true }
-      if (attachments.length) imageRow.height = 72
-      imageRow.eachCell((cell) => {
-        cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }
-      })
-    }
+    row.alignment = { vertical: 'middle', wrapText: true }
+    if (attachments.length) row.height = 72
+    row.eachCell((cell) => {
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }
+    })
 
+    // attachments 只挂在订单第一行，截图贴在该行向右横向排开。
     for (let shotIndex = 0; shotIndex < attachments.length; shotIndex += 1) {
       const attachment = attachments[shotIndex]
-      const imageRow = imageRows[shotIndex]
+      const column = SCREENSHOT_COLUMN_INDEX + shotIndex
+      if (shotIndex > 0) sheet.getColumn(column + 1).width = 26
       const { data, error } = await supabase.storage
         .from('finance-daily-order-screenshots')
         .download(attachment.object_path)
       if (error || !data) {
-        sheet.getCell(imageRow.number, SCREENSHOT_COLUMN_INDEX + 1).value = '图片不可用'
+        sheet.getCell(row.number, column + 1).value = '图片不可用'
         continue
       }
       const imageBuffer = Buffer.from(await data.arrayBuffer())
@@ -135,12 +133,12 @@ export async function GET(request: Request) {
       }
       const extension = attachment.mime_type === 'image/png' ? 'png' : 'jpeg'
       if (!(await isRenderableExportImage(imageBuffer))) {
-        sheet.getCell(imageRow.number, SCREENSHOT_COLUMN_INDEX + 1).value = '图片不可用'
+        sheet.getCell(row.number, column + 1).value = '图片不可用'
         continue
       }
       const imageId = workbook.addImage({ base64: imageBuffer.toString('base64'), extension })
       sheet.addImage(imageId, {
-        tl: { col: SCREENSHOT_COLUMN_INDEX + 0.05, row: imageRow.number - 1 + 0.05 },
+        tl: { col: column + 0.05, row: row.number - 1 + 0.05 },
         ext: { width: 180, height: 90 },
         editAs: 'oneCell',
       })

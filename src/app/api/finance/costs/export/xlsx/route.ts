@@ -3,12 +3,18 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { requireFinanceAccess } from '@/lib/auth'
 import { BUSINESS_DAILY_EXPORT_LIMIT, fetchBusinessOrderProductCosts } from '@/lib/business-order-costs-server'
+import {
+  BUSINESS_DAILY_EXPORT_MAX_IMAGES,
+  BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES,
+  BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER,
+} from '@/lib/business-daily-orders'
 import { chinaToday } from '@/lib/daily-order-costs-server'
 import { formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { FINANCE_COST_LABELS } from '@/lib/finance'
+import { isRenderableExportImage } from '@/lib/export-image-guard'
 import { createClient } from '@/lib/supabase/server'
 import { parseBusinessOrderCostFilters } from '@/lib/business-order-cost'
-import type { FinanceOrderCost } from '@/types'
+import type { BusinessOrderAttachment, FinanceOrderCost } from '@/types'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -107,16 +113,61 @@ export async function GET(request: NextRequest) {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'PI System'
 
+  // 同一订单的行在结果里连续排列，先按订单分组，供合并单元格与截图嵌入定位。
+  interface CostOrderGroup {
+    orderId: string
+    firstRow: number
+    lastRow: number
+    attachments: BusinessOrderAttachment[]
+  }
+  const orderGroups: CostOrderGroup[] = []
+  dailyCosts.forEach((item, index) => {
+    const rowNumber = index + 2
+    const last = orderGroups[orderGroups.length - 1]
+    if (last && last.orderId === item.order_id) {
+      last.lastRow = rowNumber
+    } else {
+      orderGroups.push({
+        orderId: item.order_id,
+        firstRow: rowNumber,
+        lastRow: rowNumber,
+        attachments: item.attachments,
+      })
+    }
+  })
+
+  const exportAttachments = orderGroups.flatMap((group) =>
+    group.attachments.slice(0, BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER),
+  )
+  const declaredImageBytes = exportAttachments.reduce(
+    (sum, attachment) => sum + Number(attachment.size_bytes),
+    0,
+  )
+  if (exportAttachments.length > BUSINESS_DAILY_EXPORT_MAX_IMAGES) {
+    return NextResponse.json(
+      {
+        error: `筛选结果包含 ${exportAttachments.length} 张截图，单次最多导出 ${BUSINESS_DAILY_EXPORT_MAX_IMAGES} 张，请缩小筛选范围`,
+      },
+      { status: 413 },
+    )
+  }
+  if (declaredImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
+    return NextResponse.json(
+      { error: '筛选结果的截图总大小超过 50MB，请缩小筛选范围' },
+      { status: 413 },
+    )
+  }
+
   const dailySheet = workbook.addWorksheet('业务订单产品成本', {
     views: [{ state: 'frozen', ySplit: 1 }],
   })
   dailySheet.columns = [
-    10, 13, 20, 16, 24, 13, 20, 12, 26, 14, 16, 16, 18, 16, 18, 16, 18, 16, 12, 32, 14,
+    10, 13, 20, 16, 24, 13, 20, 20, 12, 26, 14, 16, 16, 18, 16, 18, 16, 18, 16, 12, 32, 14,
   ].map((width) => ({ width }))
   styleHeader(dailySheet.addRow([
-    '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '收款账户', '发货分类',
-    '产品名称', '数量', '成本', '总成本', '发货进度', '销售单价', '产品实收金额', '运费实收金额',
-    '订单总金额', '未收尾款', '收款分类', '备注', '截图数',
+    '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '收款账户', '发货单号',
+    '发货分类', '产品名称', '数量', '成本', '总成本', '发货进度', '销售单价', '产品实收金额',
+    '运费实收金额', '订单总金额', '未收尾款', '收款分类', '备注', '截图数',
   ]))
 
   dailyCosts.forEach((item, index) => {
@@ -128,6 +179,7 @@ export async function GET(request: NextRequest) {
       item.external_order_number || item.order_number,
       item.shipping_date ?? '',
       item.payment_account || '',
+      item.shipping_number ?? '',
       item.shipping_category ? SHIPPING_LABELS[item.shipping_category] : '',
       `${item.product_name}${item.product_sku ? `\n${item.product_sku}` : ''}`,
       item.quantity,
@@ -143,17 +195,73 @@ export async function GET(request: NextRequest) {
       item.sales_notes ?? '',
       item.attachments.length,
     ])
-    row.getCell(10).numFmt = '0.####'
-    row.getCell(11).numFmt = '0.0000'
+    row.getCell(11).numFmt = '0.####'
     row.getCell(12).numFmt = '0.0000'
-    row.getCell(14).numFmt = '#,##0.00'
+    row.getCell(13).numFmt = '0.0000'
     row.getCell(15).numFmt = '#,##0.00'
     row.getCell(16).numFmt = '#,##0.00'
     row.getCell(17).numFmt = '#,##0.00'
     row.getCell(18).numFmt = '#,##0.00'
+    row.getCell(19).numFmt = '#,##0.00'
     styleBody(row)
   })
-  dailySheet.autoFilter = { from: 'A1', to: 'U1' }
+
+  // 订单级列纵向合并（产品级列保持逐行）；ExcelJS 合并会丢弃从属单元格样式，
+  // 所以合并后要给区间底部单元格补回分隔线。
+  const ORDER_MERGE_COLUMNS = [2, 3, 4, 5, 6, 7, 8, 18, 19, 20, 21, 22]
+  for (const group of orderGroups) {
+    if (group.lastRow > group.firstRow) {
+      for (const column of ORDER_MERGE_COLUMNS) {
+        dailySheet.mergeCells(group.firstRow, column, group.lastRow, column)
+        dailySheet.getCell(group.lastRow, column).border = {
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        }
+      }
+    }
+  }
+
+  // 每单截图嵌在订单第一行，从「截图数」右侧第一个空列起横向排开。
+  const IMAGE_START_COLUMN = 23
+  let downloadedImageBytes = 0
+  for (const group of orderGroups) {
+    const attachments = group.attachments.slice(0, BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER)
+    if (attachments.length > 0) {
+      dailySheet.getRow(group.firstRow).height = 72
+    }
+    for (let shotIndex = 0; shotIndex < attachments.length; shotIndex += 1) {
+      const column = IMAGE_START_COLUMN + shotIndex
+      dailySheet.getColumn(column).width = 26
+      const attachment = attachments[shotIndex]
+      const { data, error } = await supabase.storage
+        .from('finance-daily-order-screenshots')
+        .download(attachment.object_path)
+      if (error || !data) {
+        dailySheet.getCell(group.firstRow, column).value = '图片不可用'
+        continue
+      }
+      const imageBuffer = Buffer.from(await data.arrayBuffer())
+      downloadedImageBytes += imageBuffer.byteLength
+      if (downloadedImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
+        return NextResponse.json(
+          { error: '实际下载的截图总大小超过 50MB，请缩小筛选范围' },
+          { status: 413 },
+        )
+      }
+      const extension = attachment.mime_type === 'image/png' ? 'png' : 'jpeg'
+      if (!(await isRenderableExportImage(imageBuffer))) {
+        dailySheet.getCell(group.firstRow, column).value = '图片不可用'
+        continue
+      }
+      const imageId = workbook.addImage({ base64: imageBuffer.toString('base64'), extension })
+      dailySheet.addImage(imageId, {
+        tl: { col: column - 1 + 0.05, row: group.firstRow - 1 + 0.05 },
+        ext: { width: 180, height: 90 },
+        editAs: 'oneCell',
+      })
+    }
+  }
+
+  dailySheet.autoFilter = { from: 'A1', to: 'V1' }
 
   const legacyReferences = new Map(
     legacyOrders.map((order) => [order.id, order.pi_number_snapshot]),
