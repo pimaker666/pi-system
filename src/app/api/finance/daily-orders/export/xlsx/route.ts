@@ -87,7 +87,7 @@ export async function GET(request: Request) {
       exportRow.salesperson,
       exportRow.orderNumber,
       exportRow.shippingDate,
-      exportRow.shippingNumber,
+      exportRow.paymentAccount,
       exportRow.shippingCategory,
       exportRow.productSku ? `${exportRow.productName}\n${exportRow.productSku}` : exportRow.productName,
       exportRow.quantity ? Number(exportRow.quantity) : '',

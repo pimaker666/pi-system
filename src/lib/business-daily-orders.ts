@@ -392,7 +392,7 @@ export interface BusinessDailyExportRow {
   salesperson: string
   orderNumber: string
   shippingDate: string
-  shippingNumber: string
+  paymentAccount: string
   shippingCategory: string
   productName: string
   productSku: string
@@ -457,7 +457,7 @@ export function buildBusinessDailyExportRows(
       salesperson: format.salesperson(order),
       orderNumber: order.external_order_number || order.order_number,
       shippingDate: order.daily_shipping_date ?? '',
-      shippingNumber: order.daily_shipping_number || order.payment_account || '',
+      paymentAccount: order.payment_account ?? '',
       orderTotal: format.money(Number(order.total_amount), order.currency),
       outstandingAmount: format.money(order.outstanding_amount, order.currency),
       paymentCategory: format.payment(order.daily_payment_category),

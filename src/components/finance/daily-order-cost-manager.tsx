@@ -495,7 +495,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                           {row.shipping_date ?? '—'}
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={mergedCn(7)}>
-                          {row.payment_account || row.shipping_number || '—'}
+                          {row.payment_account || '—'}
                         </TableCell>
                       </>
                     )}

@@ -39,7 +39,7 @@ export function DailyOrdersPdf({ orders }: { orders: DailyOrderPdfRow[] }) {
       {orders.map((row, rowIndex) => {
         const values = [
           row.sequence, row.orderDate, row.shop, row.salesperson,
-          row.orderNumber, row.shippingDate, row.shippingNumber, row.shippingCategory,
+          row.orderNumber, row.shippingDate, row.paymentAccount, row.shippingCategory,
           row.productSku ? `${row.productName}\n${row.productSku}` : row.productName, row.quantity,
           row.shippingProgress, row.unitPrice, row.productReceived, row.logisticsFee,
           row.orderTotal, row.outstandingAmount, row.paymentCategory, row.remarks,

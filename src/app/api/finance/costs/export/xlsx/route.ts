@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
       item.salesperson_name,
       item.external_order_number || item.order_number,
       item.shipping_date ?? '',
-      item.payment_account || item.shipping_number || '',
+      item.payment_account || '',
       item.shipping_category ? SHIPPING_LABELS[item.shipping_category] : '',
       `${item.product_name}${item.product_sku ? `\n${item.product_sku}` : ''}`,
       item.quantity,

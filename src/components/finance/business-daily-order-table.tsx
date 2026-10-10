@@ -488,7 +488,7 @@ export function BusinessDailyOrderTable({
                           {order.daily_shipping_date ?? '—'}
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={mergedCn(7)}>
-                          {order.daily_shipping_number || order.payment_account || '—'}
+                          {order.payment_account || '—'}
                         </TableCell>
                       </>
                     )}
