@@ -212,6 +212,7 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Sales or supervisor users can assign orders only to themselves', '业务员或主管只能将订单归属给自己'],
     ['External order number is required', '订单号不能为空且不能超过 200 字'],
     ['Daily shipping date is required', '请选择发货日期'],
+    ['Daily shipping number cannot exceed 200 characters', '发货单号累计不能超过 200 字，请精简后再试'],
     ['Daily payment category is required', '请选择收款类型'],
     ['Business order does not exist', '业务订单不存在'],
     ['Business order is not accessible', '无权查看该业务订单'],

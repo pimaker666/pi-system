@@ -308,7 +308,7 @@ export function BusinessShipmentManager({
                       )}
                     </div>
                     <p className="break-all text-sm text-muted-foreground">
-                      运单号：{shipment.tracking_number || '—'}
+                      发货单号：{shipment.tracking_number || '—'}
                     </p>
                     {shipment.notes && <p className="text-sm">备注：{shipment.notes}</p>}
                     {shipment.voided_at && (
@@ -382,7 +382,7 @@ export function BusinessShipmentManager({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="shipment_tracking_number">运单号</Label>
+                <Label htmlFor="shipment_tracking_number">发货单号</Label>
                 <Input
                   id="shipment_tracking_number"
                   value={trackingNumber}
