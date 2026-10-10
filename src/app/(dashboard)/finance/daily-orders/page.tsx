@@ -245,6 +245,11 @@ export default async function DailyOrdersPage({
             </label>
           </div>
         </details>
+        <select name="commissionClearanceStatus" defaultValue={filters.commissionClearanceStatus ?? 'all'} className="h-10 rounded-md border bg-background px-3 text-sm">
+          <option value="all">全部提成结清状态</option>
+          <option value="cleared">已结清</option>
+          <option value="uncleared">未结清</option>
+        </select>
         <div className="flex flex-wrap gap-2 xl:col-span-8">
           <Button type="submit">筛选</Button>
           <Button asChild type="button" variant="outline">
