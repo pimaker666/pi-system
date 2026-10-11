@@ -12,6 +12,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { AccountPermissionOverrideForm } from './account-permission-override-form'
+import type { JsonObject } from './permission-catalog'
 import type { Profile, ProfilePermissionOverride, ResolvedProfilePermission } from '@/types'
 
 const roleLabels = { admin: '管理员', finance: '财务', supervisor: '业务主管', sales: '业务员' } as const
@@ -54,10 +55,14 @@ export function AccountPermissionDetail({
   profile,
   override,
   resolved,
+  templatePermissions,
+  templateSensitiveFields,
 }: {
   profile: Profile
   override: ProfilePermissionOverride | null
   resolved: ResolvedProfilePermission
+  templatePermissions: JsonObject
+  templateSensitiveFields: JsonObject
 }) {
   const statusLabel = profile.status === 'approved' ? '启用中' : profile.status === 'disabled' ? '已停用' : '待审核'
   return (
@@ -110,7 +115,12 @@ export function AccountPermissionDetail({
             <Card><CardHeader><CardTitle className="text-base">数据范围</CardTitle></CardHeader><CardContent className="text-sm"><p className="font-medium">{dataScopeLabels[resolved.data_scope]}</p><p className="mt-1 text-muted-foreground">当前结果已包含账号例外的数据范围设置。</p></CardContent></Card>
             <Card><CardHeader><CardTitle className="text-base">敏感字段</CardTitle></CardHeader><CardContent className="space-y-2 text-sm">{sensitiveFields.map(([label, key]) => <div key={key} className="flex justify-between"><span>{label}</span><Badge variant={resolved.sensitive_fields[key] === true ? 'outline' : 'secondary'}>{resolved.sensitive_fields[key] === true ? '可见' : '隐藏'}</Badge></div>)}</CardContent></Card>
           </div>
-          <AccountPermissionOverrideForm profileId={profile.id} initial={override} />
+          <AccountPermissionOverrideForm
+            profileId={profile.id}
+            initial={override}
+            templatePermissions={templatePermissions}
+            templateFields={templateSensitiveFields}
+          />
         </div>
       </div>
     </div>

@@ -11,9 +11,23 @@ export default async function AccountPermissionsPage({ params }: { params: Promi
   const supabase = await createClient()
   const { data, error } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle()
   if (error || !data) notFound()
-  const [override, resolved] = await Promise.all([
+  const [override, resolved, templateResult] = await Promise.all([
     getProfilePermissionOverride(id),
     getResolvedProfilePermission(id),
+    supabase
+      .from('permission_templates')
+      .select('permissions, sensitive_fields')
+      .eq('system_role', (data as Profile).role)
+      .maybeSingle(),
   ])
-  return <AccountPermissionDetail profile={data as Profile} override={override} resolved={resolved} />
+  if (templateResult.error) throw new Error(`读取角色权限模板失败：${templateResult.error.message}`)
+  return (
+    <AccountPermissionDetail
+      profile={data as Profile}
+      override={override}
+      resolved={resolved}
+      templatePermissions={(templateResult.data?.permissions ?? {}) as Record<string, unknown>}
+      templateSensitiveFields={(templateResult.data?.sensitive_fields ?? {}) as Record<string, unknown>}
+    />
+  )
 }
