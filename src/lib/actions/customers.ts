@@ -322,11 +322,11 @@ export async function bulkDeleteCustomers(
   return { ok: true, count: data ?? 0 }
 }
 
-/** 从回收站恢复客户；恢复后重新出现在客户列表与订单绑定选择中。 */
+/** 从回收站恢复客户；恢复后重新出现在客户列表与订单绑定选择中。仅管理员。 */
 export async function restoreCustomers(
   ids: string[],
 ): Promise<ActionResult & { count?: number }> {
-  await requireProfile()
+  await requireAdmin()
   if (!ids.length) return { ok: false, error: '未选择任何客户' }
 
   const supabase = await createClient()
@@ -341,12 +341,12 @@ export async function restoreCustomers(
 
 /**
  * 从回收站彻底删除客户（不可恢复）。存在定制产品档案或收款转账记录时数据库会拒绝，
- * 相关订单与 PI 改为解绑并保留名称快照。
+ * 相关订单与 PI 改为解绑并保留名称快照。仅管理员。
  */
 export async function purgeCustomers(
   ids: string[],
 ): Promise<ActionResult & { count?: number }> {
-  await requireProfile()
+  await requireAdmin()
   if (!ids.length) return { ok: false, error: '未选择任何客户' }
 
   const supabase = await createClient()

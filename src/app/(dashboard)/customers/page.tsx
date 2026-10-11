@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { UsersRound } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
@@ -32,6 +33,8 @@ export default async function CustomersPage({
   const isTrash = view === 'trash'
   const profile = await getCurrentProfile()
   const isAdmin = profile?.role === 'admin'
+  // 回收站仅管理员可见：入口隐藏 + 直链访问弹回列表。
+  if (isTrash && !isAdmin) redirect('/customers')
   const supabase = await createClient()
 
   let customerQuery = supabase
@@ -179,7 +182,7 @@ export default async function CustomersPage({
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-md border p-0.5">
             {viewTab('/customers', !isTrash, '客户列表')}
-            {viewTab('/customers?view=trash', isTrash, '回收站')}
+            {isAdmin && viewTab('/customers?view=trash', isTrash, '回收站')}
           </div>
           {!isTrash && (
             <>
