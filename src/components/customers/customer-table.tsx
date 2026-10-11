@@ -348,8 +348,8 @@ export function CustomerTable({
                 <TableHead>客户</TableHead>
                 <TableHead>公司</TableHead>
                 <TableHead>国家</TableHead>
-                <TableHead className="whitespace-nowrap">分组</TableHead>
-                <TableHead>联系方式</TableHead>
+                <TableHead className="w-40 min-w-40 whitespace-nowrap text-center">分组</TableHead>
+                <TableHead className="w-40 whitespace-nowrap text-center">联系方式</TableHead>
                 {sortableHeader('近一年下单金额', 'amount', 'right')}
                 {sortableHeader('上次下单时间', 'lastOrder')}
                 {sortableHeader('新建客户时间', 'createdAt')}
@@ -386,15 +386,17 @@ export function CustomerTable({
                       {formatCountryName(c.country)}
                     </span>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="text-center">
                     {c.customer_groups ? (
-                      <Badge variant="secondary">{c.customer_groups.name}</Badge>
+                      <Badge variant="secondary" className="whitespace-nowrap">
+                        {c.customer_groups.name}
+                      </Badge>
                     ) : (
-                      <span className="text-muted-foreground">未分组</span>
+                      <span className="whitespace-nowrap text-muted-foreground">未分组</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {c.email ?? c.phone ?? '—'}
+                  <TableCell className="text-center text-sm text-muted-foreground">
+                    <span className="whitespace-nowrap">{c.email ?? c.phone ?? '—'}</span>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {stats[c.id]?.lastYearAmountCny || stats[c.id]?.lastYearAmountUsd ? (
