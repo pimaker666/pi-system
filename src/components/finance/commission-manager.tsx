@@ -1221,7 +1221,7 @@ export function CommissionManager({
       return
     }
     if (editableUsdOrderIds.length === 0) {
-      toast.error('当前页没有可修改汇率的美元订单')
+      toast.error('当前页没有可修改汇率的美元订单（需已关联客户、已收齐且已发货、未提交结清）')
       return
     }
     startExchangeRateTransition(async () => {
@@ -1281,14 +1281,14 @@ export function CommissionManager({
           placeholder="填写后美元金额自动换算为人民币"
           value={exchangeRate}
           onChange={(event) => setExchangeRate(event.target.value)}
-          disabled={!canManageExchangeRate || editableUsdOrderIds.length === 0}
+          disabled={!canManageExchangeRate}
           className="w-[260px]"
         />
         {canManageExchangeRate && (
           <Button
             type="button"
             variant="outline"
-            disabled={exchangeRatePending || editableUsdOrderIds.length === 0 || currentExchangeRate == null}
+            disabled={exchangeRatePending || currentExchangeRate == null}
             onClick={saveExchangeRate}
           >
             保存并应用当前页
