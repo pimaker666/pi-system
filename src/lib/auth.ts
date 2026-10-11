@@ -53,6 +53,26 @@ export async function requireFinanceAccess(): Promise<Profile> {
   return profile
 }
 
+/** 财务查看准入：admin/finance 角色，或被授予 finance.view 权限的账号。 */
+export async function hasFinanceViewFor(profile: Profile): Promise<boolean> {
+  if (profile.role === 'admin' || profile.role === 'finance') return true
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('has_current_permission', {
+    p_permission: 'finance.view',
+  })
+  if (error) throw new Error(`读取账号权限失败：${error.message}`)
+  return data === true
+}
+
+/** 财务页面只读守卫：角色或 finance.view 例外放行；写操作仍走 requireFinanceAccess。 */
+export async function requireFinanceView(): Promise<Profile> {
+  const profile = await requireApproved()
+  if (!(await hasFinanceViewFor(profile))) {
+    redirect('/finance/performance')
+  }
+  return profile
+}
+
 export async function hasCurrentPermission(permission: string): Promise<boolean> {
   const profile = await requireApproved()
   const supabase = await createClient()

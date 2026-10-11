@@ -38,12 +38,14 @@ const financeNavGroups = [
 export function FinanceNav({
   role,
   commissionAttentionCount,
+  canManageFinance,
 }: {
   role: UserRole
   commissionAttentionCount: number
+  /** 财务专属 tab 可见性：admin/finance 角色，或被授予 finance.view 的账号。 */
+  canManageFinance: boolean
 }) {
   const pathname = usePathname()
-  const canManageFinance = role === 'admin' || role === 'finance'
   const commissionBadge = commissionAttentionCount > 99 ? '99+' : commissionAttentionCount
   const groups = financeNavGroups
     .map((group) => ({

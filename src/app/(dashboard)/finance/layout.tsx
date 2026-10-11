@@ -1,5 +1,5 @@
 import { FinanceNav } from '@/components/finance/finance-nav'
-import { requireApproved } from '@/lib/auth'
+import { hasFinanceViewFor, requireApproved } from '@/lib/auth'
 import { fetchBusinessOrderCommissions } from '@/lib/business-order-commissions-server'
 import { parseBusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import { createClient } from '@/lib/supabase/server'
@@ -16,10 +16,15 @@ export default async function FinanceLayout({ children }: { children: React.Reac
       1000,
     )).rows.filter((row) => row.clearance_status === 'pending').length
     : 0
+  const canViewFinance = await hasFinanceViewFor(profile)
 
   return (
     <div>
-      <FinanceNav role={profile.role} commissionAttentionCount={commissionAttentionCount} />
+      <FinanceNav
+        role={profile.role}
+        commissionAttentionCount={commissionAttentionCount}
+        canManageFinance={canViewFinance}
+      />
       {children}
     </div>
   )

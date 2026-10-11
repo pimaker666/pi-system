@@ -1,10 +1,10 @@
 import { TransactionManager } from '@/components/finance/transaction-manager'
-import { requireFinanceAccess } from '@/lib/auth'
+import { requireFinanceView } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import type { FinanceOrder, FinanceTransaction, Profile } from '@/types'
 
 export default async function FinanceTransactionsPage() {
-  await requireFinanceAccess()
+  await requireFinanceView()
   const supabase = await createClient()
 
   const [transactionsResult, ordersResult, salespeopleResult] = await Promise.all([

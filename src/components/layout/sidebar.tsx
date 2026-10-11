@@ -104,13 +104,18 @@ const NAV: NavItem[] = [
 export function Sidebar({
   role,
   fullName,
+  canViewFinance = false,
 }: {
   role: UserRole
   fullName: string | null
+  canViewFinance?: boolean
 }) {
   const pathname = usePathname()
   const items = NAV.filter(
-    (item) => !item.allowedRoles || item.allowedRoles.includes(role),
+    (item) =>
+      !item.allowedRoles ||
+      item.allowedRoles.includes(role) ||
+      (item.href === '/finance' && canViewFinance),
   )
 
   return (

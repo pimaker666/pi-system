@@ -1,4 +1,4 @@
-import { requireApproved } from '@/lib/auth'
+import { hasFinanceViewFor, requireApproved } from '@/lib/auth'
 import { displayProfileName } from '@/lib/utils'
 import { Sidebar } from '@/components/layout/sidebar'
 import { LogoutButton } from '@/components/auth/logout-button'
@@ -9,10 +9,15 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const profile = await requireApproved()
+  const canViewFinance = await hasFinanceViewFor(profile)
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <Sidebar role={profile.role} fullName={displayProfileName(profile)} />
+      <Sidebar
+        role={profile.role}
+        fullName={displayProfileName(profile)}
+        canViewFinance={canViewFinance}
+      />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-16 items-center justify-end border-b px-6">
           <LogoutButton />

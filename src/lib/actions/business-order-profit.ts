@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
-import { requireFinanceAccess } from '@/lib/auth'
+import { requireFinanceAccess, requireFinanceView } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 
 export interface BusinessOrderProfitRow {
@@ -41,7 +41,7 @@ export async function getBusinessOrderProfitRows(input: {
   salespersonIds?: string[]
   shopIds?: string[]
 }): Promise<BusinessOrderProfitRow[]> {
-  await requireFinanceAccess()
+  await requireFinanceView()
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('get_business_order_profit_rows', {
     p_period: input.period ? `${input.period}-01` : null,

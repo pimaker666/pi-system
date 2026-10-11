@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { getBusinessOrderProfitRows } from '@/lib/actions/business-order-profit'
 import { getBusinessDateKey } from '@/lib/business-orders'
 import { formatDailyMoney } from '@/lib/daily-orders'
-import { requireFinanceAccess } from '@/lib/auth'
+import { requireFinanceView } from '@/lib/auth'
 
 function currentMonth() {
   return getBusinessDateKey().slice(0, 7)
@@ -20,7 +20,7 @@ export default async function FinanceProfitPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireFinanceAccess()
+  await requireFinanceView()
   const raw = await searchParams
   const periodValue = Array.isArray(raw.period) ? raw.period[0] : raw.period
   const period = /^\d{4}-\d{2}$/.test(periodValue ?? '') ? periodValue! : currentMonth()

@@ -3,7 +3,7 @@ import {
   PiCostManager,
   type CostOrderOption,
 } from '@/components/finance/pi-cost-manager'
-import { requireFinanceAccess } from '@/lib/auth'
+import { requireFinanceView } from '@/lib/auth'
 import { fetchBusinessOrderProductCosts } from '@/lib/business-order-costs-server'
 import { parseBusinessOrderCostFilters } from '@/lib/business-order-cost'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
@@ -15,7 +15,7 @@ export default async function FinanceCostsPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireFinanceAccess()
+  await requireFinanceView()
   const filters = parseBusinessOrderCostFilters(await searchParams)
   const supabase = await createClient()
 
