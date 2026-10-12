@@ -485,7 +485,7 @@ export function PiDocument({ pi, company }: PiDocumentProps) {
                 </Text>
               )}
               <Text style={[{ width: col.qty, textAlign: 'right' }, styles.cellPad, styles.latin]}>
-                {item.quantity} {item.unit}
+                {item.quantity}
               </Text>
               <Text style={[{ width: col.price, textAlign: 'right' }, styles.cellPad, styles.amount]}>
                 {formatCurrency(item.unit_price, pi.currency)}
