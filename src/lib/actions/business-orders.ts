@@ -267,6 +267,10 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Shipped order item product cannot be replaced', '已发货订单明细不能更换产品'],
     ['Order item quantity cannot be less than net shipped quantity', '订单数量不能低于净发货数量'],
     ['Cannot change customer after payment allocation', '已有分摊或订单已完成，不能更换客户'],
+    [
+      'Cannot bind customer different from allocation transfer customer',
+      '该订单已有分摊的付款客户与要绑定的客户不一致，不能绑定',
+    ],
     ['Cannot change currency after payment allocation', '已有分摊或订单已完成，不能更换币种'],
     ['Order total cannot be less than active payment allocations', '订单总额不能低于有效收款分摊'],
     ['Order item is locked', '订单明细已被发货或退货记录引用，不能删除或更换产品'],
