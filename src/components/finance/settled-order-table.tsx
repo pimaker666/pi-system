@@ -8,6 +8,16 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Table,
   TableBody,
   TableCell,
@@ -21,6 +31,7 @@ import { formatDailyMoney, SHIPPING_LABELS } from '@/lib/daily-orders'
 import type { SettledOrderRow } from '@/types'
 
 const COLUMNS = [
+  '选择',
   '序号',
   '结算年月',
   '下单日期',
@@ -49,7 +60,8 @@ export interface SettledOrderTableProps {
 export function SettledOrderTable({ rows, periods, filters }: SettledOrderTableProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const [pendingId, setPendingId] = useState<string | null>(null)
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
+  const [unsettleItemIds, setUnsettleItemIds] = useState<string[] | null>(null)
 
   const groups = useMemo(() => {
     const map = new Map<string, SettledOrderRow[]>()
@@ -60,18 +72,33 @@ export function SettledOrderTable({ rows, periods, filters }: SettledOrderTableP
     }
     return [...map.values()]
   }, [rows])
+  const allSelected = rows.length > 0 && rows.every((row) => selectedItemIds.has(row.business_order_item_id))
 
-  function cancelSettlement(itemId: string) {
-    setPendingId(itemId)
+  function toggleRow(itemId: string, checked: boolean) {
+    setSelectedItemIds((previous) => {
+      const next = new Set(previous)
+      if (checked) next.add(itemId)
+      else next.delete(itemId)
+      return next
+    })
+  }
+
+  function toggleSelectAll(checked: boolean) {
+    setSelectedItemIds(checked ? new Set(rows.map((row) => row.business_order_item_id)) : new Set())
+  }
+
+  function confirmUnsettle() {
+    if (!unsettleItemIds?.length) return
     startTransition(async () => {
-      const result = await unsettleBusinessOrderItems({ business_order_item_ids: [itemId] })
-      setPendingId(null)
+      const result = await unsettleBusinessOrderItems({ business_order_item_ids: unsettleItemIds })
       if (!result.ok) {
         const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
         toast.error(firstFieldError ?? result.error ?? '取消结算失败')
         return
       }
-      toast.success('已取消结算，产品行回到订单成本页')
+      toast.success(`已取消 ${unsettleItemIds.length} 个产品行结算`)
+      setSelectedItemIds(new Set())
+      setUnsettleItemIds(null)
       router.refresh()
     })
   }
@@ -117,11 +144,34 @@ export function SettledOrderTable({ rows, periods, filters }: SettledOrderTableP
         </div>
       </form>
 
+      {rows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card p-3">
+          <span className="text-sm text-muted-foreground">已选 {selectedItemIds.size} 个产品行</span>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={selectedItemIds.size === 0 || pending}
+            onClick={() => setUnsettleItemIds([...selectedItemIds])}
+          >
+            <RotateCcw className="mr-1.5 h-4 w-4" />
+            取消结算
+          </Button>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-md border">
         <Table className="min-w-[1600px]">
           <TableHeader>
             <TableRow>
-              {COLUMNS.map((label) => (
+              <TableHead className="w-12">
+                <input
+                  type="checkbox"
+                  aria-label="全选"
+                  checked={allSelected}
+                  onChange={(event) => toggleSelectAll(event.target.checked)}
+                />
+              </TableHead>
+              {COLUMNS.slice(1).map((label) => (
                 <TableHead key={label}>{label}</TableHead>
               ))}
             </TableRow>
@@ -137,6 +187,14 @@ export function SettledOrderTable({ rows, periods, filters }: SettledOrderTableP
                     key={row.business_order_item_id}
                     className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
                   >
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        aria-label={`选择产品行 ${row.product_name}`}
+                        checked={selectedItemIds.has(row.business_order_item_id)}
+                        onChange={(event) => toggleRow(row.business_order_item_id, event.target.checked)}
+                      />
+                    </TableCell>
                     <TableCell>
                       <div className="font-medium">
                         {groupIndex + 1}
@@ -202,8 +260,8 @@ export function SettledOrderTable({ rows, periods, filters }: SettledOrderTableP
                         type="button"
                         variant="outline"
                         size="sm"
-                        disabled={pending && pendingId === row.business_order_item_id}
-                        onClick={() => cancelSettlement(row.business_order_item_id)}
+                        disabled={pending}
+                        onClick={() => setUnsettleItemIds([row.business_order_item_id])}
                       >
                         <RotateCcw className="mr-1 h-3 w-3" />
                         取消结算
@@ -223,6 +281,23 @@ export function SettledOrderTable({ rows, periods, filters }: SettledOrderTableP
           </TableBody>
         </Table>
       </div>
+
+      <AlertDialog open={unsettleItemIds != null} onOpenChange={(open) => !open && setUnsettleItemIds(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认取消结算？</AlertDialogTitle>
+            <AlertDialogDescription>
+              将取消 {unsettleItemIds?.length ?? 0} 个产品行的成本结算，产品行会回到订单成本页。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>取消</AlertDialogCancel>
+            <AlertDialogAction disabled={pending} onClick={confirmUnsettle}>
+              确认取消结算
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </section>
   )
 }
