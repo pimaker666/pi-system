@@ -39,10 +39,10 @@ async function apply(file) {
 for (const file of files) await apply(file)
 console.log(`APPLY PASS ${files.length} migrations`)
 
-const migration = '0096_allow_late_customer_binding.sql'
-if (files.at(-1) !== migration) throw new Error('FAIL 0096 is not the latest migration')
+const migration = '0101_allow_late_customer_binding.sql'
+if (files.at(-1) !== migration) throw new Error('FAIL 0101 is not the latest migration')
 await apply(migration)
-console.log('PASS 0096 is idempotent')
+console.log('PASS 0101 is idempotent')
 
 function assert(condition, message) {
   if (!condition) throw new Error(`FAIL ${message}`)
@@ -140,5 +140,16 @@ await expectError(
 )
 
 await db.exec('reset role')
+await db.exec(`select set_config('app.customer_purge', 'true', false)`)
+await db.exec(`update public.business_orders set customer_id = null where id = '${order3}'`)
+const purged = await db.query(`select customer_id from public.business_orders where id='${order3}'`)
+assert(purged.rows[0].customer_id === null, '0099 customer purge bypass still detaches a bound customer')
+await db.exec(`select set_config('app.customer_purge', '', false)`)
+await expectError(
+  () => db.exec(`update public.business_orders set customer_id = null where id = '${order1}'`),
+  /Cannot change customer after payment allocation or completion/,
+  'purge bypass stops applying once the flag is cleared',
+)
+
 await db.close()
-console.log('VERIFY PASS 0096')
+console.log('VERIFY PASS 0101')
