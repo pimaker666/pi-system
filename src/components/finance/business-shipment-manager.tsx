@@ -32,6 +32,7 @@ import {
   businessOrderItemDisplayName,
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
+import { useFileDrop } from '@/lib/hooks/use-file-drop'
 import { formatDate } from '@/lib/utils'
 import type {
   BusinessOrder,
@@ -93,6 +94,10 @@ export function BusinessShipmentManager({
   const [viewingScreenshotUrl, setViewingScreenshotUrl] = useState<string | null>(null)
   const [voiding, setVoiding] = useState<BusinessOrderShipment | null>(null)
   const [voidReason, setVoidReason] = useState('')
+  const {
+    dragging: screenshotDragging,
+    dropProps: screenshotDropProps,
+  } = useFileDrop({ onFile: acceptScreenshot })
 
   const activeShipmentIds = new Set(
     shipments.filter((shipment) => !shipment.voided_at).map((shipment) => shipment.id),
@@ -510,7 +515,25 @@ export function BusinessShipmentManager({
 
             <div className="space-y-2">
               <Label htmlFor="shipment_screenshot">发货截图（可选）</Label>
-              {screenshotPreviewUrl ? (
+              <div
+                className={`rounded-md border border-dashed p-3 transition-colors ${screenshotDragging ? 'border-primary bg-primary/5' : 'border-input'}`}
+                {...screenshotDropProps}
+              >
+                <Input
+                  id="shipment_screenshot"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ''
+                    if (file) acceptScreenshot(file)
+                  }}
+                />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  支持拖放或选择 JPG/PNG 截图，最大 20MB。
+                </p>
+              </div>
+              {screenshotPreviewUrl && (
                 <div className="flex items-center gap-3 rounded-md border p-2">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -532,17 +555,6 @@ export function BusinessShipmentManager({
                     <X className="h-4 w-4" />移除
                   </Button>
                 </div>
-              ) : (
-                <Input
-                  id="shipment_screenshot"
-                  type="file"
-                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    event.target.value = ''
-                    if (file) acceptScreenshot(file)
-                  }}
-                />
               )}
             </div>
 
