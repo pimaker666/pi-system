@@ -156,6 +156,8 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Only approved sales users', '仅已审核通过的业务员或业务主管可以执行此操作'],
     ['Only approved administrators or finance users can create shipments', '仅管理员或财务可以创建发货批次'],
     ['Only approved administrators or finance users can void shipments', '仅管理员或财务可以作废发货批次'],
+    ['Invalid shipment screenshot path', '发货截图路径不合法'],
+    ['Current account does not have shipment permission', '当前账号没有登记发货权限'],
     ['Only approved administrators or finance users can register returns', '仅管理员或财务可以登记退货'],
     ['Only approved administrators or finance users can void returns', '仅管理员或财务可以作废退货'],
     ['Approved administrator or finance user required to void a business order', '仅已审核通过的管理员或财务可以作废订单'],
@@ -605,6 +607,29 @@ export async function getBusinessOrderAttachmentUrl(
   return { url: signed.signedUrl }
 }
 
+export async function getBusinessOrderShipmentScreenshotUrl(
+  shipmentId: string,
+): Promise<{ url?: string; error?: string }> {
+  await requireApproved()
+  const parsedId = z.string().uuid('发货批次 ID 不合法').safeParse(shipmentId)
+  if (!parsedId.success) return { error: firstValidationError(parsedId.error) }
+
+  const supabase = await createClient()
+  const { data: shipment, error } = await supabase
+    .from('business_order_shipments')
+    .select('screenshot_path')
+    .eq('id', parsedId.data)
+    .maybeSingle()
+  if (error || !shipment?.screenshot_path) return { error: '发货截图不存在或无权查看' }
+
+  const admin = createAdminClient()
+  const { data: signed, error: signError } = await admin.storage
+    .from('business-shipment-screenshots')
+    .createSignedUrl(shipment.screenshot_path, 60 * 10)
+  if (signError) return { error: '生成发货截图链接失败' }
+  return { url: signed.signedUrl }
+}
+
 export async function removeBusinessOrderAttachment(
   attachmentId: string,
 ): Promise<BusinessOrderAttachmentActionResult> {
@@ -899,13 +924,16 @@ export async function createBusinessOrderShipment(
   if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('create_business_order_shipment', {
+  const { data, error } = await supabase.rpc('create_business_order_shipment_v2', {
     p_order_id: orderId,
     p_shipped_at: new Date(parsed.data.shipped_at).toISOString(),
     p_tracking_number: nullableText(parsed.data.tracking_number),
     p_notes: nullableText(parsed.data.notes),
     p_items: parsed.data.items,
     p_idempotency_key: parsed.data.idempotency_key,
+    p_allow_overship: false,
+    p_overship_reason: null,
+    p_screenshot_path: parsed.data.screenshot_path ?? null,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '创建发货批次失败') }
 

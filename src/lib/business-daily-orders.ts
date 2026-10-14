@@ -242,6 +242,22 @@ export function mergeBusinessDailyItems(
 
   const { itemById, shippingTotal } = businessOrderAllocationBreakdown(order)
 
+  // 财务核算覆盖只改表头运费实收（0037），不回写明细行；把表头与明细行之差并入首行，
+  // 保证台账行合计与表头总运费实收一致（历史订单按 businessDailyOrderTotals 兜底 shipping_fee）。
+  const itemFeeSum = roundToScale(
+    sorted.reduce(
+      (sum, item) =>
+        sum + (item.logistics_fee_amount === null ? 0 : Number(item.logistics_fee_amount)),
+      0,
+    ),
+    2,
+  )
+  const declaredShippingReceived =
+    order.total_shipping_received_amount === null
+      ? Number(order.shipping_fee)
+      : Number(order.total_shipping_received_amount)
+  const shippingOverrideDelta = roundToScale(declaredShippingReceived - itemFeeSum, 2)
+
   return [...groups.values()].map((group, index) => {
     const first = group[0]
     const quantity = roundToScale(
@@ -274,9 +290,10 @@ export function mergeBusinessDailyItems(
           2,
         )
       : null
+    const firstRowShippingExtra = groupShippingAllocated + (index === 0 ? shippingOverrideDelta : 0)
     const logisticsFee =
-      groupShippingAllocated !== 0
-        ? roundToScale((declaredLogisticsFee ?? 0) + groupShippingAllocated, 2)
+      firstRowShippingExtra !== 0
+        ? roundToScale((declaredLogisticsFee ?? 0) + firstRowShippingExtra, 2)
         : declaredLogisticsFee
     const salesTotal = roundToScale(
       group.reduce(
@@ -286,7 +303,7 @@ export function mergeBusinessDailyItems(
             ? Number(item.line_amount)
             : Number(item.sales_total_amount)),
         0,
-      ) + groupItemAllocated + groupShippingAllocated,
+      ) + groupItemAllocated + groupShippingAllocated + (index === 0 ? shippingOverrideDelta : 0),
       2,
     )
     const netShipped = group.reduce(
@@ -393,6 +410,7 @@ export interface BusinessDailyExportRow {
   orderNumber: string
   shippingDate: string
   shippingNumber: string
+  paymentAccount: string
   shippingCategory: string
   productName: string
   productSku: string
@@ -457,7 +475,8 @@ export function buildBusinessDailyExportRows(
       salesperson: format.salesperson(order),
       orderNumber: order.external_order_number || order.order_number,
       shippingDate: order.daily_shipping_date ?? '',
-      shippingNumber: order.daily_shipping_number || order.payment_account || '',
+      shippingNumber: order.daily_shipping_number ?? '',
+      paymentAccount: order.payment_account ?? '',
       orderTotal: format.money(Number(order.total_amount), order.currency),
       outstandingAmount: format.money(order.outstanding_amount, order.currency),
       paymentCategory: format.payment(order.daily_payment_category),

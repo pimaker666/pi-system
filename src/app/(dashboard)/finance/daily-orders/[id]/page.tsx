@@ -745,6 +745,7 @@ export default async function BusinessOrderDetailPage({
           )}
 
           <BusinessShipmentManager
+            profileId={profile.id}
             order={order}
             canShip={canShip}
             orderItems={order.business_order_items}

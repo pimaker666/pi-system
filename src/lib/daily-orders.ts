@@ -16,12 +16,12 @@ export interface DailyOrderShopOption extends DailyOrderShop {
 }
 
 export const DAILY_ORDER_COLUMNS = [
-  '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '收款账户', '发货分类',
+  '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '发货单号', '收款账户', '发货分类',
   '产品名称', '数量', '发货进度', '销售单价', '产品实收金额', '运费实收金额', '订单总金额', '未收尾款', '收款分类', '备注', '截图', '结算状态', '提成',
 ] as const
 
 export const SHIPPING_LABELS: Record<DailyOrderShippingCategory, string> = {
-  stock: '现货', sample: '样品', custom: '定制', purchase: '外采',
+  stock: '现货', sample: '现货样品', custom_sample: '定制打样', custom: '定制', purchase: '外采',
 }
 export const PAYMENT_LABELS: Record<DailyOrderPaymentCategory, string> = {
   full: '全款', deposit: '定金', balance: '尾款',
