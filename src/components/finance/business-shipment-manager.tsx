@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useState, useTransition } from 'react'
+import { ClipboardEvent, DragEvent, FormEvent, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, PackagePlus, Trash2, Truck, X } from 'lucide-react'
 import { toast } from 'sonner'
@@ -32,7 +32,7 @@ import {
   businessOrderItemDisplayName,
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
-import { formatDate } from '@/lib/utils'
+import { cn, formatDate } from '@/lib/utils'
 import type {
   BusinessOrder,
   BusinessOrderItem,
@@ -91,6 +91,7 @@ export function BusinessShipmentManager({
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null)
   const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState<string | null>(null)
   const [viewingScreenshotUrl, setViewingScreenshotUrl] = useState<string | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
   const [voiding, setVoiding] = useState<BusinessOrderShipment | null>(null)
   const [voidReason, setVoidReason] = useState('')
 
@@ -150,6 +151,22 @@ export function BusinessShipmentManager({
     if (screenshotPreviewUrl) URL.revokeObjectURL(screenshotPreviewUrl)
     setScreenshotFile(null)
     setScreenshotPreviewUrl(null)
+  }
+
+  function handleScreenshotDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setIsDragging(false)
+    const file = event.dataTransfer.files?.[0]
+    if (file) acceptScreenshot(file)
+  }
+
+  function handleScreenshotPaste(event: ClipboardEvent<HTMLDivElement>) {
+    const image = Array.from(event.clipboardData?.items ?? [])
+      .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      ?.getAsFile()
+    if (!image) return
+    event.preventDefault()
+    acceptScreenshot(image)
   }
 
   async function uploadScreenshot(): Promise<string | null> {
@@ -510,7 +527,33 @@ export function BusinessShipmentManager({
 
             <div className="space-y-2">
               <Label htmlFor="shipment_screenshot">发货截图（可选）</Label>
-              {screenshotPreviewUrl ? (
+              <div
+                className={cn(
+                  'rounded-md border border-dashed p-4 text-sm text-muted-foreground',
+                  isDragging && 'border-primary bg-primary/5',
+                )}
+                onDragOver={(event) => {
+                  event.preventDefault()
+                  setIsDragging(true)
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleScreenshotDrop}
+                onPaste={handleScreenshotPaste}
+              >
+                <div>拖拽、粘贴或选择 JPEG/PNG 截图，不超过 20MB。</div>
+                <Input
+                  id="shipment_screenshot"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  className="mt-2"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ''
+                    if (file) acceptScreenshot(file)
+                  }}
+                />
+              </div>
+              {screenshotPreviewUrl && (
                 <div className="flex items-center gap-3 rounded-md border p-2">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -532,17 +575,6 @@ export function BusinessShipmentManager({
                     <X className="h-4 w-4" />移除
                   </Button>
                 </div>
-              ) : (
-                <Input
-                  id="shipment_screenshot"
-                  type="file"
-                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0]
-                    event.target.value = ''
-                    if (file) acceptScreenshot(file)
-                  }}
-                />
               )}
             </div>
 

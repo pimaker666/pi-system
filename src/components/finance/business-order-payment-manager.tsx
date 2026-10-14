@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { ClipboardEvent, DragEvent, FormEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, Plus, RefreshCw, Trash2, WalletCards } from 'lucide-react'
 import { toast } from 'sonner'
@@ -46,7 +46,7 @@ import {
   type BusinessOrderItemWithDisplay,
 } from '@/lib/business-order-financials'
 import { createClient } from '@/lib/supabase/client'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { cn, formatCurrency, formatDate } from '@/lib/utils'
 import type {
   BusinessCustomerTransfer,
   BusinessOrderItem,
@@ -140,6 +140,7 @@ export function BusinessOrderPaymentManager({
 }: BusinessOrderPaymentManagerProps) {
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
+  const [isProofDragging, setIsProofDragging] = useState(false)
   const [pending, startTransition] = useTransition()
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
@@ -509,6 +510,39 @@ export function BusinessOrderPaymentManager({
     setIdempotencyKey('')
     setUploadedProofPath(null)
     setFormOpen(false)
+  }
+
+  function acceptProofFile(file: File) {
+    const extension = file.name.split('.').pop()?.toLowerCase() ?? ''
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+    if (!allowedTypes.includes(file.type) || !['jpg', 'jpeg', 'png', 'webp'].includes(extension)) {
+      toast.error('凭证仅支持 JPG、JPEG、PNG 或 WebP 图片')
+      return
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('凭证图片不能超过 20MB')
+      return
+    }
+    if (!fileRef.current) return
+    const dataTransfer = new DataTransfer()
+    dataTransfer.items.add(file)
+    fileRef.current.files = dataTransfer.files
+  }
+
+  function handleProofDrop(event: DragEvent<HTMLDivElement>) {
+    event.preventDefault()
+    setIsProofDragging(false)
+    const file = event.dataTransfer.files?.[0]
+    if (file) acceptProofFile(file)
+  }
+
+  function handleProofPaste(event: ClipboardEvent<HTMLDivElement>) {
+    const image = Array.from(event.clipboardData?.items ?? [])
+      .find((item) => item.kind === 'file' && item.type.startsWith('image/'))
+      ?.getAsFile()
+    if (!image) return
+    event.preventDefault()
+    acceptProofFile(image)
   }
 
   async function uploadProof(
@@ -1047,14 +1081,30 @@ export function BusinessOrderPaymentManager({
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="proof">收款截图（最大 20MB）</Label>
-                <Input
-                  ref={fileRef}
-                  id="proof"
-                  type="file"
-                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                  required={!uploadedProofPath}
-                  disabled={Boolean(uploadedProofPath)}
-                />
+                <div
+                  className={cn(
+                    'rounded-md border border-dashed p-4 text-sm text-muted-foreground',
+                    isProofDragging && 'border-primary bg-primary/5',
+                  )}
+                  onDragOver={(event) => {
+                    event.preventDefault()
+                    setIsProofDragging(true)
+                  }}
+                  onDragLeave={() => setIsProofDragging(false)}
+                  onDrop={handleProofDrop}
+                  onPaste={handleProofPaste}
+                >
+                  <div>拖拽、粘贴或选择 JPG/PNG/WebP 图片，最大 20MB。</div>
+                  <Input
+                    ref={fileRef}
+                    id="proof"
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                    required={!uploadedProofPath}
+                    disabled={Boolean(uploadedProofPath)}
+                    className="mt-2"
+                  />
+                </div>
                 {uploadedProofPath && (
                   <p className="text-xs text-muted-foreground">
                     凭证已上传；再次提交会复用同一文件，关闭表单后可重新选择。
