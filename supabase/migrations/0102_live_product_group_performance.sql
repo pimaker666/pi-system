@@ -8,6 +8,8 @@
 -- 方案（使用者选定 B 语义）：分组一律实时读取——普通产品读 products.group_id，
 -- 定制产品读该产品最新版本（version_no 最大）的 product_group_id；改分组后历史订单
 -- 业绩随之迁移。四个业绩 RPC 的分组键与 p_product_group_ids 筛选统一改为该口径。
+-- by_group_base 与 multi_dimension 同时保留 0094 的发货分类标签（现货样品/定制打样），
+-- 避免 create or replace 把另一条线已部署的标签改回「样品」。
 
 begin;
 
@@ -791,7 +793,7 @@ create or replace function public.get_business_performance_by_group_base(
        case i.daily_shipping_category::text
          when 'custom' then '定制'
          when 'stock' then '现货'
-         when 'sample' then '样品'
+         when 'sample' then '现货样品' when 'custom_sample' then '定制打样'
          when 'purchase' then '外采'
          else i.daily_shipping_category::text
        end,
@@ -1083,7 +1085,7 @@ begin
         when 'country' then coalesce(nullif(bi.country, ''), '(未填写)')
         when 'product' then coalesce(nullif(btrim(bi.name_snapshot), ''), '(未命名产品)')
         when 'product_group' then coalesce(bi.product_group_name, '(未分组)')
-        when 'shipping_category' then case bi.daily_shipping_category::text when 'custom' then '定制' when 'stock' then '现货' when 'sample' then '样品' when 'purchase' then '外采' else '(未填写)' end
+        when 'shipping_category' then case bi.daily_shipping_category::text when 'custom' then '定制' when 'stock' then '现货' when 'sample' then '现货样品' when 'custom_sample' then '定制打样' when 'purchase' then '外采' else '(未填写)' end
         when 'date' then bi.order_date::text
         when 'month' then to_char(bi.order_date, 'YYYY-MM')
       end as dimension_1_label,
@@ -1107,7 +1109,7 @@ begin
         when 'country' then coalesce(nullif(bi.country, ''), '(未填写)')
         when 'product' then coalesce(nullif(btrim(bi.name_snapshot), ''), '(未命名产品)')
         when 'product_group' then coalesce(bi.product_group_name, '(未分组)')
-        when 'shipping_category' then case bi.daily_shipping_category::text when 'custom' then '定制' when 'stock' then '现货' when 'sample' then '样品' when 'purchase' then '外采' else '(未填写)' end
+        when 'shipping_category' then case bi.daily_shipping_category::text when 'custom' then '定制' when 'stock' then '现货' when 'sample' then '现货样品' when 'custom_sample' then '定制打样' when 'purchase' then '外采' else '(未填写)' end
         when 'date' then bi.order_date::text
         when 'month' then to_char(bi.order_date, 'YYYY-MM')
       end as dimension_2_label,
@@ -1131,7 +1133,7 @@ begin
         when 'country' then coalesce(nullif(bi.country, ''), '(未填写)')
         when 'product' then coalesce(nullif(btrim(bi.name_snapshot), ''), '(未命名产品)')
         when 'product_group' then coalesce(bi.product_group_name, '(未分组)')
-        when 'shipping_category' then case bi.daily_shipping_category::text when 'custom' then '定制' when 'stock' then '现货' when 'sample' then '样品' when 'purchase' then '外采' else '(未填写)' end
+        when 'shipping_category' then case bi.daily_shipping_category::text when 'custom' then '定制' when 'stock' then '现货' when 'sample' then '现货样品' when 'custom_sample' then '定制打样' when 'purchase' then '外采' else '(未填写)' end
         when 'date' then bi.order_date::text
         when 'month' then to_char(bi.order_date, 'YYYY-MM')
       end as dimension_3_label
