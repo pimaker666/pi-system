@@ -69,7 +69,7 @@ export async function GET(request: Request) {
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'PI System'
   const sheet = workbook.addWorksheet('每日订单台账', { views: [{ state: 'frozen', ySplit: 1 }] })
-  sheet.columns = [6, 13, 16, 16, 18, 13, 20, 12, 28, 12, 18, 18, 20, 18, 18, 18, 12, 30, 10, 10, 28]
+  sheet.columns = [6, 13, 16, 16, 18, 13, 18, 20, 12, 28, 12, 18, 18, 20, 18, 18, 18, 12, 30, 28, 10, 10]
     .map((width) => ({ width }))
   const header = sheet.addRow([...EXPORT_COLUMNS])
   header.height = 24
@@ -89,6 +89,7 @@ export async function GET(request: Request) {
       exportRow.salesperson,
       exportRow.orderNumber,
       exportRow.shippingDate,
+      exportRow.shippingNumber,
       exportRow.paymentAccount,
       exportRow.shippingCategory,
       exportRow.productSku ? `${exportRow.productName}\n${exportRow.productSku}` : exportRow.productName,
@@ -145,7 +146,7 @@ export async function GET(request: Request) {
     }
   }
 
-  sheet.autoFilter = { from: 'A1', to: 'U1' }
+  sheet.autoFilter = { from: 'A1', to: 'V1' }
   const buffer = await workbook.xlsx.writeBuffer()
   const body = new Uint8Array(buffer as ArrayBuffer)
   const date = new Date().toISOString().slice(0, 10)

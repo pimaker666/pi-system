@@ -15,6 +15,7 @@ export const businessOrderItemSourceTypes = ['catalog', 'custom', 'legacy'] as c
 export const businessOrderDailyShippingCategories = [
   'stock',
   'sample',
+  'custom_sample',
   'custom',
   'purchase',
 ] as const
@@ -608,6 +609,7 @@ export const businessOrderShipmentInputSchema = z
     shipped_at: dateTimeSchema,
     tracking_number: optionalText(200, '物流单号不能超过 200 字'),
     notes: optionalText(1000, '发货备注不能超过 1000 字'),
+    screenshot_path: z.string().trim().min(1, '发货截图路径不合法').max(500, '发货截图路径不合法').nullable().optional(),
     items: businessOrderShipmentItemsSchema,
     idempotency_key: z.string().trim().min(1, '缺少幂等键').max(200, '幂等键不能超过 200 字'),
   })

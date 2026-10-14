@@ -2,7 +2,7 @@
 
 import { FormEvent, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { PackagePlus, Trash2, Truck } from 'lucide-react'
+import { Eye, PackagePlus, Trash2, Truck, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -20,8 +20,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import {
   createBusinessOrderShipment,
+  getBusinessOrderShipmentScreenshotUrl,
   voidBusinessOrderShipment,
 } from '@/lib/actions/business-orders'
+import { createClient } from '@/lib/supabase/client'
 import {
   businessDateTimeLocalToIso,
   getBusinessDateTimeLocal,
@@ -39,6 +41,7 @@ import type {
 } from '@/types'
 
 interface BusinessShipmentManagerProps {
+  profileId: string
   order: Pick<
     BusinessOrder,
     'id' | 'status' | 'approval_status' | 'salesperson_id' | 'completion_gate_version'
@@ -67,6 +70,7 @@ function formatQuantity(value: number) {
 }
 
 export function BusinessShipmentManager({
+  profileId,
   order,
   canShip,
   orderItems,
@@ -84,6 +88,9 @@ export function BusinessShipmentManager({
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [wholeOrderShipment, setWholeOrderShipment] = useState(false)
   const [idempotencyKey, setIdempotencyKey] = useState('')
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null)
+  const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState<string | null>(null)
+  const [viewingScreenshotUrl, setViewingScreenshotUrl] = useState<string | null>(null)
   const [voiding, setVoiding] = useState<BusinessOrderShipment | null>(null)
   const [voidReason, setVoidReason] = useState('')
 
@@ -125,11 +132,63 @@ export function BusinessShipmentManager({
   const isLegacyCompletedOrder = order.status === 'completed' && order.completion_gate_version < 2
   const canVoid = canManage && !isLockedCompletedOrder
 
+  function acceptScreenshot(file: File) {
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      toast.error('截图仅支持 JPG 或 PNG 图片')
+      return
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast.error('发货截图不能超过 20MB')
+      return
+    }
+    if (screenshotPreviewUrl) URL.revokeObjectURL(screenshotPreviewUrl)
+    setScreenshotFile(file)
+    setScreenshotPreviewUrl(URL.createObjectURL(file))
+  }
+
+  function clearScreenshot() {
+    if (screenshotPreviewUrl) URL.revokeObjectURL(screenshotPreviewUrl)
+    setScreenshotFile(null)
+    setScreenshotPreviewUrl(null)
+  }
+
+  async function uploadScreenshot(): Promise<string | null> {
+    if (!screenshotFile || !idempotencyKey) return null
+    const extension = screenshotFile.name.split('.').pop()?.toLowerCase()
+    const fileName = `${idempotencyKey}.${extension ?? 'png'}`
+    const folder = `${profileId}/${order.id}`
+    const path = `${folder}/${fileName}`
+    const bucket = createClient().storage.from('business-shipment-screenshots')
+    const { error } = await bucket.upload(path, screenshotFile, {
+      contentType: screenshotFile.type,
+      upsert: false,
+    })
+    if (error) {
+      const { data: existing, error: listError } = await bucket.list(folder, {
+        limit: 100,
+        search: fileName,
+      })
+      if (listError || !existing?.some((item) => item.name === fileName)) {
+        throw new Error(error.message)
+      }
+    }
+    return path
+  }
+
+  function viewShipmentScreenshot(shipmentId: string) {
+    startTransition(async () => {
+      const result = await getBusinessOrderShipmentScreenshotUrl(shipmentId)
+      if (result.url) setViewingScreenshotUrl(result.url)
+      else toast.error(result.error ?? '无法查看发货截图')
+    })
+  }
+
   function openCreateForm(wholeOrder = false) {
     setShippedAt(getBusinessDateTimeLocal())
     setTrackingNumber('')
     setNotes('')
     setWholeOrderShipment(wholeOrder)
+    clearScreenshot()
     setQuantities(
       wholeOrder
         ? Object.fromEntries(
@@ -178,12 +237,23 @@ export function BusinessShipmentManager({
     }
 
     startTransition(async () => {
+      let screenshotPath: string | null = null
+      if (screenshotFile) {
+        try {
+          screenshotPath = await uploadScreenshot()
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : '发货截图上传失败，请重试')
+          return
+        }
+      }
+
       const result = await createBusinessOrderShipment(order.id, {
         shipped_at: shippedAtIso,
         tracking_number: trackingNumber,
         notes,
         items: selectedItems.map(({ order_item_id, quantity }) => ({ order_item_id, quantity })),
         idempotency_key: idempotencyKey,
+        screenshot_path: screenshotPath,
       })
       if (!result.ok) {
         toast.error(result.error ?? '创建发货批次失败')
@@ -195,6 +265,7 @@ export function BusinessShipmentManager({
       setQuantities({})
       setWholeOrderShipment(false)
       setIdempotencyKey('')
+      clearScreenshot()
       router.refresh()
     })
   }
@@ -310,6 +381,18 @@ export function BusinessShipmentManager({
                     <p className="break-all text-sm text-muted-foreground">
                       发货单号：{shipment.tracking_number || '—'}
                     </p>
+                    {shipment.screenshot_path && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2"
+                        disabled={pending}
+                        onClick={() => viewShipmentScreenshot(shipment.id)}
+                      >
+                        <Eye className="h-3.5 w-3.5" />查看截图
+                      </Button>
+                    )}
                     {shipment.notes && <p className="text-sm">备注：{shipment.notes}</p>}
                     {shipment.voided_at && (
                       <p className="text-sm text-destructive">作废原因：{shipment.void_reason || '—'}</p>
@@ -426,6 +509,44 @@ export function BusinessShipmentManager({
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="shipment_screenshot">发货截图（可选）</Label>
+              {screenshotPreviewUrl ? (
+                <div className="flex items-center gap-3 rounded-md border p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={screenshotPreviewUrl}
+                    alt="发货截图预览"
+                    className="h-16 w-16 rounded border object-cover"
+                  />
+                  <div className="min-w-0 flex-1 text-sm">
+                    <div className="truncate">{screenshotFile?.name}</div>
+                    <p className="text-xs text-muted-foreground">JPG / PNG，不超过 20MB</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive"
+                    onClick={clearScreenshot}
+                  >
+                    <X className="h-4 w-4" />移除
+                  </Button>
+                </div>
+              ) : (
+                <Input
+                  id="shipment_screenshot"
+                  type="file"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0]
+                    event.target.value = ''
+                    if (file) acceptScreenshot(file)
+                  }}
+                />
+              )}
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="shipment_notes">备注</Label>
               <Textarea
                 id="shipment_notes"
@@ -475,6 +596,27 @@ export function BusinessShipmentManager({
               {pending ? '处理中…' : '确认作废'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(viewingScreenshotUrl)}
+        onOpenChange={(open) => !open && setViewingScreenshotUrl(null)}
+      >
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>发货截图</DialogTitle>
+          </DialogHeader>
+          {viewingScreenshotUrl && (
+            <div className="flex max-h-[70vh] items-center justify-center overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={viewingScreenshotUrl}
+                alt="发货截图"
+                className="max-h-[70vh] w-full object-contain"
+              />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </Card>

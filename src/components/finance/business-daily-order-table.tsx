@@ -55,10 +55,13 @@ import { DAILY_ORDER_COLUMNS, formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS 
 import { cn, displayProfileName } from '@/lib/utils'
 import type { BusinessOrder, Customer, CustomerGroup, Profile } from '@/types'
 
+// 台账页面只展示发货单号；收款账户仅保留在导出列（DAILY_ORDER_COLUMNS）里。
+const BUSINESS_DAILY_TABLE_COLUMNS = DAILY_ORDER_COLUMNS.filter((label) => label !== '收款账户')
+
 const BUSINESS_DAILY_ORDER_COLUMNS = [
-  ...DAILY_ORDER_COLUMNS.slice(0, 8),
+  ...BUSINESS_DAILY_TABLE_COLUMNS.slice(0, 8),
   '产品图片',
-  ...DAILY_ORDER_COLUMNS.slice(8),
+  ...BUSINESS_DAILY_TABLE_COLUMNS.slice(8),
 ]
 
 export interface BusinessDailyOrderTableProps {
@@ -488,7 +491,7 @@ export function BusinessDailyOrderTable({
                           {order.daily_shipping_date ?? '—'}
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={mergedCn(7)}>
-                          {order.payment_account || '—'}
+                          {order.daily_shipping_number || '—'}
                         </TableCell>
                       </>
                     )}

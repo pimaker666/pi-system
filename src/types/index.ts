@@ -11,6 +11,8 @@ export type OrderEditApprovalTrigger =
   | 'amount_or_rate_change'
   | 'shipment_change'
   | 'void_order'
+  | 'commission_clearance_cancel'
+  | 'item_settlement_cancel'
 export type ApprovalMode = 'any' | 'sequential'
 export type CurrencyCode = 'USD' | 'EUR' | 'CNY' | 'GBP' | 'JPY'
 export type PiStatus = 'active' | 'void'
@@ -432,7 +434,7 @@ export interface BusinessOrderCommissionClearanceDetail {
   rejected_read_at: string | null
 }
 
-export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom' | 'purchase'
+export type DailyOrderShippingCategory = 'stock' | 'sample' | 'custom_sample' | 'custom' | 'purchase'
 export type DailyOrderPaymentCategory = 'full' | 'deposit' | 'balance'
 
 export interface DailyOrderShop {
@@ -893,6 +895,7 @@ export interface BusinessOrderShipment {
   shipped_at: string
   tracking_number: string | null
   notes: string | null
+  screenshot_path: string | null
   created_by: string | null
   created_at: string
   voided_at: string | null
