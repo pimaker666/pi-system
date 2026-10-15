@@ -31,21 +31,18 @@ const EXPORT_COLUMNS = [...DAILY_ORDER_COLUMNS.filter((name) => name !== '截图
 /** 截图列的 0 基列号，用于 addImage 定位。 */
 const SCREENSHOT_COLUMN_INDEX = EXPORT_COLUMNS.indexOf('截图')
 
-export async function GET(request: Request) {
-  // 每日订单台账对所有已审核角色开放（业务员也要能导出自己可见的订单），
-  // 可见范围由 business_orders 的 RLS 决定，而不是页面级角色门禁。
-  await requireApproved()
-  const searchParams = new URL(request.url).searchParams
-  const params = Object.fromEntries(searchParams.entries())
-  const filters = parseDailyOrderFilters(params)
-  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-  const ids = searchParams
-    .getAll('ids')
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function parseIds(values: string[]): string[] {
+  return values
     .flatMap((v) => v.split(','))
     .map((v) => v.trim())
     .filter((v) => UUID_RE.test(v))
+}
+
+async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilters>, ids?: string[]) {
   const supabase = await createClient()
-  const orders = await fetchBusinessDailyLedger(supabase, filters, BUSINESS_DAILY_EXPORT_LIMIT, ids.length > 0 ? ids : undefined)
+  const orders = await fetchBusinessDailyLedger(supabase, filters, BUSINESS_DAILY_EXPORT_LIMIT, ids)
   const imageLimitError = businessDailyExportLimitError(orders)
   if (imageLimitError) return NextResponse.json({ error: imageLimitError }, { status: 413 })
 
@@ -160,4 +157,29 @@ export async function GET(request: Request) {
       'X-Content-Type-Options': 'nosniff',
     },
   })
+}
+
+export async function GET(request: Request) {
+  // 每日订单台账对所有已审核角色开放（业务员也要能导出自己可见的订单），
+  // 可见范围由 business_orders 的 RLS 决定，而不是页面级角色门禁。
+  await requireApproved()
+  const searchParams = new URL(request.url).searchParams
+  const filters = parseDailyOrderFilters(Object.fromEntries(searchParams.entries()))
+  const ids = parseIds(searchParams.getAll('ids'))
+  return buildXlsxResponse(filters, ids.length > 0 ? ids : undefined)
+}
+
+// 批量选中导出走 POST：ids 放请求体，避免超长 URL 被 Kong（~8k）或 Node（16k）拒绝。
+export async function POST(request: Request) {
+  await requireApproved()
+  const body = (await request.json().catch(() => null)) as
+    | { filterQuery?: string; ids?: string[] }
+    | null
+  if (!body || typeof body.filterQuery !== 'string') {
+    return NextResponse.json({ error: '请求格式错误' }, { status: 400 })
+  }
+  const params = new URLSearchParams(body.filterQuery)
+  const filters = parseDailyOrderFilters(Object.fromEntries(params.entries()))
+  const ids = parseIds(Array.isArray(body.ids) ? body.ids : [])
+  return buildXlsxResponse(filters, ids.length > 0 ? ids : undefined)
 }

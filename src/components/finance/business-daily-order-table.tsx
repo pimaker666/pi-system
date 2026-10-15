@@ -116,6 +116,7 @@ export function BusinessDailyOrderTable({
   const [bulkPending, startBulkTransition] = useTransition()
   const [customerPending, startCustomerTransition] = useTransition()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [exportPending, setExportPending] = useState<'xlsx' | 'pdf' | null>(null)
   const [shippedAt, setShippedAt] = useState(() => toDateTimeLocalValue(new Date()))
   const [customerOrder, setCustomerOrder] = useState<BusinessDailyLedgerOrder | null>(null)
   const [customerDraft, setCustomerDraft] = useState<Customer | null>(null)
@@ -186,14 +187,40 @@ export function BusinessDailyOrderTable({
   )
   const allSelected = selectableOrders.length > 0 && selectedCount === selectableOrders.length
 
-  const exportUrl = useMemo(() => {
-    const validSelectedIds = [...selectedIds].filter((id) => selectableIds.has(id))
-    const base = filterQuery ? `?${filterQuery}` : '?'
-    if (validSelectedIds.length > 0) {
-      return base + '&' + validSelectedIds.map((id) => `ids=${id}`).join('&')
+  // 导出走 POST：ids 放请求体。选中行多时 URL 拼 ids 会被 Kong（~8k）或 Node（16k）拒绝。
+  async function downloadExport(kind: 'xlsx' | 'pdf') {
+    if (exportPending) return
+    setExportPending(kind)
+    try {
+      const validSelectedIds = [...selectedIds].filter((id) => selectableIds.has(id))
+      const response = await fetch(`/api/finance/daily-orders/export/${kind}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filterQuery, ids: validSelectedIds }),
+      })
+      if (!response.ok) {
+        let message = `导出失败（${response.status}）`
+        try {
+          const data = (await response.json()) as { error?: string }
+          if (data?.error) message = data.error
+        } catch {
+          // 错误体不是 JSON 时保留默认提示
+        }
+        toast.error(message)
+        return
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      const date = new Date().toISOString().slice(0, 10)
+      link.download = kind === 'xlsx' ? `财务每日订单台账_${date}.xlsx` : `财务每日订单台账_${date}.pdf`
+      link.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExportPending(null)
     }
-    return base
-  }, [selectedIds, selectableIds, filterQuery])
+  }
 
   function viewAttachment(attachmentId: string) {
     startTransition(async () => {
@@ -303,15 +330,21 @@ export function BusinessDailyOrderTable({
               />
               固定当前列
             </label>
-            <Button asChild variant="outline" size="sm">
-              <a download href={`/api/finance/daily-orders/export/xlsx${exportUrl}`}>
-                <Download className="h-4 w-4" />XLSX
-              </a>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadExport('xlsx')}
+              disabled={exportPending !== null}
+            >
+              <Download className="h-4 w-4" />XLSX
             </Button>
-            <Button asChild variant="outline" size="sm">
-              <a href={`/api/finance/daily-orders/export/pdf${exportUrl}`}>
-                <FileText className="h-4 w-4" />PDF
-              </a>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadExport('pdf')}
+              disabled={exportPending !== null}
+            >
+              <FileText className="h-4 w-4" />PDF
             </Button>
           </div>
         </div>

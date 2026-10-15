@@ -249,8 +249,29 @@ export async function fetchBusinessDailyLedger(
   const keyword = normalizeKeyword(filters.q)
 
   if (ids && ids.length > 0 || !keyword) {
-    const { data, error } = await buildLedgerQuery(supabase, filters, effectiveLimit, false, ids)
-    if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
+    // Kong 网关 URI 上限约 8k：.in('id', ids) 一批最多 100 个订单，超出拆分查询后按同一排序合并。
+    const merged = new Map<string, BusinessDailyLedgerOrder>()
+    if (ids && ids.length > 0) {
+      for (let i = 0; i < ids.length; i += 100) {
+        const { data, error } = await buildLedgerQuery(
+          supabase,
+          filters,
+          effectiveLimit,
+          false,
+          ids.slice(i, i + 100),
+        )
+        if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
+        for (const order of (data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
+          merged.set(order.id, order)
+        }
+      }
+    } else {
+      const { data, error } = await buildLedgerQuery(supabase, filters, effectiveLimit, false)
+      if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
+      for (const order of (data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
+        merged.set(order.id, order)
+      }
+    }
     const orders = await applyCommissionClearanceFilter(
       supabase,
       await applySettlementFilter(
@@ -259,7 +280,7 @@ export async function fetchBusinessDailyLedger(
           applyCompletionFilter(
             await attachOutstandingAmounts(
               supabase,
-              (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+              [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
             ),
             filters.completion,
           ),
