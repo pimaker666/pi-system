@@ -434,10 +434,6 @@ export function BusinessOrderForm({
   }
 
   function addCatalogProduct(product: Product) {
-    if (items.some((item) => item.source_type === 'catalog' && item.product_id === product.id)) {
-      toast.error('该产品已在订单中')
-      return
-    }
     setItems((current) => [
       ...current,
       {
@@ -476,10 +472,6 @@ export function BusinessOrderForm({
   }
 
   function addCustomProduct(product: BusinessCustomProductListItem, keepSelected = false) {
-    if (items.some((item) => item.custom_product_version_id === product.version_id)) {
-      toast.error('该定制产品版本已在订单中')
-      return
-    }
     const quantity = product.quantity ?? ''
     const unitPrice = product.default_currency === currency ? product.default_unit_price : ''
     const received = product.received_amount == null ? '' : String(product.received_amount)
