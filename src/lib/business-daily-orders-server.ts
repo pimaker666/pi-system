@@ -327,7 +327,8 @@ export async function fetchSettledItemIdsForOrders(
   if (itemIds.length === 0) return []
 
   const settled: string[] = []
-  const CHUNK = 500
+  // Kong 网关 URI 上限约 8k，一批 500 个 UUID 的 in() 查询会触发 414，必须压到 100。
+  const CHUNK = 100
   for (let i = 0; i < itemIds.length; i += CHUNK) {
     const chunk = itemIds.slice(i, i + CHUNK)
     const { data, error } = await supabase
@@ -356,7 +357,7 @@ export async function fetchConfirmedCommissionItemIdsForOrders(
   if (itemIds.length === 0) return []
 
   const confirmed: string[] = []
-  const CHUNK = 500
+  const CHUNK = 100
   for (let i = 0; i < itemIds.length; i += CHUNK) {
     const chunk = itemIds.slice(i, i + CHUNK)
     const { data, error } = await supabase
