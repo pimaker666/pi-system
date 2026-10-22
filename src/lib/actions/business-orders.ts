@@ -211,6 +211,8 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Salesperson is not actively assigned to this shop', '所选业务员未有效分配到该店铺'],
     ['Assigned salesperson must be approved', '所选业务员尚未审核通过'],
     ['Administrator can assign only approved sales or admin users', '管理员只能将订单归属给已审核的业务员或管理员'],
+    ['Administrator or finance can assign only approved sales, supervisor, or admin users', '管理员或财务只能将订单归属给已审核的业务员、主管或管理员'],
+    ['Daily order shop group does not exist', '店铺所属的分组不存在或已被删除'],
     ['Sales or supervisor users can assign orders only to themselves', '业务员或主管只能将订单归属给自己'],
     ['External order number is required', '订单号不能为空且不能超过 200 字'],
     ['Daily shipping date is required', '请选择发货日期'],
@@ -368,8 +370,23 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Only finance can edit approved', '仅财务可以填写已审批订单的核算信息'],
     ['Finance fields cannot be edited', '当前订单状态不能修改财务信息'],
     ['duplicate key value', '数据已存在，请检查凭证或幂等键是否重复'],
+    ['Order fee must be between zero and 999999999999', '订单手续费必须在 0 到 999999999999 之间'],
+    ['Payment account cannot exceed 200 characters', '收款账户不能超过 200 字'],
+    ['Payment due date cannot be earlier than order date', '付款到期日不能早于订单日期'],
+    ['Approved sales, supervisor, admin, or finance account required', '当前账号未审核通过或无权执行此操作'],
+    ['Business order customer is required', '请选择订单客户'],
+    ['Order date is required', '请填写订单日期'],
+    ['Shipping fee is invalid', '运费金额无效'],
+    ['Business order text exceeds maximum length', '订单文本超出长度限制，请精简备注或原因'],
+    ['Completed or closed order items cannot be replaced', '订单已完结或已关闭，产品明细不能再修改'],
+    ['Each item must be an object', '产品明细数据格式异常，请刷新页面重试'],
+    ['External order number cannot exceed 200 characters', '外部订单号不能超过 200 字'],
+    ['Daily order item count does not match business order items', '产品明细与订单数据不一致，请刷新页面重试'],
+    ['Daily order item override flags are required', '产品明细缺少实收覆盖标记，请刷新页面重试'],
+    ['Daily order item does not match business order item', '产品明细与订单行不匹配，请刷新页面重试'],
   ]
-  return mappings.find(([source]) => message.includes(source))?.[1] ?? fallback
+  const mapped = mappings.find(([source]) => message.includes(source))?.[1]
+  return mapped ?? `${fallback}：${message}`
 }
 
 function firstRpcRow<T extends object>(data: unknown): T | null {
