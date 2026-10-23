@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
-import { requireAdmin, requireFinanceAccess, requireProfile } from '@/lib/auth'
+import { hasCurrentPermission, requireApproved, requireFinanceAccess, requireProfile } from '@/lib/auth'
 import { productFinancialSchema, orderScopedProductSchema, productSchema } from '@/schemas/product'
 import type { OrderScopedProductInput, ProductFinancialInput } from '@/schemas/product'
 import type { Product } from '@/types'
@@ -307,7 +307,10 @@ export async function bulkUpdateProducts(
 }
 
 export async function bulkDeleteProducts(ids: string[]): Promise<ActionResult> {
-  await requireAdmin()
+  await requireApproved()
+  if (!(await hasCurrentPermission('products.delete'))) {
+    return { ok: false, error: '没有删除产品的权限' }
+  }
   if (!ids.length) return { ok: false, error: '未选择任何产品' }
 
   const supabase = await createClient()

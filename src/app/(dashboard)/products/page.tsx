@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Plus } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
-import { getCurrentProfile } from '@/lib/auth'
+import { getCurrentProfile, hasCurrentPermission } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { ProductFilters } from '@/components/products/product-filters'
 import { ProductTable } from '@/components/products/product-table'
@@ -18,7 +18,8 @@ export default async function ProductsPage({
     ? financialNumber
     : ''
   const profile = await getCurrentProfile()
-  const isAdmin = profile?.status === 'approved' && profile.role === 'admin'
+  const canDeleteProducts =
+    profile?.status === 'approved' && (await hasCurrentPermission('products.delete'))
   const canManageFinancials =
     profile?.status === 'approved' && (profile.role === 'admin' || profile.role === 'finance')
   const supabase = await createClient()
@@ -102,7 +103,7 @@ export default async function ProductsPage({
         groups={groups}
         financials={financials}
         canManage={true}
-        canDelete={isAdmin}
+        canDelete={canDeleteProducts}
         canManageStatus={canManageFinancials}
         canManageFinancials={canManageFinancials}
       />

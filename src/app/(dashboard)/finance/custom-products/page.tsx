@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { BusinessCustomProductLibrary } from '@/components/finance/business-custom-product-library'
 import { listBusinessCustomProductsLibrary } from '@/lib/actions/business-orders'
-import { requireApproved } from '@/lib/auth'
+import { requireApproved, hasCurrentPermission } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import type { ProductGroup } from '@/types'
 
@@ -12,9 +12,10 @@ export default async function BusinessCustomProductsPage() {
   }
 
   const supabase = await createClient()
-  const [productsResult, groupsResult] = await Promise.all([
+  const [productsResult, groupsResult, canDelete] = await Promise.all([
     listBusinessCustomProductsLibrary({ status: 'all' }),
     supabase.from('product_groups').select('*').order('sort_order'),
+    hasCurrentPermission('products.delete'),
   ])
 
   if (groupsResult.error) {
@@ -33,6 +34,7 @@ export default async function BusinessCustomProductsPage() {
         initialProducts={productsResult.data ?? []}
         productGroups={(groupsResult.data ?? []) as ProductGroup[]}
         profileRole={profile.role}
+        canDelete={canDelete}
         initialError={productsResult.ok ? null : productsResult.error}
       />
     </div>

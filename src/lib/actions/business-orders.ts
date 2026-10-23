@@ -785,6 +785,25 @@ export async function setBusinessCustomProductState(
   return { ok: true, product }
 }
 
+export async function deleteBusinessCustomProduct(
+  customProductId: string,
+): Promise<BusinessCustomProductActionResult> {
+  await requireApproved()
+  if (!(await hasCurrentPermission('products.delete'))) {
+    return { ok: false, error: '没有删除定制产品的权限' }
+  }
+  if (!customProductId) return { ok: false, error: '缺少定制产品' }
+
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('delete_business_custom_product', {
+    p_custom_product_id: customProductId,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '删除定制产品失败') }
+
+  revalidateBusinessOrders()
+  return { ok: true }
+}
+
 export async function listBusinessCustomProducts(): Promise<BusinessCustomProductListResult> {
   await requireApproved()
   const supabase = await createClient()

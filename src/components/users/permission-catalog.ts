@@ -32,6 +32,7 @@ export const permissionGroups: { title: string; description: string; items: Perm
       { path: 'finance.exchange_rate', label: '查看汇率', description: '显示订单和收款汇率' },
       { path: 'products.view', label: '查看产品', description: '浏览产品库和定制产品' },
       { path: 'products.edit', label: '维护产品', description: '新增、编辑产品资料' },
+      { path: 'products.delete', label: '删除产品', description: '删除产品库和定制产品库产品' },
       { path: 'customers.view', label: '查看客户', description: '浏览客户资料与订单' },
       { path: 'customers.edit', label: '维护客户', description: '新增、编辑客户资料' },
       { path: 'pi.view', label: '查看 PI', description: '浏览 PI 与历史记录' },

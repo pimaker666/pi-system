@@ -1,8 +1,18 @@
 'use client'
 
 import { useMemo, useState, useTransition } from 'react'
-import { Archive, Loader2, RefreshCw, RotateCcw, Search } from 'lucide-react'
+import { Archive, Loader2, RefreshCw, RotateCcw, Search, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -16,6 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  deleteBusinessCustomProduct,
   listBusinessCustomProductsLibrary,
   setBusinessCustomProductState,
 } from '@/lib/actions/business-orders'
@@ -44,6 +55,7 @@ interface BusinessCustomProductLibraryProps {
   initialProducts: BusinessCustomProductLibraryItem[]
   productGroups: ProductGroup[]
   profileRole: Profile['role']
+  canDelete: boolean
   initialError?: string | null
 }
 
@@ -120,6 +132,7 @@ export function BusinessCustomProductLibrary({
   initialProducts,
   productGroups,
   profileRole,
+  canDelete,
   initialError = null,
 }: BusinessCustomProductLibraryProps) {
   const canManageState = profileRole === 'admin' || profileRole === 'finance'
@@ -130,6 +143,8 @@ export function BusinessCustomProductLibrary({
   const [statusFilter, setStatusFilter] = useState('active')
   const [refreshing, startRefresh] = useTransition()
   const [stateProductId, setStateProductId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<NormalizedProduct | null>(null)
+  const [deletePending, setDeletePending] = useState(false)
 
   const normalizedProducts = useMemo(() => latestProducts(products), [products])
   const filteredProducts = useMemo(() => {
@@ -186,6 +201,25 @@ export function BusinessCustomProductLibrary({
       toast.error('更新定制产品状态失败，请稍后重试')
     } finally {
       setStateProductId(null)
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    setDeletePending(true)
+    try {
+      const result = await deleteBusinessCustomProduct(deleteTarget.custom_product_id)
+      if (!result.ok) {
+        toast.error(result.error ?? '删除定制产品失败')
+        return
+      }
+      toast.success('定制产品已删除')
+      setDeleteTarget(null)
+      await loadProducts()
+    } catch {
+      toast.error('删除定制产品失败，请稍后重试')
+    } finally {
+      setDeletePending(false)
     }
   }
 
@@ -307,6 +341,7 @@ export function BusinessCustomProductLibrary({
                   <div className="flex flex-wrap gap-2 border-t pt-3">
                     <BusinessCustomProductDialog mode="version" product={product} defaultCurrency={product.default_currency} productGroups={productGroups} context="library" disabled={product.is_archived || refreshing || statePending} onCreated={handleSaved} />
                     {canManageState && <Button type="button" size="sm" variant={product.is_archived ? 'outline' : 'destructive'} disabled={refreshing || statePending} onClick={() => void updateState(product, !product.is_archived)}>{statePending ? <Loader2 className="h-4 w-4 animate-spin" /> : product.is_archived ? <RotateCcw className="h-4 w-4" /> : <Archive className="h-4 w-4" />}{product.is_archived ? '恢复' : '归档'}</Button>}
+                    {canDelete && <Button type="button" size="sm" variant="ghost" className="text-destructive hover:text-destructive" disabled={refreshing || statePending} onClick={() => setDeleteTarget(product)}><Trash2 className="h-4 w-4" />删除</Button>}
                   </div>
                 </CardContent>
               </Card>
@@ -314,6 +349,27 @@ export function BusinessCustomProductLibrary({
           })}
         </div>
       )}
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除定制产品</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定删除「{deleteTarget?.code} {deleteTarget?.name}」？该操作不可恢复；已被订单引用的产品会被拒绝删除，请改用归档。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletePending}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deletePending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(event) => { event.preventDefault(); void confirmDelete() }}
+            >
+              {deletePending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Trash2 className="mr-1 h-4 w-4" />}删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
