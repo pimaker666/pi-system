@@ -857,7 +857,8 @@ export interface BusinessCustomerTransfer {
   exchange_rate_to_cny: number | null
   received_at: string
   payment_type: BusinessPaymentType
-  proof_path: string
+  proof_path: string | null
+  extra_proof_paths: string[] | null
   notes: string | null
   idempotency_key: string | null
   payload_hash: string | null
@@ -896,6 +897,7 @@ export interface BusinessOrderShipment {
   tracking_number: string | null
   notes: string | null
   screenshot_path: string | null
+  extra_screenshot_paths: string[] | null
   created_by: string | null
   created_at: string
   voided_at: string | null

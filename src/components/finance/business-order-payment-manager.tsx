@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, Plus, RefreshCw, Trash2, WalletCards } from 'lucide-react'
+import { Eye, Plus, RefreshCw, Trash2, WalletCards, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -107,7 +107,12 @@ interface PendingTransferUpload {
   scope_id: string
   currency: CurrencyCode
   idempotency_key: string
-  proof_path: string | null
+  proof_paths: string[]
+}
+
+interface ProofItem {
+  file: File
+  previewUrl: string
 }
 
 function newUuid() {
@@ -158,7 +163,7 @@ export function BusinessOrderPaymentManager({
 
   const [formOpen, setFormOpen] = useState(false)
   const [paymentType, setPaymentType] = useState<BusinessPaymentType>('full')
-  const [proofFileName, setProofFileName] = useState('')
+  const [proofItems, setProofItems] = useState<ProofItem[]>([])
   const [amount, setAmount] = useState('')
   const [exchangeRate, setExchangeRate] = useState(currency === 'CNY' ? '1' : '')
   const [receivedAt, setReceivedAt] = useState(getBusinessDateTimeLocal())
@@ -166,17 +171,14 @@ export function BusinessOrderPaymentManager({
   const [allocationDraft, setAllocationDraft] = useState<AllocationDraft>({})
   const [correctionReason, setCorrectionReason] = useState('')
   const [idempotencyKey, setIdempotencyKey] = useState('')
-  const [uploadedProofPath, setUploadedProofPath] = useState<string | null>(null)
+  const [uploadedProofPaths, setUploadedProofPaths] = useState<string[]>([])
   const { dragging: proofDragging, dropProps: proofDropProps } = useFileDrop({
-    onFile: handleProofFileSelected,
-    disabled: Boolean(uploadedProofPath),
+    onFile: (file) => addProofFiles([file]),
+    disabled: uploadedProofPaths.length > 0,
   })
   const { pasteRef: proofPasteRef } = useFilePaste({
-    onFiles: (files) => {
-      const file = files[0]
-      if (file) handleProofFileSelected(file)
-    },
-    disabled: Boolean(uploadedProofPath),
+    onFiles: (files) => addProofFiles(files),
+    disabled: uploadedProofPaths.length > 0,
   })
 
   const [allocatingTransfer, setAllocatingTransfer] = useState<BusinessCustomerTransfer | null>(null)
@@ -190,6 +192,7 @@ export function BusinessOrderPaymentManager({
     | null
   >(null)
   const [voidReason, setVoidReason] = useState('')
+  const [viewingProof, setViewingProof] = useState<{ urls: string[] } | null>(null)
 
   const hasRolePermission =
     profile.role === 'admin' ||
@@ -476,7 +479,7 @@ export function BusinessOrderPaymentManager({
         sessionStorage.removeItem(pendingUploadStorageKey)
         return null
       }
-      return draft
+      return { ...draft, proof_paths: draft.proof_paths ?? [] }
     } catch {
       sessionStorage.removeItem(pendingUploadStorageKey)
       return null
@@ -503,52 +506,73 @@ export function BusinessOrderPaymentManager({
     setAllocationDraft({})
     setCorrectionReason('')
     setIdempotencyKey(nextIdempotencyKey)
-    setUploadedProofPath(pendingUpload?.proof_path ?? null)
+    setUploadedProofPaths(pendingUpload?.proof_paths ?? [])
     if (!pendingUpload) {
       writePendingUpload({
         scope,
         scope_id: scopeId,
         currency,
         idempotency_key: nextIdempotencyKey,
-        proof_path: null,
+        proof_paths: [],
       })
     }
     if (fileRef.current) fileRef.current.value = ''
-    setProofFileName('')
+    setProofItems([])
     setFormOpen(true)
   }
 
-  function handleProofFileSelected(file: File) {
-    const input = fileRef.current
-    if (!input) return
-    const transfer = new DataTransfer()
-    transfer.items.add(file)
-    input.files = transfer.files
-    setProofFileName(file.name)
+  function addProofFiles(files: File[]) {
+    setProofItems((current) => {
+      const next = [...current]
+      for (const file of files) {
+        if (next.length >= 10) {
+          toast.error('收款截图最多 10 张')
+          break
+        }
+        const extension = file.name.split('.').pop()?.toLowerCase()
+        const allowedExtensions = ['jpg', 'jpeg', 'png', 'webp']
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
+        if (!extension || !allowedExtensions.includes(extension) || !allowedTypes.includes(file.type)) {
+          toast.error(`「${file.name}」仅支持 JPG、JPEG、PNG 或 WebP 图片`)
+          continue
+        }
+        if (file.size > 20 * 1024 * 1024) {
+          toast.error(`「${file.name}」超过 20MB`)
+          continue
+        }
+        next.push({ file, previewUrl: URL.createObjectURL(file) })
+      }
+      return next
+    })
+  }
+
+  function removeProofItem(index: number) {
+    setProofItems((current) => {
+      current[index]?.previewUrl && URL.revokeObjectURL(current[index].previewUrl)
+      return current.filter((_, itemIndex) => itemIndex !== index)
+    })
+  }
+
+  function clearProofItems(items: ProofItem[]) {
+    for (const item of items) URL.revokeObjectURL(item.previewUrl)
   }
 
   function closeForm() {
     clearPendingUpload()
+    clearProofItems(proofItems)
     setIdempotencyKey('')
-    setUploadedProofPath(null)
+    setUploadedProofPaths([])
+    setProofItems([])
+    if (fileRef.current) fileRef.current.value = ''
     setFormOpen(false)
   }
 
   async function uploadProof(
     file: File,
+    fileName: string,
     scope: 'customer' | 'order',
     scopeId: string,
-    objectId: string,
   ) {
-    const extension = file.name.split('.').pop()?.toLowerCase()
-    const allowedExtensions = ['jpg', 'jpeg', 'png', 'webp']
-    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
-    if (!extension || !allowedExtensions.includes(extension) || !allowedTypes.includes(file.type)) {
-      throw new Error('凭证仅支持 JPG、JPEG、PNG 或 WebP 图片')
-    }
-    if (file.size > 20 * 1024 * 1024) throw new Error('凭证图片不能超过 20MB')
-
-    const fileName = `${objectId}.${extension}`
     const folder = `${profile.id}/${scope}/${scopeId}`
     const path = `${folder}/${fileName}`
     const supabase = createClient()
@@ -612,11 +636,6 @@ export function BusinessOrderPaymentManager({
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const file = fileRef.current?.files?.[0]
-    if (!file && !uploadedProofPath) {
-      toast.error('请上传收款截图凭证')
-      return
-    }
 
     const transferAmount = amountValue(amount)
     const rate = exchangeRate.trim() === '' ? null : Number(exchangeRate)
@@ -674,18 +693,27 @@ export function BusinessOrderPaymentManager({
       try {
         const scope = isOrderScoped ? 'order' : 'customer'
         const scopeId = customerId ?? orderId
-        let proofPath = uploadedProofPath
-        if (!proofPath) {
-          if (!file) throw new Error('请上传收款截图凭证')
-          proofPath = await uploadProof(file, scope, scopeId, idempotencyKey)
-          setUploadedProofPath(proofPath)
-          writePendingUpload({
-            scope,
-            scope_id: scopeId,
-            currency,
-            idempotency_key: idempotencyKey,
-            proof_path: proofPath,
-          })
+        let proofPaths = uploadedProofPaths
+        if (proofPaths.length === 0 && proofItems.length > 0) {
+          const paths: string[] = []
+          for (let index = 0; index < proofItems.length; index += 1) {
+            const file = proofItems[index].file
+            const extension = file.name.split('.').pop()?.toLowerCase() || 'png'
+            // 首张沿用幂等键命名；附加截图用随机 uuid 命名以满足存储桶的 uuid.ext 策略。
+            const fileName =
+              index === 0 ? `${idempotencyKey}.${extension}` : `${newUuid()}.${extension}`
+            paths.push(await uploadProof(file, fileName, scope, scopeId))
+            // 部分上传失败时保留已传路径，重试只补传剩余文件。
+            setUploadedProofPaths(paths)
+            writePendingUpload({
+              scope,
+              scope_id: scopeId,
+              currency,
+              idempotency_key: idempotencyKey,
+              proof_paths: paths,
+            })
+          }
+          proofPaths = paths
         }
         const result = await recordBusinessCustomerTransfer({
           customer_id: customerId,
@@ -695,7 +723,8 @@ export function BusinessOrderPaymentManager({
           exchange_rate_to_cny: rate,
           received_at: receivedAtIso,
           payment_type: paymentType,
-          proof_path: proofPath,
+          proof_path: proofPaths[0] ?? null,
+          extra_proof_paths: proofPaths.slice(1),
           notes,
           correction_reason: needsCorrection ? correctionReason : '',
           idempotency_key: idempotencyKey,
@@ -711,9 +740,11 @@ export function BusinessOrderPaymentManager({
               : '客户转账及分摊已登记',
         )
         clearPendingUpload()
+        clearProofItems(proofItems)
         setFormOpen(false)
         setIdempotencyKey('')
-        setUploadedProofPath(null)
+        setUploadedProofPaths([])
+        setProofItems([])
         await loadData()
         router.refresh()
       } catch (error) {
@@ -791,15 +822,26 @@ export function BusinessOrderPaymentManager({
 
   function handleViewProof(transfer: BusinessCustomerTransfer) {
     startTransition(async () => {
-      const supabase = createClient()
-      const { data, error } = await supabase.storage
-        .from('business-payment-proofs')
-        .createSignedUrl(transfer.proof_path, 60 * 10)
-      if (error || !data?.signedUrl) {
-        toast.error('凭证打开失败')
+      const paths = [transfer.proof_path, ...(transfer.extra_proof_paths ?? [])].filter(
+        (path): path is string => Boolean(path),
+      )
+      if (paths.length === 0) {
+        toast.error('该转账未上传收款截图')
         return
       }
-      window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+      const supabase = createClient()
+      const urls: string[] = []
+      for (const path of paths) {
+        const { data, error } = await supabase.storage
+          .from('business-payment-proofs')
+          .createSignedUrl(path, 60 * 10)
+        if (error || !data?.signedUrl) {
+          toast.error('凭证打开失败')
+          return
+        }
+        urls.push(data.signedUrl)
+      }
+      setViewingProof({ urls })
     })
   }
 
@@ -1069,7 +1111,7 @@ export function BusinessOrderPaymentManager({
                 <Input id="received_at" type="datetime-local" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)} required />
               </div>
               <div className="space-y-2 sm:col-span-2">
-                <Label htmlFor="proof">收款截图（最大 20MB）</Label>
+                <Label htmlFor="proof">收款截图（可选，最多 10 张）</Label>
                 <div
                   ref={proofPasteRef}
                   className={`rounded-md border border-dashed p-3 transition-colors ${proofDragging ? 'border-primary bg-primary/5' : 'border-input'}`}
@@ -1080,20 +1122,49 @@ export function BusinessOrderPaymentManager({
                     id="proof"
                     type="file"
                     accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                    required={!uploadedProofPath}
-                    disabled={Boolean(uploadedProofPath)}
-                    onChange={(event) => setProofFileName(event.target.files?.[0]?.name ?? '')}
+                    multiple
+                    disabled={uploadedProofPaths.length > 0}
+                    onChange={(event) => {
+                      const files = Array.from(event.target.files ?? [])
+                      event.target.value = ''
+                      addProofFiles(files)
+                    }}
                   />
-                  {uploadedProofPath ? (
+                  {uploadedProofPaths.length > 0 ? (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      凭证已上传；再次提交会复用同一文件，关闭表单后可重新选择。
+                      已上传 {uploadedProofPaths.length} 张截图；再次提交会复用同一批文件，关闭表单后可重新选择。
                     </p>
                   ) : (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      {proofFileName ? `已选择：${proofFileName}。` : ''}支持拖放、粘贴或选择 JPG/PNG/WebP 截图，最大 20MB。
+                      支持拖放、粘贴或选择多张 JPG/PNG/WebP 截图，单张最大 20MB，可不传。
                     </p>
                   )}
                 </div>
+                {proofItems.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {proofItems.map((item, index) => (
+                      <div
+                        key={item.previewUrl}
+                        className="relative h-16 w-16 overflow-hidden rounded border bg-muted"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.previewUrl}
+                          alt={`收款截图 ${index + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          title="移除图片"
+                          onClick={() => removeProofItem(index)}
+                          className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="transfer_notes">备注</Label>
@@ -1363,6 +1434,28 @@ export function BusinessOrderPaymentManager({
               {pending ? '分摊中…' : '确认分摊'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(viewingProof)}
+        onOpenChange={(open) => !open && setViewingProof(null)}
+      >
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>收款截图（{viewingProof?.urls.length ?? 0} 张）</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {viewingProof?.urls.map((url, index) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={url}
+                src={url}
+                alt={`收款截图 ${index + 1}`}
+                className="w-full rounded-md border"
+              />
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
 

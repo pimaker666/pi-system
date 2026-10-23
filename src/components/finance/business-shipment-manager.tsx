@@ -89,20 +89,18 @@ export function BusinessShipmentManager({
   const [quantities, setQuantities] = useState<Record<string, string>>({})
   const [wholeOrderShipment, setWholeOrderShipment] = useState(false)
   const [idempotencyKey, setIdempotencyKey] = useState('')
-  const [screenshotFile, setScreenshotFile] = useState<File | null>(null)
-  const [screenshotPreviewUrl, setScreenshotPreviewUrl] = useState<string | null>(null)
-  const [viewingScreenshotUrl, setViewingScreenshotUrl] = useState<string | null>(null)
+  const [screenshotItems, setScreenshotItems] = useState<
+    Array<{ file: File; previewUrl: string }>
+  >([])
+  const [viewingScreenshotUrls, setViewingScreenshotUrls] = useState<string[] | null>(null)
   const [voiding, setVoiding] = useState<BusinessOrderShipment | null>(null)
   const [voidReason, setVoidReason] = useState('')
   const {
     dragging: screenshotDragging,
     dropProps: screenshotDropProps,
-  } = useFileDrop({ onFile: acceptScreenshot })
+  } = useFileDrop({ onFile: (file) => addScreenshotFiles([file]) })
   const { pasteRef: screenshotPasteRef } = useFilePaste({
-    onFiles: (files) => {
-      const file = files[0]
-      if (file) acceptScreenshot(file)
-    },
+    onFiles: (files) => addScreenshotFiles(files),
   })
 
   const activeShipmentIds = new Set(
@@ -143,53 +141,73 @@ export function BusinessShipmentManager({
   const isLegacyCompletedOrder = order.status === 'completed' && order.completion_gate_version < 2
   const canVoid = canManage && !isLockedCompletedOrder
 
-  function acceptScreenshot(file: File) {
-    if (!['image/jpeg', 'image/png'].includes(file.type)) {
-      toast.error('截图仅支持 JPG 或 PNG 图片')
-      return
-    }
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error('发货截图不能超过 20MB')
-      return
-    }
-    if (screenshotPreviewUrl) URL.revokeObjectURL(screenshotPreviewUrl)
-    setScreenshotFile(file)
-    setScreenshotPreviewUrl(URL.createObjectURL(file))
-  }
-
-  function clearScreenshot() {
-    if (screenshotPreviewUrl) URL.revokeObjectURL(screenshotPreviewUrl)
-    setScreenshotFile(null)
-    setScreenshotPreviewUrl(null)
-  }
-
-  async function uploadScreenshot(): Promise<string | null> {
-    if (!screenshotFile || !idempotencyKey) return null
-    const extension = screenshotFile.name.split('.').pop()?.toLowerCase()
-    const fileName = `${idempotencyKey}.${extension ?? 'png'}`
-    const folder = `${profileId}/${order.id}`
-    const path = `${folder}/${fileName}`
-    const bucket = createClient().storage.from('business-shipment-screenshots')
-    const { error } = await bucket.upload(path, screenshotFile, {
-      contentType: screenshotFile.type,
-      upsert: false,
-    })
-    if (error) {
-      const { data: existing, error: listError } = await bucket.list(folder, {
-        limit: 100,
-        search: fileName,
-      })
-      if (listError || !existing?.some((item) => item.name === fileName)) {
-        throw new Error(error.message)
+  function addScreenshotFiles(files: File[]) {
+    setScreenshotItems((current) => {
+      const next = [...current]
+      for (const file of files) {
+        if (next.length >= 10) {
+          toast.error('发货截图最多 10 张')
+          break
+        }
+        if (!['image/jpeg', 'image/png'].includes(file.type)) {
+          toast.error(`「${file.name}」仅支持 JPG 或 PNG 图片`)
+          continue
+        }
+        if (file.size > 20 * 1024 * 1024) {
+          toast.error(`「${file.name}」超过 20MB`)
+          continue
+        }
+        next.push({ file, previewUrl: URL.createObjectURL(file) })
       }
+      return next
+    })
+  }
+
+  function removeScreenshotItem(index: number) {
+    setScreenshotItems((current) => {
+      current[index]?.previewUrl && URL.revokeObjectURL(current[index].previewUrl)
+      return current.filter((_, itemIndex) => itemIndex !== index)
+    })
+  }
+
+  function clearScreenshotItems(items: Array<{ file: File; previewUrl: string }>) {
+    for (const item of items) URL.revokeObjectURL(item.previewUrl)
+  }
+
+  async function uploadScreenshotFiles(): Promise<string[]> {
+    if (!idempotencyKey || screenshotItems.length === 0) return []
+    const bucket = createClient().storage.from('business-shipment-screenshots')
+    const paths: string[] = []
+    for (let index = 0; index < screenshotItems.length; index += 1) {
+      const screenshotFile = screenshotItems[index].file
+      const extension = screenshotFile.name.split('.').pop()?.toLowerCase() ?? 'png'
+      // 首张沿用幂等键命名；附加截图用随机 uuid 命名以满足存储桶的 uuid.ext 策略。
+      const fileName =
+        index === 0 ? `${idempotencyKey}.${extension}` : `${newUuid()}.${extension}`
+      const folder = `${profileId}/${order.id}`
+      const path = `${folder}/${fileName}`
+      const { error } = await bucket.upload(path, screenshotFile, {
+        contentType: screenshotFile.type,
+        upsert: false,
+      })
+      if (error) {
+        const { data: existing, error: listError } = await bucket.list(folder, {
+          limit: 100,
+          search: fileName,
+        })
+        if (listError || !existing?.some((item) => item.name === fileName)) {
+          throw new Error(error.message)
+        }
+      }
+      paths.push(path)
     }
-    return path
+    return paths
   }
 
   function viewShipmentScreenshot(shipmentId: string) {
     startTransition(async () => {
       const result = await getBusinessOrderShipmentScreenshotUrl(shipmentId)
-      if (result.url) setViewingScreenshotUrl(result.url)
+      if (result.urls && result.urls.length > 0) setViewingScreenshotUrls(result.urls)
       else toast.error(result.error ?? '无法查看发货截图')
     })
   }
@@ -199,7 +217,8 @@ export function BusinessShipmentManager({
     setTrackingNumber('')
     setNotes('')
     setWholeOrderShipment(wholeOrder)
-    clearScreenshot()
+    clearScreenshotItems(screenshotItems)
+    setScreenshotItems([])
     setQuantities(
       wholeOrder
         ? Object.fromEntries(
@@ -248,10 +267,10 @@ export function BusinessShipmentManager({
     }
 
     startTransition(async () => {
-      let screenshotPath: string | null = null
-      if (screenshotFile) {
+      let screenshotPaths: string[] = []
+      if (screenshotItems.length > 0) {
         try {
-          screenshotPath = await uploadScreenshot()
+          screenshotPaths = await uploadScreenshotFiles()
         } catch (error) {
           toast.error(error instanceof Error ? error.message : '发货截图上传失败，请重试')
           return
@@ -264,7 +283,8 @@ export function BusinessShipmentManager({
         notes,
         items: selectedItems.map(({ order_item_id, quantity }) => ({ order_item_id, quantity })),
         idempotency_key: idempotencyKey,
-        screenshot_path: screenshotPath,
+        screenshot_path: screenshotPaths[0] ?? null,
+        extra_screenshot_paths: screenshotPaths.slice(1),
       })
       if (!result.ok) {
         toast.error(result.error ?? '创建发货批次失败')
@@ -276,7 +296,8 @@ export function BusinessShipmentManager({
       setQuantities({})
       setWholeOrderShipment(false)
       setIdempotencyKey('')
-      clearScreenshot()
+      clearScreenshotItems(screenshotItems)
+      setScreenshotItems([])
       router.refresh()
     })
   }
@@ -392,7 +413,8 @@ export function BusinessShipmentManager({
                     <p className="break-all text-sm text-muted-foreground">
                       发货单号：{shipment.tracking_number || '—'}
                     </p>
-                    {shipment.screenshot_path && (
+                    {(shipment.screenshot_path ||
+                      (shipment.extra_screenshot_paths?.length ?? 0) > 0) && (
                       <Button
                         type="button"
                         variant="ghost"
@@ -520,7 +542,7 @@ export function BusinessShipmentManager({
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="shipment_screenshot">发货截图（可选）</Label>
+              <Label htmlFor="shipment_screenshot">发货截图（可选，最多 10 张）</Label>
               <div
                 ref={screenshotPasteRef}
                 className={`rounded-md border border-dashed p-3 transition-colors ${screenshotDragging ? 'border-primary bg-primary/5' : 'border-input'}`}
@@ -530,37 +552,40 @@ export function BusinessShipmentManager({
                   id="shipment_screenshot"
                   type="file"
                   accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  multiple
                   onChange={(event) => {
-                    const file = event.target.files?.[0]
+                    const files = Array.from(event.target.files ?? [])
                     event.target.value = ''
-                    if (file) acceptScreenshot(file)
+                    addScreenshotFiles(files)
                   }}
                 />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  支持拖放、粘贴或选择 JPG/PNG 截图，最大 20MB。
+                  支持拖放、粘贴或选择多张 JPG/PNG 截图，单张最大 20MB，可不传。
                 </p>
               </div>
-              {screenshotPreviewUrl && (
-                <div className="flex items-center gap-3 rounded-md border p-2">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={screenshotPreviewUrl}
-                    alt="发货截图预览"
-                    className="h-16 w-16 rounded border object-cover"
-                  />
-                  <div className="min-w-0 flex-1 text-sm">
-                    <div className="truncate">{screenshotFile?.name}</div>
-                    <p className="text-xs text-muted-foreground">JPG / PNG，不超过 20MB</p>
-                  </div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="text-destructive"
-                    onClick={clearScreenshot}
-                  >
-                    <X className="h-4 w-4" />移除
-                  </Button>
+              {screenshotItems.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {screenshotItems.map((item, index) => (
+                    <div
+                      key={item.previewUrl}
+                      className="relative h-16 w-16 overflow-hidden rounded border bg-muted"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={item.previewUrl}
+                        alt={`发货截图 ${index + 1}`}
+                        className="h-full w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        title="移除图片"
+                        onClick={() => removeScreenshotItem(index)}
+                        className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -619,23 +644,24 @@ export function BusinessShipmentManager({
       </Dialog>
 
       <Dialog
-        open={Boolean(viewingScreenshotUrl)}
-        onOpenChange={(open) => !open && setViewingScreenshotUrl(null)}
+        open={Boolean(viewingScreenshotUrls)}
+        onOpenChange={(open) => !open && setViewingScreenshotUrls(null)}
       >
-        <DialogContent className="sm:max-w-3xl">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>发货截图</DialogTitle>
+            <DialogTitle>发货截图（{viewingScreenshotUrls?.length ?? 0} 张）</DialogTitle>
           </DialogHeader>
-          {viewingScreenshotUrl && (
-            <div className="flex max-h-[70vh] items-center justify-center overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+          <div className="space-y-3">
+            {viewingScreenshotUrls?.map((url, index) => (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={viewingScreenshotUrl}
-                alt="发货截图"
-                className="max-h-[70vh] w-full object-contain"
+                key={url}
+                src={url}
+                alt={`发货截图 ${index + 1}`}
+                className="w-full rounded-md border"
               />
-            </div>
-          )}
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
     </Card>

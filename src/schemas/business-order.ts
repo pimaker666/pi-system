@@ -511,7 +511,23 @@ const businessCustomerTransferBaseSchema = z.object({
     .refine(
       (value) => CUSTOMER_TRANSFER_PROOF_PATTERN.test(value) || ORDER_TRANSFER_PROOF_PATTERN.test(value),
       '收款凭证必须使用 uid/customer/customerId/file 或 uid/order/orderId/file 路径',
-    ),
+    )
+    .nullable()
+    .optional(),
+  extra_proof_paths: z
+    .array(
+      z
+        .string()
+        .trim()
+        .refine(
+          (value) =>
+            CUSTOMER_TRANSFER_PROOF_PATTERN.test(value) || ORDER_TRANSFER_PROOF_PATTERN.test(value),
+          '收款凭证必须使用 uid/customer/customerId/file 或 uid/order/orderId/file 路径',
+        ),
+    )
+    .max(9, '附加收款凭证不能超过 9 张')
+    .nullable()
+    .optional(),
   notes: optionalText(1000, '收款备注不能超过 1000 字'),
   idempotency_key: z.string().trim().min(1, '缺少幂等键').max(200, '幂等键不能超过 200 字'),
 })
@@ -522,7 +538,8 @@ function validateCustomerTransfer(
     order_id: string | null
     currency: (typeof CURRENCIES)[number]
     exchange_rate_to_cny: number | null
-    proof_path: string
+    proof_path?: string | null
+    extra_proof_paths?: string[] | null
   },
   ctx: z.RefinementCtx,
 ) {
@@ -546,18 +563,28 @@ function validateCustomerTransfer(
     return
   }
 
-  const [, scope, scopeId] = value.proof_path.split('/')
   const expectedScope = value.customer_id ? 'customer' : 'order'
   const expectedId = value.customer_id ?? value.order_id
-  if (scope !== expectedScope || scopeId?.toLowerCase() !== expectedId?.toLowerCase()) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ['proof_path'],
-      message: value.customer_id
-        ? '收款凭证路径中的客户与转账客户不一致'
-        : '收款凭证路径中的订单与转账订单不一致',
-    })
+
+  function validateProofPath(path: string, issuePath: (string | number)[]) {
+    const [, scope, scopeId] = path.split('/')
+    if (scope !== expectedScope || scopeId?.toLowerCase() !== expectedId?.toLowerCase()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: issuePath,
+        message: value.customer_id
+          ? '收款凭证路径中的客户与转账客户不一致'
+          : '收款凭证路径中的订单与转账订单不一致',
+      })
+    }
   }
+
+  if (value.proof_path) {
+    validateProofPath(value.proof_path, ['proof_path'])
+  }
+  ;(value.extra_proof_paths ?? []).forEach((path, index) => {
+    validateProofPath(path, ['extra_proof_paths', index])
+  })
 }
 
 export const businessCustomerTransferInputSchema = businessCustomerTransferBaseSchema
@@ -610,6 +637,11 @@ export const businessOrderShipmentInputSchema = z
     tracking_number: optionalText(200, '物流单号不能超过 200 字'),
     notes: optionalText(1000, '发货备注不能超过 1000 字'),
     screenshot_path: z.string().trim().min(1, '发货截图路径不合法').max(500, '发货截图路径不合法').nullable().optional(),
+    extra_screenshot_paths: z
+      .array(z.string().trim().min(1, '发货截图路径不合法').max(500, '发货截图路径不合法'))
+      .max(9, '附加发货截图不能超过 9 张')
+      .nullable()
+      .optional(),
     items: businessOrderShipmentItemsSchema,
     idempotency_key: z.string().trim().min(1, '缺少幂等键').max(200, '幂等键不能超过 200 字'),
   })

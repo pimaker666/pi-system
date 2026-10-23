@@ -157,6 +157,7 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Only approved administrators or finance users can create shipments', '仅管理员或财务可以创建发货批次'],
     ['Only approved administrators or finance users can void shipments', '仅管理员或财务可以作废发货批次'],
     ['Invalid shipment screenshot path', '发货截图路径不合法'],
+    ['Shipment cannot have more than 10 screenshot images', '发货截图最多 10 张'],
     ['Current account does not have shipment permission', '当前账号没有登记发货权限'],
     ['Only approved administrators or finance users can register returns', '仅管理员或财务可以登记退货'],
     ['Only approved administrators or finance users can void returns', '仅管理员或财务可以作废退货'],
@@ -289,6 +290,7 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Idempotency key was already used', '该幂等键已用于不同内容，请勿重复提交'],
     ['Invalid transfer proof path', '收款凭证路径不合法'],
     ['Transfer proof object does not exist', '收款凭证尚未成功上传，请重新上传'],
+    ['Transfer cannot have more than 10 proof images', '收款凭证最多 10 张'],
     ['Transfer amount is invalid', '转账金额必须大于 0 且不能超过上限'],
     ['Exchange rate is invalid', '汇率必须大于 0 且不能超过上限'],
     ['CNY exchange rate must equal one', '人民币汇率必须为 1'],
@@ -643,7 +645,7 @@ export async function getBusinessOrderAttachmentUrl(
 
 export async function getBusinessOrderShipmentScreenshotUrl(
   shipmentId: string,
-): Promise<{ url?: string; error?: string }> {
+): Promise<{ urls?: string[]; error?: string }> {
   await requireApproved()
   const parsedId = z.string().uuid('发货批次 ID 不合法').safeParse(shipmentId)
   if (!parsedId.success) return { error: firstValidationError(parsedId.error) }
@@ -651,17 +653,25 @@ export async function getBusinessOrderShipmentScreenshotUrl(
   const supabase = await createClient()
   const { data: shipment, error } = await supabase
     .from('business_order_shipments')
-    .select('screenshot_path')
+    .select('screenshot_path, extra_screenshot_paths')
     .eq('id', parsedId.data)
     .maybeSingle()
-  if (error || !shipment?.screenshot_path) return { error: '发货截图不存在或无权查看' }
+  const paths = [
+    ...(shipment?.screenshot_path ? [shipment.screenshot_path] : []),
+    ...(shipment?.extra_screenshot_paths ?? []),
+  ].filter((path): path is string => Boolean(path))
+  if (error || paths.length === 0) return { error: '发货截图不存在或无权查看' }
 
   const admin = createAdminClient()
-  const { data: signed, error: signError } = await admin.storage
-    .from('business-shipment-screenshots')
-    .createSignedUrl(shipment.screenshot_path, 60 * 10)
-  if (signError) return { error: '生成发货截图链接失败' }
-  return { url: signed.signedUrl }
+  const urls: string[] = []
+  for (const path of paths) {
+    const { data: signed, error: signError } = await admin.storage
+      .from('business-shipment-screenshots')
+      .createSignedUrl(path, 60 * 10)
+    if (signError) return { error: '生成发货截图链接失败' }
+    urls.push(signed.signedUrl)
+  }
+  return { urls }
 }
 
 export async function removeBusinessOrderAttachment(
@@ -823,11 +833,15 @@ export async function recordBusinessCustomerTransfer(
     p_exchange_rate_to_cny: input.exchange_rate_to_cny,
     p_received_at: new Date(input.received_at).toISOString(),
     p_payment_type: input.payment_type,
-    p_proof_path: input.proof_path,
+    p_proof_path: input.proof_path ?? null,
     p_notes: nullableText(input.notes),
     p_correction_reason: nullableText(input.correction_reason),
     p_idempotency_key: input.idempotency_key,
     p_allocations: allocationPayload(input.allocations),
+    p_extra_proof_paths:
+      input.extra_proof_paths && input.extra_proof_paths.length > 0
+        ? input.extra_proof_paths
+        : null,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '登记客户转账失败') }
 
@@ -968,6 +982,10 @@ export async function createBusinessOrderShipment(
     p_allow_overship: false,
     p_overship_reason: null,
     p_screenshot_path: parsed.data.screenshot_path ?? null,
+    p_extra_screenshot_paths:
+      parsed.data.extra_screenshot_paths && parsed.data.extra_screenshot_paths.length > 0
+        ? parsed.data.extra_screenshot_paths
+        : null,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '创建发货批次失败') }
 
@@ -1309,18 +1327,24 @@ export async function getBusinessOrderPaymentProofUrl(
 
   const { data: transfer, error: transferError } = await supabase
     .from('business_customer_transfers')
-    .select('proof_path')
+    .select('proof_path, extra_proof_paths')
     .eq('id', allocation.transfer_id)
     .single()
 
-  if (transferError || !transfer?.proof_path) {
+  const proofPath =
+    transfer?.proof_path ??
+    (transfer?.extra_proof_paths as string[] | null | undefined)?.find(
+      (path) => Boolean(path),
+    ) ??
+    null
+  if (transferError || !proofPath) {
     return { error: '收款凭证不存在或无权查看' }
   }
 
   const admin = createAdminClient()
   const { data: signed, error: signError } = await admin.storage
     .from('business-payment-proofs')
-    .createSignedUrl(transfer.proof_path, 60 * 10)
+    .createSignedUrl(proofPath, 60 * 10)
   if (signError) return { error: '生成收款凭证链接失败' }
 
   return { url: signed.signedUrl }
