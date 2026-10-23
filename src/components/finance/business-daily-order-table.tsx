@@ -42,6 +42,7 @@ import {
   activeBusinessOrderAttachments,
   businessDailyOrderTotals,
   canEditBusinessDailyOrder,
+  collectBusinessOrderShippingDates,
   formatMergedBusinessDailyShippingProgress,
   mergeBusinessDailyItems,
   type BusinessDailyLedgerOrder,
@@ -389,6 +390,7 @@ export function BusinessDailyOrderTable({
                 order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
               )
               const totals = businessDailyOrderTotals(order)
+              const shippingDates = collectBusinessOrderShippingDates(order)
 
               return rows.map((item, rowIndex) => {
                 const isFirstRow = rowIndex === 0
@@ -521,7 +523,11 @@ export function BusinessDailyOrderTable({
                           </div>
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={mergedCn(6)}>
-                          {order.daily_shipping_date ?? '—'}
+                          {shippingDates.length > 0 ? (
+                            shippingDates.map((date) => <div key={date}>{date}</div>)
+                          ) : (
+                            '—'
+                          )}
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={mergedCn(7)}>
                           {order.daily_shipping_number || '—'}

@@ -386,6 +386,32 @@ export function formatBusinessDailyShippingProgress(
   return `已发 ${formatQuantity(netShipped)} / ${formatQuantity(Number(item.quantity))}`
 }
 
+const SHIPMENT_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+
+/**
+ * 发货日期列：有效发货批次的 shipped_at（按上海时区取日）∪ 表单登记的 daily_shipping_date
+ * （历史导入订单没有批次行），去重后升序，一行展示一个日期。新增批次即自动出现。
+ */
+export function collectBusinessOrderShippingDates(
+  order: Pick<
+    BusinessDailyLedgerOrder,
+    'business_order_shipments' | 'daily_shipping_date'
+  >,
+): string[] {
+  const dates = new Set<string>()
+  for (const shipment of order.business_order_shipments ?? []) {
+    if (shipment.voided_at) continue
+    dates.add(SHIPMENT_DATE_FORMATTER.format(new Date(shipment.shipped_at)))
+  }
+  if (order.daily_shipping_date) dates.add(order.daily_shipping_date)
+  return [...dates].sort()
+}
+
 /** 订单在台账中可否直接编辑，与 /finance/daily-orders/[id]/edit 的服务端门禁保持一致。 */
 export function canEditBusinessDailyOrder(
   order: BusinessOrder,
@@ -474,7 +500,7 @@ export function buildBusinessDailyExportRows(
       shop: order.shop_name_snapshot ?? '',
       salesperson: format.salesperson(order),
       orderNumber: order.external_order_number || order.order_number,
-      shippingDate: order.daily_shipping_date ?? '',
+      shippingDate: collectBusinessOrderShippingDates(order).join('、'),
       shippingNumber: order.daily_shipping_number ?? '',
       paymentAccount: order.payment_account ?? '',
       orderTotal: format.money(Number(order.total_amount), order.currency),
