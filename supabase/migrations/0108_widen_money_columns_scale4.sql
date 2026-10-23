@@ -1,5 +1,16 @@
 -- 金额列精度统一加宽到 numeric(18,4)：展示默认 2 位，填写支持 4 位。
 -- 幂等：已到位的列自动跳过。权重类（weight_g 系列）保持 3 位，数量/汇率列原本已 ≥4 不动。
+-- 生成列（generated column）依赖金额列：先删后加，表达式同步 round(…, 4)。
+
+DO $$ BEGIN
+  ALTER TABLE public.business_custom_product_versions DROP COLUMN IF EXISTS order_amount;
+  ALTER TABLE public.business_custom_product_versions DROP COLUMN IF EXISTS outstanding_amount;
+  ALTER TABLE public.business_order_items DROP COLUMN IF EXISTS line_amount;
+  ALTER TABLE public.business_orders DROP COLUMN IF EXISTS total_cny;
+  ALTER TABLE public.finance_order_costs DROP COLUMN IF EXISTS amount_cny;
+  ALTER TABLE public.finance_orders DROP COLUMN IF EXISTS amount_cny;
+  ALTER TABLE public.finance_transactions DROP COLUMN IF EXISTS amount_cny;
+END $$;
 
 DO $$
 DECLARE
@@ -24,6 +35,7 @@ DECLARE
   ];
   t text;
   col record;
+  trg record;
   skipped int := 0;
   altered int := 0;
 BEGIN
@@ -32,6 +44,18 @@ BEGIN
       RAISE NOTICE 'table % missing, skip', t;
       CONTINUE;
     END IF;
+
+    -- 本表全部非内部触发器：先删后建（触发器列依赖会阻塞 ALTER COLUMN TYPE）。
+    CREATE TEMP TABLE IF NOT EXISTS _0108_trg_defs (tgname text, tgdef text) ON COMMIT DROP;
+    DELETE FROM _0108_trg_defs;
+    INSERT INTO _0108_trg_defs
+      SELECT tr.tgname, pg_get_triggerdef(tr.oid)
+      FROM pg_trigger tr
+      WHERE tr.tgrelid = format('public.%I', t)::regclass
+        AND NOT tr.tgisinternal;
+    FOR trg IN SELECT tgname FROM _0108_trg_defs LOOP
+      EXECUTE format('DROP TRIGGER IF EXISTS %I ON public.%I', trg.tgname, t);
+    END LOOP;
 
     FOR col IN
       SELECT column_name, numeric_precision, numeric_scale
@@ -53,7 +77,33 @@ BEGIN
         altered := altered + 1;
       END IF;
     END LOOP;
+
+    FOR trg IN SELECT tgdef FROM _0108_trg_defs LOOP
+      EXECUTE trg.tgdef;
+    END LOOP;
+    DROP TABLE IF EXISTS _0108_trg_defs;
   END LOOP;
+
+  ALTER TABLE public.business_custom_product_versions
+    ADD COLUMN order_amount numeric(18,4)
+      GENERATED ALWAYS AS (CASE WHEN quantity IS NULL THEN NULL::numeric ELSE round(quantity * default_unit_price, 4) END) STORED,
+    ADD COLUMN outstanding_amount numeric(18,4)
+      GENERATED ALWAYS AS (CASE WHEN quantity IS NULL THEN NULL::numeric ELSE round(quantity * default_unit_price - COALESCE(received_amount, 0), 4) END) STORED;
+  ALTER TABLE public.business_order_items
+    ADD COLUMN line_amount numeric(18,4)
+      GENERATED ALWAYS AS (round(quantity * unit_price, 4)) STORED;
+  ALTER TABLE public.business_orders
+    ADD COLUMN total_cny numeric(18,4)
+      GENERATED ALWAYS AS (round(total_amount * exchange_rate_to_cny, 4)) STORED;
+  ALTER TABLE public.finance_order_costs
+    ADD COLUMN amount_cny numeric(18,4)
+      GENERATED ALWAYS AS (round(amount_original * exchange_rate_to_cny, 4)) STORED;
+  ALTER TABLE public.finance_orders
+    ADD COLUMN amount_cny numeric(18,4)
+      GENERATED ALWAYS AS (round(amount_original * exchange_rate_to_cny, 4)) STORED;
+  ALTER TABLE public.finance_transactions
+    ADD COLUMN amount_cny numeric(18,4)
+      GENERATED ALWAYS AS (round(amount_original * exchange_rate_to_cny, 4)) STORED;
 
   RAISE NOTICE '0108 widen done: % altered, % skipped', altered, skipped;
 END $$;
