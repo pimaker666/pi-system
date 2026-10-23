@@ -192,6 +192,7 @@ export function BusinessOrderPaymentManager({
     | null
   >(null)
   const [voidReason, setVoidReason] = useState('')
+  const [prepaymentPickerOpen, setPrepaymentPickerOpen] = useState(false)
   const [viewingProof, setViewingProof] = useState<{ urls: string[] } | null>(null)
 
   const hasRolePermission =
@@ -242,7 +243,7 @@ export function BusinessOrderPaymentManager({
           ? supabase
               .from('business_customer_transfers')
               .select('*')
-              .eq('customer_id', currentCustomerId)
+              .or(`customer_id.eq.${currentCustomerId},order_id.eq.${orderId}`)
               .eq('currency', currentCurrency)
               .order('received_at', { ascending: false })
           : supabase
@@ -332,6 +333,16 @@ export function BusinessOrderPaymentManager({
     () => new Map(transfers.map((transfer) => [transfer.id, transfer])),
     [transfers],
   )
+
+  // 订单页只展示挂在本订单名下的转账；客户其余转账仅在「使用预收款」选择弹窗中出现。
+  const orderTransfers = useMemo(
+    () => transfers.filter((transfer) => transfer.order_id === orderId),
+    [transfers, orderId],
+  )
+
+  const availableBalanceTransfers = transfers
+    .filter((transfer) => !transfer.voided_at && transferAvailable(transfer) > 0.005)
+    .sort((left, right) => left.received_at.localeCompare(right.received_at))
 
   const orderById = useMemo(() => new Map(orders.map((order) => [order.id, order])), [orders])
 
@@ -884,6 +895,11 @@ export function BusinessOrderPaymentManager({
             <Button variant="outline" size="sm" disabled={loading || pending} onClick={() => void loadData()}>
               <RefreshCw className="h-4 w-4" />刷新
             </Button>
+            {!isOrderScoped && canManage && !loading && !loadError && availableBalanceTransfers.length > 0 && (
+              <Button variant="outline" size="sm" disabled={pending} onClick={() => setPrepaymentPickerOpen(true)}>
+                <WalletCards className="h-4 w-4" />使用预收款
+              </Button>
+            )}
             {canManage && !loading && !loadError && (
               <Button size="sm" onClick={openForm}>
                 <Plus className="h-4 w-4" />登记{isOrderScoped ? '订单' : '客户'}转账
@@ -989,13 +1005,11 @@ export function BusinessOrderPaymentManager({
             )
           })}
 
-        {!loading && !loadError && transfers.length > 0 && (
+        {!loading && !loadError && orderTransfers.length > 0 && (
           <div className="border-t pt-4">
-            <h3 className="mb-3 text-sm font-medium">
-              该{isOrderScoped ? '订单' : '客户'}的 {currency} 转账
-            </h3>
+            <h3 className="mb-3 text-sm font-medium">本订单的 {currency} 转账</h3>
             <div className="space-y-2">
-              {transfers.map((transfer) => {
+              {orderTransfers.map((transfer) => {
                 const available = transferAvailable(transfer)
                 const relatedAllocations = allocations.filter(
                   (allocation) => allocation.transfer_id === transfer.id,
@@ -1291,6 +1305,37 @@ export function BusinessOrderPaymentManager({
               <Button type="submit" disabled={pending || (transferAllocationNeedsCorrection && !correctionReason.trim())}>{pending ? '登记中…' : '登记转账'}</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={prepaymentPickerOpen} onOpenChange={(open) => { if (!open) setPrepaymentPickerOpen(false) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>使用客户预收款</DialogTitle>
+            <DialogDescription>选择一笔有可用余额的转账，将其分摊到订单。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            {availableBalanceTransfers.map((transfer) => (
+              <button
+                key={transfer.id}
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setPrepaymentPickerOpen(false)
+                  openAllocation(transfer)
+                }}
+                className="w-full rounded-md border p-3 text-left text-sm transition-colors hover:bg-accent disabled:opacity-50"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">
+                    {formatCurrency(Number(transfer.amount), transfer.currency)} · {paymentTypeLabel(transfer.payment_type)}
+                  </span>
+                  <Badge variant="outline">余额 {formatCurrency(transferAvailable(transfer), transfer.currency)}</Badge>
+                </div>
+                <div className="mt-1 text-muted-foreground">{formatDate(transfer.received_at, true)}</div>
+              </button>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
 
