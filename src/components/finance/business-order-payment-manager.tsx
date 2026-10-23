@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, Plus, RefreshCw, Trash2, WalletCards, X } from 'lucide-react'
+import { Eye, Plus, RefreshCw, WalletCards, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -334,10 +334,15 @@ export function BusinessOrderPaymentManager({
     [transfers],
   )
 
-  // 订单页只展示挂在本订单名下的转账；客户其余转账仅在「使用预收款」选择弹窗中出现。
+  // 订单页展示挂在本订单名下或分摊到本订单的转账；客户其余转账仅在「使用预收款」选择弹窗中出现。
   const orderTransfers = useMemo(
-    () => transfers.filter((transfer) => transfer.order_id === orderId),
-    [transfers, orderId],
+    () =>
+      transfers.filter(
+        (transfer) =>
+          transfer.order_id === orderId ||
+          allocations.some((allocation) => allocation.transfer_id === transfer.id && allocation.order_id === orderId),
+      ),
+    [allocations, orderId, transfers],
   )
 
   const availableBalanceTransfers = transfers
@@ -454,11 +459,6 @@ export function BusinessOrderPaymentManager({
         })
         .sort((a, b) => Number(b.id === orderId) - Number(a.id === orderId)),
     [orderOutstandingAmount, orderId, orders, profile.id, profile.role],
-  )
-
-  const currentAllocations = useMemo(
-    () => allocations.filter((allocation) => allocation.order_id === orderId),
-    [allocations, orderId],
   )
 
   function transferAllocated(transferId: string) {
@@ -948,62 +948,11 @@ export function BusinessOrderPaymentManager({
             {loadError}
           </div>
         )}
-        {!loading && !loadError && currentAllocations.length === 0 && (
+        {!loading && !loadError && orderTransfers.length === 0 && (
           <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
-            当前订单暂无收款分摊
+            本订单暂无转账
           </div>
         )}
-        {!loading &&
-          currentAllocations.map((allocation) => {
-            const transfer = transferById.get(allocation.transfer_id)
-            const effective = !allocation.voided_at && Boolean(transfer) && !transfer?.voided_at
-            return (
-              <div key={allocation.id} className="rounded-md border p-3">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{paymentTypeLabel(allocation.payment_type)}</span>
-                      <Badge variant={effective ? 'success' : 'secondary'}>{effective ? '有效' : '已作废'}</Badge>
-                      {transfer?.voided_at && <Badge variant="destructive">所属转账已作废</Badge>}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {transfer ? formatDate(transfer.received_at, true) : '转账信息不可见'}
-                      {transfer?.notes ? ` · ${transfer.notes}` : ''}
-                    </div>
-                    {(allocation.void_reason || transfer?.void_reason) && (
-                      <div className="text-xs text-destructive">
-                        作废原因：{allocation.void_reason || transfer?.void_reason}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between gap-2 sm:justify-end">
-                    <span className="font-semibold tabular-nums">
-                      {formatCurrency(Number(allocation.amount), currency)}
-                    </span>
-                    {transfer && (
-                      <Button variant="ghost" size="icon" disabled={pending} onClick={() => handleViewProof(transfer)} aria-label="查看凭证">
-                        <Eye className="h-4 w-4" />
-                      </Button>
-                    )}
-                    {canManage && !allocation.voided_at && !transfer?.voided_at && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={pending}
-                        onClick={() => {
-                          setVoidReason('')
-                          setVoidTarget({ kind: 'allocation', item: allocation })
-                        }}
-                        aria-label="作废分摊"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )
-          })}
 
         {!loading && !loadError && orderTransfers.length > 0 && (
           <div className="border-t pt-4">
@@ -1033,11 +982,35 @@ export function BusinessOrderPaymentManager({
                           {formatDate(transfer.received_at, true)} · 已分摊 {formatCurrency(transferAllocated(transfer.id), transfer.currency)}
                         </div>
                         {relatedAllocations.length > 0 && (
-                          <div className="mt-1 text-xs text-muted-foreground">
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                             {relatedAllocations.map((allocation) => {
                               const targetOrder = orderById.get(allocation.order_id)
-                              return `${targetOrder?.order_number ?? '不可见订单'}${allocationTargetSuffix(allocation)} ${formatCurrency(Number(allocation.amount), transfer.currency)}${allocation.voided_at ? '（已作废）' : ''}`
-                            }).join('；')}
+                              const voidable =
+                                canManage &&
+                                allocation.order_id === orderId &&
+                                !allocation.voided_at &&
+                                !transfer.voided_at
+                              return (
+                                <span key={allocation.id} className="inline-flex items-center gap-1">
+                                  {targetOrder?.order_number ?? '不可见订单'}
+                                  {allocationTargetSuffix(allocation)} {formatCurrency(Number(allocation.amount), transfer.currency)}
+                                  {allocation.voided_at ? '（已作废）' : ''}
+                                  {voidable && (
+                                    <button
+                                      type="button"
+                                      className="text-destructive hover:underline disabled:opacity-50"
+                                      disabled={pending}
+                                      onClick={() => {
+                                        setVoidReason('')
+                                        setVoidTarget({ kind: 'allocation', item: allocation })
+                                      }}
+                                    >
+                                      撤回分摊
+                                    </button>
+                                  )}
+                                </span>
+                              )
+                            })}
                           </div>
                         )}
                         {transfer.void_reason && <div className="mt-1 text-xs text-destructive">作废原因：{transfer.void_reason}</div>}
