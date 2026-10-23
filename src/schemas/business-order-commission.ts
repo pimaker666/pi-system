@@ -13,7 +13,7 @@ export const businessOrderCommissionFilterSchema = z.object({
 
 export type BusinessOrderCommissionFilters = z.infer<typeof businessOrderCommissionFilterSchema>
 
-const shippingCategories = ['stock', 'sample', 'custom', 'purchase'] as const
+const shippingCategories = ['stock', 'sample', 'custom_sample', 'custom', 'purchase'] as const
 
 const percentRate = z
   .number({ invalid_type_error: '提点必须是数字' })

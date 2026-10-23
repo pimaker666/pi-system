@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const dailyOrderCurrencies = ['CNY', 'USD'] as const
-export const dailyOrderShippingCategories = ['stock', 'sample', 'custom', 'purchase'] as const
+export const dailyOrderShippingCategories = ['stock', 'sample', 'custom_sample', 'custom', 'purchase'] as const
 export const dailyOrderPaymentCategories = ['full', 'deposit', 'balance'] as const
 
 const date = z.string()

@@ -123,7 +123,8 @@ interface NormalizedItemConstraint {
 const currencies: CurrencyCode[] = ['USD', 'EUR', 'CNY', 'GBP', 'JPY']
 const SHIPPING_OPTIONS: Array<{ value: DailyOrderShippingCategory; label: string }> = [
   { value: 'stock', label: '现货' },
-  { value: 'sample', label: '样品' },
+  { value: 'sample', label: '现货样品' },
+  { value: 'custom_sample', label: '定制打样' },
   { value: 'custom', label: '定制' },
   { value: 'purchase', label: '外采' },
 ]
