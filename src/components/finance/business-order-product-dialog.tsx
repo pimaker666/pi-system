@@ -33,6 +33,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { createOrderScopedProduct } from '@/lib/actions/products'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import { useFilePaste } from '@/lib/hooks/use-file-drop'
 import { createClient } from '@/lib/supabase/client'
 import { toImageSrc } from '@/lib/supabase/image'
 import { CURRENCIES } from '@/schemas/product'
@@ -170,6 +171,14 @@ export function BusinessOrderProductDialog({
     const file = event.dataTransfer.files?.[0]
     if (file) void uploadImage(file)
   }
+
+  const { pasteRef } = useFilePaste({
+    onFiles: (files) => {
+      const file = files[0]
+      if (file) void uploadImage(file)
+    },
+    disabled: uploading || pending,
+  })
 
   // 弹窗嵌在建单表单里，必须阻断冒泡，否则会连带提交整张订单。
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -329,6 +338,7 @@ export function BusinessOrderProductDialog({
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="order_product_image">产品图片</Label>
               <div
+                ref={pasteRef}
                 className={`rounded-md border border-dashed p-4 transition-colors ${draggingImage ? 'border-primary bg-primary/5' : 'border-input'}`}
                 onDragEnter={(event) => {
                   event.preventDefault()
@@ -361,7 +371,7 @@ export function BusinessOrderProductDialog({
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  支持拖放、选择 JPEG/PNG，单张不超过 20MB。
+                  支持拖放、粘贴或选择 JPEG/PNG，单张不超过 20MB。
                 </p>
               </div>
               {uploading && (

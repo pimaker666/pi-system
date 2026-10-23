@@ -36,6 +36,7 @@ import {
   createBusinessCustomProduct,
 } from '@/lib/actions/business-orders'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import { useFilePaste } from '@/lib/hooks/use-file-drop'
 import { createClient } from '@/lib/supabase/client'
 import { toImageSrc } from '@/lib/supabase/image'
 import { roundToScale } from '@/lib/utils'
@@ -122,6 +123,13 @@ export function BusinessCustomProductDialog({
     folder: 'business-custom-products',
   })
   const isVersionMode = mode === 'version'
+  const { pasteRef } = useFilePaste({
+    onFiles: (files) => {
+      const file = files[0]
+      if (file) void uploadImage(file)
+    },
+    disabled: uploading || pending,
+  })
 
   function resetForm() {
     setProductGroupId(isVersionMode ? (product?.product_group_id ?? '') : '')
@@ -413,6 +421,7 @@ export function BusinessCustomProductDialog({
             <div className="space-y-2 sm:col-span-2">
               <Label htmlFor={`${mode}_custom_product_image`}>产品图片</Label>
               <div
+                ref={pasteRef}
                 className={`rounded-md border border-dashed p-4 transition-colors ${draggingImage ? 'border-primary bg-primary/5' : 'border-input'}`}
                 onDragEnter={(event) => { event.preventDefault(); setDraggingImage(true) }}
                 onDragOver={(event) => event.preventDefault()}
@@ -426,7 +435,7 @@ export function BusinessCustomProductDialog({
                     <Input aria-label="产品图片 URL" type="url" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} maxLength={2000} placeholder="或填写公开图片 URL" className="pl-9" />
                   </div>
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">支持拖放、选择 JPEG/PNG，单张不超过 20MB。</p>
+                <p className="mt-2 text-xs text-muted-foreground">支持拖放、粘贴或选择 JPEG/PNG，单张不超过 20MB。</p>
               </div>
               {uploading && <p className="flex items-center gap-1 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在上传…</p>}
               {imageUrl && <div className="relative h-36 w-36 overflow-hidden rounded-md border bg-muted"><Image src={toImageSrc(imageUrl)} alt="定制产品图片预览" fill className="object-cover" sizes="144px" /></div>}

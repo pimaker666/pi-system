@@ -12,7 +12,7 @@ import {
   setActiveCompanyProfile,
 } from '@/lib/actions/company'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
-import { useFileDrop, validateImageFile } from '@/lib/hooks/use-file-drop'
+import { useFileDrop, useFilePaste, validateImageFile } from '@/lib/hooks/use-file-drop'
 import { toImageSrc } from '@/lib/supabase/image'
 import { AccentColorField } from '@/components/settings/accent-color-field'
 import { Button } from '@/components/ui/button'
@@ -304,6 +304,13 @@ function CompanyProfileForm({
     onFile: (file) => handleLogo(file),
     disabled: uploading,
   })
+  const { pasteRef: logoPasteRef } = useFilePaste({
+    onFiles: (files) => {
+      const file = files[0]
+      if (file) void handleLogo(file)
+    },
+    disabled: uploading,
+  })
 
   function handleSubmit(formData: FormData) {
     formData.set('logo_url', logoUrl)
@@ -374,6 +381,7 @@ function CompanyProfileForm({
           <div className="space-y-2">
             <Label htmlFor="logo">Logo</Label>
             <div
+              ref={logoPasteRef}
               className={cn(
                 'rounded-md border border-dashed p-3 transition-colors',
                 logoDragging ? 'border-primary bg-primary/5' : 'border-input',
@@ -381,7 +389,7 @@ function CompanyProfileForm({
               {...logoDropProps}
             >
               <Input id="logo" type="file" accept="image/*" onChange={handleLogoChange} disabled={uploading} />
-              <p className="mt-1 text-xs text-muted-foreground">支持拖放或选择 JPG/PNG/WebP 图片，最大 20MB。</p>
+              <p className="mt-1 text-xs text-muted-foreground">支持拖放、粘贴或选择 JPG/PNG/WebP 图片，最大 20MB。</p>
             </div>
             {uploading && <p className="text-sm text-muted-foreground">上传中…</p>}
             {logoUrl && (

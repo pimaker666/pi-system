@@ -2,7 +2,6 @@
 
 import {
   ChangeEvent,
-  ClipboardEvent,
   DragEvent,
   FormEvent,
   useMemo,
@@ -43,6 +42,7 @@ import {
   updateBusinessOrder,
 } from '@/lib/actions/business-orders'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import { useFilePaste } from '@/lib/hooks/use-file-drop'
 import { getBusinessDateKey } from '@/lib/business-orders'
 import { createClient } from '@/lib/supabase/client'
 import { cn, displayProfileName, formatCurrency, roundToScale } from '@/lib/utils'
@@ -428,6 +428,10 @@ export function BusinessOrderForm({
   const hasLegacyItems = items.some((item) => item.source_type === 'legacy')
   const productRowsLocked = lifecycleLocked
   const productControlsDisabled = pending || productRowsLocked || hasLegacyItems
+  const { pasteRef } = useFilePaste({
+    onFiles: addFiles,
+    disabled: pending || lifecycleLocked,
+  })
 
   function handleCustomerChange(nextCustomer: Customer | null) {
     setCustomer(nextCustomer)
@@ -739,16 +743,6 @@ export function BusinessOrderForm({
     event.preventDefault()
     setIsDragging(false)
     if (attachments.length < 10) addFiles(event.dataTransfer.files)
-  }
-
-  function handlePaste(event: ClipboardEvent<HTMLDivElement>) {
-    const images = Array.from(event.clipboardData?.items ?? [])
-      .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
-      .map((item) => item.getAsFile())
-      .filter((file): file is File => file !== null)
-    if (images.length === 0) return
-    event.preventDefault()
-    addFiles(images)
   }
 
   async function uploadAttachments(orderId: string) {
@@ -1612,6 +1606,7 @@ export function BusinessOrderForm({
         </CardHeader>
         <CardContent className="space-y-4">
           <div
+            ref={pasteRef}
             className={cn(
               'rounded-md border border-dashed p-4 text-sm text-muted-foreground',
               isDragging && 'border-primary bg-primary/5',
@@ -1622,7 +1617,6 @@ export function BusinessOrderForm({
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            onPaste={handlePaste}
           >
             <div>拖拽、粘贴或选择 JPEG/PNG 截图，单张不超过 20MB，每单最多 10 张。</div>
             <Input

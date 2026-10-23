@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { usePiCartStore } from '@/stores/pi-cart-store'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
-import { useFileDrop, validateImageFile } from '@/lib/hooks/use-file-drop'
+import { useFileDrop, useFilePaste, validateImageFile } from '@/lib/hooks/use-file-drop'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -81,14 +81,22 @@ function LineImageThumb({
     onFile: (file) => handleFile(file),
     disabled: uploading,
   })
+  const { pasteRef } = useFilePaste({
+    onFiles: (files) => {
+      const file = files[0]
+      if (file) void handleFile(file)
+    },
+    disabled: uploading,
+  })
 
   return (
     <div
+      ref={pasteRef}
       className={cn(
         'group relative h-12 w-12 shrink-0 overflow-hidden rounded border bg-muted',
         dragging && 'border-primary ring-2 ring-primary',
       )}
-      title="支持拖放或点击上传图片（最大 20MB）"
+      title="支持拖放、粘贴或点击上传图片（最大 20MB）"
       {...dropProps}
     >
       {src ? (
@@ -158,16 +166,23 @@ function RemarkImage({
     onFile: (file) => handleFile(file),
     disabled: uploading,
   })
+  const { pasteRef } = useFilePaste({
+    onFiles: (files) => {
+      const file = files[0]
+      if (file) void handleFile(file)
+    },
+    disabled: uploading,
+  })
 
   return (
-    <div className="flex items-center gap-2">
+    <div ref={pasteRef} className="flex items-center gap-2">
       {src ? (
         <div
           className={cn(
             'group relative h-16 w-16 shrink-0 overflow-hidden rounded border bg-muted',
             dragging && 'border-primary ring-2 ring-primary',
           )}
-          title="支持拖放或点击上传图片（最大 20MB）"
+          title="支持拖放、粘贴或点击上传图片（最大 20MB）"
           {...dropProps}
         >
           <Image src={toImageSrc(src)} alt="备注图片" fill className="object-cover" sizes="64px" />

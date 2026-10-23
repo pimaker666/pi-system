@@ -45,7 +45,7 @@ import {
   businessOrderItemDisplaySku,
   type BusinessOrderItemWithDisplay,
 } from '@/lib/business-order-financials'
-import { useFileDrop } from '@/lib/hooks/use-file-drop'
+import { useFileDrop, useFilePaste } from '@/lib/hooks/use-file-drop'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type {
@@ -169,6 +169,13 @@ export function BusinessOrderPaymentManager({
   const [uploadedProofPath, setUploadedProofPath] = useState<string | null>(null)
   const { dragging: proofDragging, dropProps: proofDropProps } = useFileDrop({
     onFile: handleProofFileSelected,
+    disabled: Boolean(uploadedProofPath),
+  })
+  const { pasteRef: proofPasteRef } = useFilePaste({
+    onFiles: (files) => {
+      const file = files[0]
+      if (file) handleProofFileSelected(file)
+    },
     disabled: Boolean(uploadedProofPath),
   })
 
@@ -1064,6 +1071,7 @@ export function BusinessOrderPaymentManager({
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="proof">收款截图（最大 20MB）</Label>
                 <div
+                  ref={proofPasteRef}
                   className={`rounded-md border border-dashed p-3 transition-colors ${proofDragging ? 'border-primary bg-primary/5' : 'border-input'}`}
                   {...proofDropProps}
                 >
@@ -1082,7 +1090,7 @@ export function BusinessOrderPaymentManager({
                     </p>
                   ) : (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      {proofFileName ? `已选择：${proofFileName}。` : ''}支持拖放或选择 JPG/PNG/WebP 截图，最大 20MB。
+                      {proofFileName ? `已选择：${proofFileName}。` : ''}支持拖放、粘贴或选择 JPG/PNG/WebP 截图，最大 20MB。
                     </p>
                   )}
                 </div>

@@ -43,6 +43,7 @@ import {
   listBusinessOrderAppendCatalog,
 } from '@/lib/actions/business-orders'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import { registerPasteZone } from '@/lib/hooks/use-file-drop'
 import {
   businessOrderItemDisplayName,
   businessOrderItemDisplaySku,
@@ -277,6 +278,16 @@ export function BusinessOrderAppendDialog({
   const [draggingImageKey, setDraggingImageKey] = useState<string | null>(null)
   const uploadedUrlsRef = useRef(new Set<string>())
   const persistedUrlsRef = useRef(new Set<string>())
+  const rowPasteZonesRef = useRef(new Map<string, ReturnType<typeof registerPasteZone>>())
+
+  useEffect(() => {
+    const zones = rowPasteZonesRef.current
+    return () => {
+      for (const zone of zones.values()) zone.dispose()
+      zones.clear()
+    }
+  }, [])
+
   const { upload, uploading } = useImageUpload({
     bucket: 'product-images',
     folder: 'business-custom-products',
@@ -610,6 +621,18 @@ export function BusinessOrderAppendDialog({
     if (file) void uploadImageForRow(key, file)
   }
 
+  function getRowPasteZone(key: string) {
+    let zone = rowPasteZonesRef.current.get(key)
+    if (!zone) {
+      zone = registerPasteZone((files) => {
+        const file = files[0]
+        if (file) void uploadImageForRow(key, file)
+      })
+      rowPasteZonesRef.current.set(key, zone)
+    }
+    return zone
+  }
+
   function closeDialog() {
     if (pending || uploading) return
     setOpen(false)
@@ -928,13 +951,15 @@ export function BusinessOrderAppendDialog({
                       variant="ghost"
                       size="icon"
                       className="text-muted-foreground hover:text-destructive"
-                      onClick={() =>
+                      onClick={() => {
+                        rowPasteZonesRef.current.get(row.key)?.dispose()
+                        rowPasteZonesRef.current.delete(row.key)
                         setRows((current) =>
                           current.length > 1
                             ? current.filter((item) => item.key !== row.key)
                             : current,
                         )
-                      }
+                      }}
                       disabled={pending || rows.length <= 1}
                       aria-label="删除该行"
                     >
@@ -1039,13 +1064,15 @@ export function BusinessOrderAppendDialog({
                       variant="ghost"
                       size="icon"
                       className="text-muted-foreground hover:text-destructive"
-                      onClick={() =>
+                      onClick={() => {
+                        rowPasteZonesRef.current.get(row.key)?.dispose()
+                        rowPasteZonesRef.current.delete(row.key)
                         setRows((current) =>
                           current.length > 1
                             ? current.filter((item) => item.key !== row.key)
                             : current,
                         )
-                      }
+                      }}
                       disabled={pending || rows.length <= 1}
                       aria-label="删除该行"
                     >
@@ -1228,6 +1255,7 @@ export function BusinessOrderAppendDialog({
                     <div className="space-y-1 sm:col-span-2 xl:col-span-4">
                       <Label>产品图片</Label>
                       <div
+                        ref={getRowPasteZone(row.key).ref}
                         className={`rounded-md border border-dashed p-4 transition-colors ${
                           draggingImageKey === row.key ? 'border-primary bg-primary/5' : 'border-input'
                         }`}
@@ -1261,7 +1289,7 @@ export function BusinessOrderAppendDialog({
                             />
                           </div>
                         </div>
-                        <p className="mt-2 text-xs text-muted-foreground">支持拖放、选择 JPEG/PNG，单张不超过 20MB。</p>
+                        <p className="mt-2 text-xs text-muted-foreground">支持拖放、粘贴或选择 JPEG/PNG，单张不超过 20MB。</p>
                       </div>
                       {uploading && (
                         <p className="flex items-center gap-1 text-sm text-muted-foreground">

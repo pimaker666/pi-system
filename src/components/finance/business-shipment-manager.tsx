@@ -32,7 +32,7 @@ import {
   businessOrderItemDisplayName,
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
-import { useFileDrop } from '@/lib/hooks/use-file-drop'
+import { useFileDrop, useFilePaste } from '@/lib/hooks/use-file-drop'
 import { formatDate } from '@/lib/utils'
 import type {
   BusinessOrder,
@@ -98,6 +98,12 @@ export function BusinessShipmentManager({
     dragging: screenshotDragging,
     dropProps: screenshotDropProps,
   } = useFileDrop({ onFile: acceptScreenshot })
+  const { pasteRef: screenshotPasteRef } = useFilePaste({
+    onFiles: (files) => {
+      const file = files[0]
+      if (file) acceptScreenshot(file)
+    },
+  })
 
   const activeShipmentIds = new Set(
     shipments.filter((shipment) => !shipment.voided_at).map((shipment) => shipment.id),
@@ -516,6 +522,7 @@ export function BusinessShipmentManager({
             <div className="space-y-2">
               <Label htmlFor="shipment_screenshot">发货截图（可选）</Label>
               <div
+                ref={screenshotPasteRef}
                 className={`rounded-md border border-dashed p-3 transition-colors ${screenshotDragging ? 'border-primary bg-primary/5' : 'border-input'}`}
                 {...screenshotDropProps}
               >
@@ -530,7 +537,7 @@ export function BusinessShipmentManager({
                   }}
                 />
                 <p className="mt-2 text-xs text-muted-foreground">
-                  支持拖放或选择 JPG/PNG 截图，最大 20MB。
+                  支持拖放、粘贴或选择 JPG/PNG 截图，最大 20MB。
                 </p>
               </div>
               {screenshotPreviewUrl && (

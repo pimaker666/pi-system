@@ -19,6 +19,7 @@ import { createCustomer, updateCustomer } from '@/lib/actions/customers'
 import { parseCustomerText } from '@/lib/parse-customer'
 import { CountryFlag } from '@/components/shared/country-flag'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import { useFilePaste } from '@/lib/hooks/use-file-drop'
 import { usePostalLookup, type PostalResult } from '@/hooks/use-postal-lookup'
 import { toImageSrc } from '@/lib/supabase/image'
 import type { Customer, CustomerGroup } from '@/types'
@@ -56,6 +57,10 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
   const [draggingLogo, setDraggingLogo] = useState(false)
   const { upload: uploadLogo, uploading } = useImageUpload({ bucket: 'customer-assets', folder: 'customer-logos' })
   const logoInputRef = useRef<HTMLInputElement>(null)
+  const { pasteRef: logoPasteRef } = useFilePaste({
+    onFiles: uploadLogoFiles,
+    disabled: uploading || pending || logoUrls.length >= 10,
+  })
 
   const [form, setForm] = useState<FormState>({
     name: customer?.name ?? '',
@@ -373,6 +378,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
         <Label htmlFor="logo">上传 Logo</Label>
         <Input type="hidden" name="logo_urls" value={JSON.stringify(logoUrls)} />
         <div
+          ref={logoPasteRef}
           className={`rounded-md border border-dashed p-4 transition-colors ${
             draggingLogo ? 'border-primary bg-primary/5' : 'border-input'
           }`}
@@ -403,7 +409,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
             <ImageIcon className="mr-2 h-4 w-4" />
             选择图片
           </Button>
-          <p className="mt-2 text-xs text-muted-foreground">支持拖放、选择多张 JPEG/PNG，单张不超过 20MB，最多 10 张。</p>
+          <p className="mt-2 text-xs text-muted-foreground">支持拖放、粘贴或选择多张 JPEG/PNG，单张不超过 20MB，最多 10 张。</p>
         </div>
         {uploading && <p className="flex items-center gap-1 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在上传…</p>}
         {logoUrls.length > 0 && (
