@@ -422,6 +422,8 @@ export function BusinessDailyOrderTable({
                           <Button asChild variant="ghost" size="icon">
                             <Link
                               href={`/finance/daily-orders/${order.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               aria-label={`查看 ${order.order_number}`}
                             >
                               <FileText className="h-3.5 w-3.5" />
@@ -458,7 +460,12 @@ export function BusinessDailyOrderTable({
                           {salesperson}
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={mergedCn(5, 'font-medium')}>
-                          <Link href={`/finance/daily-orders/${order.id}`} className="hover:underline">
+                          <Link
+                            href={`/finance/daily-orders/${order.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="hover:underline"
+                          >
                             {order.external_order_number || order.order_number}
                           </Link>
                           {order.external_order_number && (
