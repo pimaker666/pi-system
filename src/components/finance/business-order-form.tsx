@@ -301,9 +301,6 @@ export function BusinessOrderForm({
     initialOrder?.daily_payment_category ?? 'full',
   )
   const [paymentDueDate, setPaymentDueDate] = useState(initialOrder?.payment_due_date ?? '')
-  const [fulfillmentType, setFulfillmentType] = useState<BusinessFulfillmentType>(
-    initialOrder?.fulfillment_type ?? 'custom',
-  )
   const [currency, setCurrency] = useState<CurrencyCode>(initialOrder?.currency ?? 'USD')
   const [exchangeRate, setExchangeRate] = useState(
     String(initialOrder?.exchange_rate_to_cny ?? ''),
@@ -360,6 +357,12 @@ export function BusinessOrderForm({
         default_currency: null,
       })) ?? [],
   )
+  // 履约类型随明细推导：出现「定制」发货分类行即定制单，与每日订单导入口径一致。
+  const fulfillmentType: BusinessFulfillmentType = items.some(
+    (item) => item.daily_shipping_category === 'custom',
+  )
+    ? 'custom'
+    : 'stock'
   const [totalProductOverride, setTotalProductOverride] = useState<number | null>(
     initialOrder?.total_product_received_overridden
       ? Number(initialOrder.total_product_received_amount ?? 0)
