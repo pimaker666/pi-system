@@ -268,7 +268,6 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Order item product identity cannot be replaced', '已有订单明细不能更换产品'],
     ['Order items cannot be deleted after an active payment allocation', '已有有效收款分摊，不能删除订单明细'],
     ['Order item product cannot be replaced after an active payment allocation', '已有有效收款分摊，不能更换订单产品'],
-    ['Order item price cannot be changed after an active payment allocation', '已有有效收款分摊，不能修改订单单价'],
     ['Shipped order items cannot be deleted', '已发货订单明细不能删除'],
     ['Shipped order item product cannot be replaced', '已发货订单明细不能更换产品'],
     ['Order item quantity cannot be less than net shipped quantity', '订单数量不能低于净发货数量'],

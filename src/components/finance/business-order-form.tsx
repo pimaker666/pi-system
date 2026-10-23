@@ -252,7 +252,6 @@ function normalizeEditConstraints(value: unknown) {
         row.unit_price_locked,
         row.lock_unit_price,
         row.can_change_unit_price === false,
-        rowHasAllocation,
       ),
       quantityLocked: booleanValue(row.quantity_locked, row.lock_quantity),
     })
@@ -1216,6 +1215,9 @@ export function BusinessOrderForm({
                   pending || productRowsLocked || item.source_type === 'legacy' || Boolean(constraint?.unitPriceLocked)
                 const quantityLocked =
                   pending || productRowsLocked || item.source_type === 'legacy' || Boolean(constraint?.quantityLocked)
+                // 已分摊行允许改版本（编码/图片）与单价；已发货行版本仍锁定。
+                const versionEditLocked =
+                  pending || productRowsLocked || item.source_type === 'legacy' || Boolean(constraint?.shippedQuantity && constraint.shippedQuantity > 0)
                 const minimumQuantity = Math.max(constraint?.minimumQuantity ?? 0, 0.0001)
                 const deleteLocked =
                   pending ||
@@ -1255,7 +1257,7 @@ export function BusinessOrderForm({
                                   updateCustomProductDraft(item.key, { sku: event.target.value })
                                 }
                                 maxLength={100}
-                                disabled={identityLocked || pending || customProductImageUploading}
+                                disabled={versionEditLocked || customProductImageUploading}
                               />
                             </div>
                             <div
@@ -1267,7 +1269,7 @@ export function BusinessOrderForm({
                               )}
                               onDragEnter={(event) => {
                                 event.preventDefault()
-                                if (identityLocked || pending || customProductImageUploading) return
+                                if (versionEditLocked || customProductImageUploading) return
                                 setCustomImageDragKey(item.key)
                               }}
                               onDragOver={(event) => event.preventDefault()}
@@ -1277,7 +1279,7 @@ export function BusinessOrderForm({
                               onDrop={(event) => {
                                 event.preventDefault()
                                 setCustomImageDragKey(null)
-                                if (identityLocked || pending || customProductImageUploading) return
+                                if (versionEditLocked || customProductImageUploading) return
                                 const file = event.dataTransfer.files?.[0]
                                 if (file) void handleCustomProductImage(item, file)
                               }}
@@ -1288,14 +1290,14 @@ export function BusinessOrderForm({
                                 type="file"
                                 accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                                 onChange={(event) => handleCustomProductImageChange(item, event)}
-                                disabled={identityLocked || pending || customProductImageUploading}
+                                disabled={versionEditLocked || customProductImageUploading}
                                 className="sr-only"
                               />
                               <Label
                                 htmlFor={`custom-product-image-${item.key}`}
                                 className={cn(
                                   'inline-flex h-9 cursor-pointer items-center rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground',
-                                  (identityLocked || pending || customProductImageUploading) &&
+                                  (versionEditLocked || customProductImageUploading) &&
                                     'pointer-events-none cursor-not-allowed opacity-50',
                                 )}
                               >
@@ -1307,8 +1309,7 @@ export function BusinessOrderForm({
                                 variant="outline"
                                 onClick={() => saveCustomProductVersion(item)}
                                 disabled={
-                                  identityLocked ||
-                                  pending ||
+                                  versionEditLocked ||
                                   customProductImageUploading ||
                                   customVersionPendingKey === item.key ||
                                   (item.sku === item.saved_custom_product_code &&
@@ -1342,13 +1343,15 @@ export function BusinessOrderForm({
                       {constraint && !productRowsLocked && (
                         <div className="mt-1 space-y-0.5 text-xs text-amber-700">
                           {constraint.hasActiveAllocation && (
-                            <div>已有有效收款分摊：产品身份与成交单价不可修改。</div>
+                            <div>
+                              已有有效收款分摊：产品身份与数量不可删除更换，可更新编码/图片版本并调整单价，但订单总额不得低于已分摊金额。
+                            </div>
                           )}
                           {constraint.shippedQuantity > 0 && (
                             <div>
                               累计发货 {formatAmount(constraint.shippedQuantity)}、累计退货{' '}
                               {formatAmount(constraint.returnedQuantity)}，数量不得低于净已发{' '}
-                              {formatAmount(constraint.netShippedQuantity)}。
+                              {formatAmount(constraint.netShippedQuantity)}；已发货行不可更换产品或版本。
                             </div>
                           )}
                         </div>

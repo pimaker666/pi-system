@@ -846,6 +846,7 @@ export interface BusinessCustomProductLibraryItem {
   order_history: BusinessCustomProductOrderHistoryItem[]
   total_order_quantity: number
   total_order_amounts: BusinessCustomProductOrderAmount[]
+  salespeople: string[]
 }
 
 export interface BusinessCustomerTransfer {

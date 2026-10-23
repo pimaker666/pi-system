@@ -46,7 +46,7 @@ const ALL = '__all__'
 
 type NormalizedProduct = BusinessCustomProductListItem & Pick<
   BusinessCustomProductLibraryItem,
-  'order_history' | 'total_order_quantity' | 'total_order_amounts'
+  'order_history' | 'total_order_quantity' | 'total_order_amounts' | 'salespeople'
 > & {
   version_count: number
 }
@@ -90,6 +90,9 @@ function normalizeProduct(raw: BusinessCustomProductLibraryItem): NormalizedProd
     total_order_quantity: Number(row.total_order_quantity ?? 0),
     total_order_amounts: Array.isArray(row.total_order_amounts)
       ? row.total_order_amounts as BusinessCustomProductOrderAmount[]
+      : [],
+    salespeople: Array.isArray(row.salespeople)
+      ? row.salespeople.filter((value): value is string => typeof value === 'string' && value.trim() !== '')
       : [],
     version_count: Number(row.version_count ?? 0),
   }
@@ -289,6 +292,14 @@ export function BusinessCustomProductLibrary({
                       <p className="mt-1 break-all text-sm text-muted-foreground">
                         {[product.code, `最新 v${product.version_no || '—'}`].filter(Boolean).join(' · ')}
                       </p>
+                      {product.salespeople.length > 0 && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs text-muted-foreground">归属业务：</span>
+                          {product.salespeople.map((name) => (
+                            <Badge key={name} variant="secondary">{name}</Badge>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </CardHeader>
