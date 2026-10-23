@@ -122,25 +122,25 @@ export default async function DailyOrdersPage({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link href="/finance/daily-orders/legacy"><Archive className="h-4 w-4" />历史台账</Link>
+            <Link href="/finance/daily-orders/legacy" target="_blank" rel="noopener noreferrer"><Archive className="h-4 w-4" />历史台账</Link>
           </Button>
           {canManageShops && (
             <>
               <Button asChild variant="outline">
-                <Link href="/finance/daily-orders/settings"><Settings className="h-4 w-4" />店铺设置</Link>
+                <Link href="/finance/daily-orders/settings" target="_blank" rel="noopener noreferrer"><Settings className="h-4 w-4" />店铺设置</Link>
               </Button>
               <Button asChild variant="outline">
-                <Link href="/finance/daily-orders/settings"><CreditCard className="h-4 w-4" />收款账户</Link>
+                <Link href="/finance/daily-orders/settings" target="_blank" rel="noopener noreferrer"><CreditCard className="h-4 w-4" />收款账户</Link>
               </Button>
             </>
           )}
           {canCreate && (
             <>
               <Button asChild variant="outline">
-                <Link href="/finance/daily-orders/import"><Upload className="h-4 w-4" />批量导入</Link>
+                <Link href="/finance/daily-orders/import" target="_blank" rel="noopener noreferrer"><Upload className="h-4 w-4" />批量导入</Link>
               </Button>
               <Button asChild>
-                <Link href="/finance/daily-orders/new"><Plus className="h-4 w-4" />新建订单</Link>
+                <Link href="/finance/daily-orders/new" target="_blank" rel="noopener noreferrer"><Plus className="h-4 w-4" />新建订单</Link>
               </Button>
             </>
           )}

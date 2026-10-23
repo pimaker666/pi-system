@@ -433,6 +433,8 @@ export function BusinessDailyOrderTable({
                             <Button asChild variant="ghost" size="icon">
                               <Link
                                 href={`/finance/daily-orders/${order.id}/edit`}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 aria-label={`编辑 ${order.order_number}`}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
