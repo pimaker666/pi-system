@@ -1347,7 +1347,7 @@ export function CommissionManager({
           id="commission-exchange-rate"
           type="number"
           min="0"
-          step="0.000001"
+          step="0.0001"
           placeholder="填写后美元金额自动换算为人民币"
           value={exchangeRate}
           onChange={(event) => setExchangeRate(event.target.value)}

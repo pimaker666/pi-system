@@ -415,7 +415,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
               return group.map((row, rowIndex) => {
                 const isFirstRow = rowIndex === 0
                 const displayOrderNumber = row.external_order_number || row.order_number
-                const difference = Math.round((row.order_total_amount - row.order_sales_total_amount) * 100) / 100
+                const difference = Math.round((row.order_total_amount - row.order_sales_total_amount) * 10000) / 10000
 
                 return (
                   <TableRow

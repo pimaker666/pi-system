@@ -10,7 +10,7 @@ import {
   BUSINESS_PAYMENT_STATUS_VARIANTS,
   getBusinessOverdueDays,
 } from '@/lib/business-orders'
-import { formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate, formatAmount } from '@/lib/utils'
 import type { BusinessOrder, BusinessOrderSettlementSummary } from '@/types'
 
 interface BusinessLifecycleStatusProps {
@@ -66,7 +66,7 @@ export function BusinessLifecycleStatus({ order, summary }: BusinessLifecycleSta
         : BUSINESS_FULFILLMENT_STATUS_VARIANTS[summary.fulfillment_status],
       detail: isLegacyCompleted
         ? '历史订单未追溯逐产品发货记录'
-        : `${Number(summary.shipped_quantity).toLocaleString('zh-CN')} / ${Number(summary.item_quantity).toLocaleString('zh-CN')}`,
+        : `${formatAmount(Number(summary.shipped_quantity))} / ${formatAmount(Number(summary.item_quantity))}`,
     },
   ] as const
 

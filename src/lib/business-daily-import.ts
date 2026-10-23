@@ -203,7 +203,7 @@ function currencyValue(value: unknown): CurrencyCode | '' {
 }
 
 function roundMoney(value: number) {
-  return roundToScale(value, 2)
+  return roundToScale(value, 4)
 }
 
 function numberOrNull(value: string) {

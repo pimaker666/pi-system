@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatCountryName } from '@/lib/country-flags'
 import { formatCny } from '@/lib/finance'
+import { formatAmount } from '@/lib/utils'
 import { toImageSrc } from '@/lib/supabase/image'
 import { createClient } from '@/lib/supabase/server'
 import type { Customer, CustomerGroup } from '@/types'
@@ -96,7 +97,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
                 <TableCell><Link className="font-medium hover:underline" href={`/finance/daily-orders/${order.id}?fromCustomer=${id}`}>{order.order_number}</Link></TableCell>
                 <TableCell>{order.external_order_number || '—'}</TableCell>
                 <TableCell>{order.status}</TableCell>
-                <TableCell className="text-right tabular-nums">{order.currency === 'CNY' ? formatCny(Number(order.total_amount)) : `${order.currency} ${Number(order.total_amount).toLocaleString('en-US', { maximumFractionDigits: 2 })}`}</TableCell>
+                <TableCell className="text-right tabular-nums">{order.currency === 'CNY' ? formatCny(Number(order.total_amount)) : `${order.currency} ${formatAmount(Number(order.total_amount))}`}</TableCell>
               </TableRow>)}
               {(orders ?? []).length === 0 && <TableRow><TableCell colSpan={5} className="py-12 text-center text-muted-foreground">暂无历史订单</TableCell></TableRow>}
             </TableBody>

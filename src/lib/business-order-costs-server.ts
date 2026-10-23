@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BusinessOrderProductCost, CurrencyCode } from '@/types'
 import type { BusinessOrderCostFilters } from '@/schemas/business-order-cost'
-import { displayProfileName } from '@/lib/utils'
+import { displayProfileName, formatAmount } from '@/lib/utils'
 import { COST_PAGE_SIZE } from '@/lib/business-order-cost'
 import {
   activeBusinessOrderAttachments,
@@ -351,5 +351,5 @@ export async function fetchBusinessOrderProductCosts(
 
 export function formatCostMoney(amount: number | null, currency: CurrencyCode) {
   if (amount === null || !Number.isFinite(amount)) return '—'
-  return `${currency} ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `${currency} ${formatAmount(Number(amount))}`
 }

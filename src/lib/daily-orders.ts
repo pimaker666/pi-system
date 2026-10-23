@@ -7,6 +7,7 @@ import type {
   DailyOrderWorkflowStatus,
 } from '@/types'
 import { dailyOrderFilterSchema, type DailyOrderFilters } from '@/schemas/daily-order'
+import { formatAmount } from '@/lib/utils'
 
 type BadgeVariant = 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'muted'
 
@@ -60,7 +61,7 @@ export const CHANGE_FIELD_LABELS: Record<string, string> = {
 }
 
 export function formatDailyMoney(amount: number | string, currency: CurrencyCode) {
-  return `${currency} ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  return `${currency} ${formatAmount(Number(amount))}`
 }
 
 export function parseDailyOrderFilters(raw: Record<string, string | string[] | undefined>): DailyOrderFilters {

@@ -22,7 +22,7 @@ import {
 import { SHIPPING_LABELS } from '@/lib/daily-orders'
 import { formatCny } from '@/lib/finance'
 import type { BusinessOrderProfitRow } from '@/lib/actions/business-order-profit'
-import { cn, formatCurrency } from '@/lib/utils'
+import { cn, formatCurrency, formatAmount } from '@/lib/utils'
 import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
 import type {
   BusinessPerformanceDimension,
@@ -227,7 +227,7 @@ function ProductPerformanceTable({ rows }: { rows: BusinessPerformanceProductRow
                   <div className="font-medium">{row.product_name}</div>
                   {row.product_sku && <div className="text-xs text-muted-foreground">{row.product_sku}</div>}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{row.sales_quantity.toLocaleString()}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatAmount(row.sales_quantity)}</TableCell>
                 <TableCell className="text-right tabular-nums">{formatCny(cnySalesAmount)}</TableCell>
                 {hasUnsettled && <TableCell className="text-right tabular-nums">{formatUsd(row.sales_amount_usd)}</TableCell>}
                 <TableCell className="text-right tabular-nums">{formatCny(cnyAverage)}</TableCell>
@@ -833,7 +833,7 @@ export function PerformanceManager({
                   {multiDimensions[1] && <TableCell>{row.dimension_2_label}</TableCell>}
                   {multiDimensions[2] && <TableCell>{row.dimension_3_label}</TableCell>}
                   <TableCell className="text-right tabular-nums">{row.order_count.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums">{row.sales_quantity.toLocaleString()}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatAmount(row.sales_quantity)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatCny(row.sales_amount_cny)}</TableCell>
                   <TableCell className="text-right tabular-nums">{formatUsd(row.sales_amount_usd)}</TableCell>
                 </TableRow>

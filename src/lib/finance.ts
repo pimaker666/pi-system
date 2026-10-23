@@ -3,6 +3,7 @@ import type {
   FinanceOrderCost,
   FinanceTransaction,
 } from '@/types'
+import { formatAmount } from '@/lib/utils'
 
 export const FINANCE_COST_LABELS = {
   product: '采购成本',
@@ -19,11 +20,7 @@ export const FINANCE_TRANSACTION_LABELS = {
 } as const
 
 export function formatCny(value: number) {
-  return new Intl.NumberFormat('zh-CN', {
-    style: 'currency',
-    currency: 'CNY',
-    minimumFractionDigits: 2,
-  }).format(value)
+  return `¥${formatAmount(value)}`
 }
 
 export function sumActiveCny<T extends { amount_cny: number; status?: string }>(rows: T[]) {

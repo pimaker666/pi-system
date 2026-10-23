@@ -13,19 +13,17 @@ import {
   TableHead,
   TableCell,
 } from '@/components/ui/table'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatAmount } from '@/lib/utils'
 import { toImageSrc } from '@/lib/supabase/image'
 import type { WeightCalculationWithItems, WeightCalcItem } from '@/types'
 
-/** KG string with up to 3 decimals from a gram total. */
+/** KG string: defaults to 2 decimals, keeps up to 4 when entered finer. */
 function gToKg(grams: number): string {
-  return (Number(grams) / 1000).toLocaleString('en-US', {
-    maximumFractionDigits: 3,
-  })
+  return formatAmount(Number(grams) / 1000)
 }
 
 function fmtNum(n: number): string {
-  return Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })
+  return formatAmount(Number(n))
 }
 
 /**

@@ -314,7 +314,7 @@ export function BusinessOrderProductDialog({
                 id="order_product_price"
                 type="number"
                 min="0"
-                step="0.01"
+                step="0.0001"
                 value={unitPrice}
                 onChange={(event) => setUnitPrice(event.target.value)}
                 placeholder="留空按 0 记"

@@ -26,7 +26,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { deleteWeightCalc } from '@/lib/actions/weight'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatAmount } from '@/lib/utils'
 import type { WeightCalcHistoryRow } from '@/types'
 import type { OwnerOption } from '@/components/shared/owner-filter'
 
@@ -36,15 +36,13 @@ interface Props {
   owners: OwnerOption[]
 }
 
-/** KG string with up to 3 decimals from a gram total. */
+/** KG string: defaults to 2 decimals, keeps up to 4 when entered finer. */
 function gToKg(grams: number): string {
-  return (Number(grams) / 1000).toLocaleString('en-US', {
-    maximumFractionDigits: 3,
-  })
+  return formatAmount(Number(grams) / 1000)
 }
 
 function fmtNum(n: number): string {
-  return Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 })
+  return formatAmount(Number(n))
 }
 
 export function WeightCalcHistoryTable({ rows, isAdmin, owners }: Props) {

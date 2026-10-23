@@ -53,7 +53,7 @@ import {
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
 import { DAILY_ORDER_COLUMNS, formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
-import { cn, displayProfileName } from '@/lib/utils'
+import { cn, displayProfileName, formatAmount } from '@/lib/utils'
 import type { BusinessOrder, Customer, CustomerGroup, Profile } from '@/types'
 
 // 台账页面只展示发货单号；收款账户仅保留在导出列（DAILY_ORDER_COLUMNS）里。
@@ -557,7 +557,7 @@ export function BusinessDailyOrderTable({
                       )}
                     </TableCell>
                     <TableCell className={cellCn(11, 'tabular-nums')}>
-                      {item ? item.quantity.toLocaleString() : '—'}
+                      {item ? formatAmount(item.quantity) : '—'}
                     </TableCell>
                     <TableCell className={cellCn(12, 'whitespace-nowrap tabular-nums')}>
                       {item ? formatMergedBusinessDailyShippingProgress(item) : '—'}

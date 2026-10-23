@@ -14,7 +14,7 @@ import {
   businessOrderItemDisplayName,
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
-import { roundToScale } from '@/lib/utils'
+import { roundToScale, formatAmount } from '@/lib/utils'
 
 /**
  * 恢复后的每日订单台账行：业务订单（表头）+ 产品明细（每行一个产品）。
@@ -127,16 +127,16 @@ export function businessDailyOrderTotals(
   const { itemById, shippingTotal } = businessOrderAllocationBreakdown(order)
   const itemAllocated = [...itemById.values()].reduce((sum, value) => sum + value, 0)
 
-  const productReceived = roundToScale(declaredProductReceived + itemAllocated, 2)
-  const shippingReceived = roundToScale(declaredShippingReceived + shippingTotal, 2)
-  const salesTotal = roundToScale(declaredSalesTotal + itemAllocated + shippingTotal, 2)
+  const productReceived = roundToScale(declaredProductReceived + itemAllocated, 4)
+  const shippingReceived = roundToScale(declaredShippingReceived + shippingTotal, 4)
+  const salesTotal = roundToScale(declaredSalesTotal + itemAllocated + shippingTotal, 4)
 
   return {
     receivable,
     productReceived,
     shippingReceived,
     salesTotal,
-    difference: Math.round((receivable - salesTotal) * 100) / 100,
+    difference: Math.round((receivable - salesTotal) * 10000) / 10000,
   }
 }
 
@@ -216,7 +216,7 @@ export interface MergedBusinessDailyItem {
 }
 
 export function isMergedBusinessDailyItemFullyPaid(item: MergedBusinessDailyItem) {
-  const productReceivable = roundToScale(item.quantity * item.unit_price, 2)
+  const productReceivable = roundToScale(item.quantity * item.unit_price, 4)
   return item.product_received_amount >= productReceivable
 }
 
@@ -250,13 +250,13 @@ export function mergeBusinessDailyItems(
         sum + (item.logistics_fee_amount === null ? 0 : Number(item.logistics_fee_amount)),
       0,
     ),
-    2,
+    4,
   )
   const declaredShippingReceived =
     order.total_shipping_received_amount === null
       ? Number(order.shipping_fee)
       : Number(order.total_shipping_received_amount)
-  const shippingOverrideDelta = roundToScale(declaredShippingReceived - itemFeeSum, 2)
+  const shippingOverrideDelta = roundToScale(declaredShippingReceived - itemFeeSum, 4)
 
   return [...groups.values()].map((group, index) => {
     const first = group[0]
@@ -279,7 +279,7 @@ export function mergeBusinessDailyItems(
             : Number(item.product_received_amount)),
         0,
       ) + groupItemAllocated,
-      2,
+      4,
     )
     const logisticsFees = group.map((item) =>
       item.logistics_fee_amount === null ? null : Number(item.logistics_fee_amount),
@@ -287,13 +287,13 @@ export function mergeBusinessDailyItems(
     const declaredLogisticsFee = logisticsFees.some((value) => value !== null)
       ? roundToScale(
           logisticsFees.reduce<number>((sum, value) => sum + (value ?? 0), 0),
-          2,
+          4,
         )
       : null
     const firstRowShippingExtra = groupShippingAllocated + (index === 0 ? shippingOverrideDelta : 0)
     const logisticsFee =
       firstRowShippingExtra !== 0
-        ? roundToScale((declaredLogisticsFee ?? 0) + firstRowShippingExtra, 2)
+        ? roundToScale((declaredLogisticsFee ?? 0) + firstRowShippingExtra, 4)
         : declaredLogisticsFee
     const salesTotal = roundToScale(
       group.reduce(
@@ -304,7 +304,7 @@ export function mergeBusinessDailyItems(
             : Number(item.sales_total_amount)),
         0,
       ) + groupItemAllocated + groupShippingAllocated + (index === 0 ? shippingOverrideDelta : 0),
-      2,
+      4,
     )
     const netShipped = group.reduce(
       (sum, item) => sum + getBusinessOrderItemNetShipped(order, item),
@@ -335,8 +335,7 @@ export function mergeBusinessDailyItems(
 export function formatMergedBusinessDailyShippingProgress(
   merged: MergedBusinessDailyItem,
 ): string {
-  const formatQuantity = (value: number) =>
-    value.toLocaleString('zh-CN', { maximumFractionDigits: 4 })
+  const formatQuantity = (value: number) => formatAmount(value)
   return `已发 ${formatQuantity(merged.net_shipped)} / ${formatQuantity(merged.quantity)}`
 }
 
@@ -381,8 +380,7 @@ export function formatBusinessDailyShippingProgress(
   item: BusinessOrderItem,
 ) {
   const netShipped = getBusinessOrderItemNetShipped(order, item)
-  const formatQuantity = (value: number) =>
-    value.toLocaleString('zh-CN', { maximumFractionDigits: 4 })
+  const formatQuantity = (value: number) => formatAmount(value)
   return `已发 ${formatQuantity(netShipped)} / ${formatQuantity(Number(item.quantity))}`
 }
 

@@ -150,7 +150,7 @@ function refineDailyItemFields(
     })
     return
   }
-  const automaticProductReceived = roundToScale(item.quantity * item.unit_price, 2)
+  const automaticProductReceived = roundToScale(item.quantity * item.unit_price, 4)
   if (
     !item.product_received_overridden &&
     item.product_received_amount !== automaticProductReceived
@@ -163,7 +163,7 @@ function refineDailyItemFields(
   }
   const automaticSalesTotal = roundToScale(
     Number(item.product_received_amount) + Number(item.logistics_fee_amount),
-    2,
+    4,
   )
   if (!item.sales_total_overridden && item.sales_total_amount !== automaticSalesTotal) {
     ctx.addIssue({
@@ -316,7 +316,7 @@ export const businessOrderInputSchema = z
         seenItemIds.add(item.order_item_id)
       }
 
-      const automaticProductReceived = roundToScale(item.quantity * item.unit_price, 2)
+      const automaticProductReceived = roundToScale(item.quantity * item.unit_price, 4)
       if (!item.product_received_overridden && item.product_received_amount !== automaticProductReceived) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -326,7 +326,7 @@ export const businessOrderInputSchema = z
       }
       const automaticSalesTotal = roundToScale(
         item.product_received_amount + item.logistics_fee_amount,
-        2,
+        4,
       )
       if (!item.sales_total_overridden && item.sales_total_amount !== automaticSalesTotal) {
         ctx.addIssue({
@@ -357,7 +357,7 @@ export const businessOrderInputSchema = z
     }
 
     const itemsSubtotal = value.items.reduce(
-      (sum, item) => sum + roundToScale(item.quantity * item.unit_price, 2),
+      (sum, item) => sum + roundToScale(item.quantity * item.unit_price, 4),
       0,
     )
     if (itemsSubtotal > MAX_AMOUNT || itemsSubtotal + value.shipping_fee > MAX_AMOUNT) {
@@ -370,15 +370,15 @@ export const businessOrderInputSchema = z
 
     const productTotal = roundToScale(
       value.items.reduce((sum, item) => sum + item.product_received_amount, 0),
-      2,
+      4,
     )
     const shippingTotal = roundToScale(
       value.items.reduce((sum, item) => sum + item.logistics_fee_amount, 0),
-      2,
+      4,
     )
     const salesTotal = roundToScale(
       value.items.reduce((sum, item) => sum + item.sales_total_amount, 0),
-      2,
+      4,
     )
     if (!value.total_product_received_overridden && value.total_product_received_amount !== productTotal) {
       ctx.addIssue({

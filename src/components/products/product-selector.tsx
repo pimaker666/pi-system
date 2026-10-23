@@ -482,7 +482,7 @@ export function ProductSelector({
               <div className="flex flex-1 items-center gap-1">
                 <Input
                   type="number"
-                  step="0.01"
+                  step="0.0001"
                   min={0}
                   value={bulkPrice}
                   placeholder={`统一单价 (${currency})`}
@@ -608,7 +608,7 @@ export function ProductSelector({
                     <label className="text-xs text-muted-foreground">单价 ({item.currency})</label>
                     <Input
                       type="number"
-                      step="0.01"
+                      step="0.0001"
                       min={0}
                       value={item.unit_price ?? ''}
                       placeholder="填写单价"

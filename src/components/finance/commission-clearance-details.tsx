@@ -27,6 +27,7 @@ import {
   markBusinessOrderCommissionRejectionsRead,
   withdrawBusinessOrderCommissionClearance,
 } from '@/lib/actions/commission'
+import { formatAmount } from '@/lib/utils'
 import type { BusinessOrderCommissionClearanceDetail, CommissionClearanceStatus } from '@/types'
 
 function statusLabel(status: CommissionClearanceStatus) {
@@ -259,7 +260,7 @@ export function CommissionClearanceDetails({ rows }: { rows: BusinessOrderCommis
                       {row.product_sku && <div className="text-xs text-muted-foreground">{row.product_sku}</div>}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {row.quantity.toLocaleString('zh-CN', { maximumFractionDigits: 4 })}
+                      {formatAmount(row.quantity)}
                     </TableCell>
                     <TableCell className="tabular-nums">{row.period}</TableCell>
                     <TableCell>

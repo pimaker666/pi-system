@@ -44,7 +44,7 @@ import {
 import { CustomerRowActions } from './customer-row-actions'
 import { CountryFlag } from '@/components/shared/country-flag'
 import { formatCountryName } from '@/lib/country-flags'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatAmount as formatNumber } from '@/lib/utils'
 import {
   bulkTransferCustomers,
   bulkCopyCustomers,
@@ -74,10 +74,7 @@ const KEEP = '__keep__'
 const NO_GROUP = '__none__'
 
 function formatAmount(amount: number, currency: 'CNY' | 'USD') {
-  return `${currency} ${amount.toLocaleString('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`
+  return `${currency} ${formatNumber(amount)}`
 }
 
 export function CustomerTable({

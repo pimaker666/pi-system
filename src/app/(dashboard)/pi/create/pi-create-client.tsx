@@ -181,7 +181,7 @@ export function PiCreateClient({
               <Input
                 id="tax_rate"
                 type="number"
-                step="0.01"
+                step="0.0001"
                 min={0}
                 value={charges.tax_rate}
                 onChange={(e) => setCharges({ tax_rate: Number(e.target.value) || 0 })}
@@ -192,7 +192,7 @@ export function PiCreateClient({
               <Input
                 id="shipping_fee"
                 type="number"
-                step="0.01"
+                step="0.0001"
                 min={0}
                 value={charges.shipping_fee}
                 onChange={(e) => setCharges({ shipping_fee: Number(e.target.value) || 0 })}
@@ -203,7 +203,7 @@ export function PiCreateClient({
               <Input
                 id="discount"
                 type="number"
-                step="0.01"
+                step="0.0001"
                 min={0}
                 value={charges.discount}
                 onChange={(e) => setCharges({ discount: Number(e.target.value) || 0 })}

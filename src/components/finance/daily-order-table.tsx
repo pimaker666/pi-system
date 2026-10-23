@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getDailyOrderScreenshotUrl, voidDailyOrder } from '@/lib/actions/daily-orders'
 import { formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
-import { displayProfileName } from '@/lib/utils'
+import { displayProfileName, formatAmount } from '@/lib/utils'
 import type { DailyOrder } from '@/types'
 
 interface DailyOrderGroup {
@@ -133,7 +133,7 @@ export function DailyOrderTable({ orders, readOnly = false }: { orders: DailyOrd
                   )}
                   <TableCell>{SHIPPING_LABELS[order.shipping_category]}</TableCell>
                   <TableCell><div>{order.product_name_snapshot}</div><div className="text-xs text-muted-foreground">{order.product_sku_snapshot}</div></TableCell>
-                  <TableCell className="tabular-nums">{Number(order.quantity).toLocaleString()}</TableCell>
+                  <TableCell className="tabular-nums">{formatAmount(Number(order.quantity))}</TableCell>
                   <TableCell>{formatDailyMoney(order.sales_unit_price_amount, order.sales_unit_price_currency)}</TableCell>
                   <TableCell>{formatDailyMoney(order.product_received_amount, order.product_received_currency)}</TableCell>
                   <TableCell>{formatDailyMoney(order.logistics_fee_amount, order.logistics_fee_currency)}</TableCell>

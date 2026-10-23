@@ -177,7 +177,7 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
                   name="amount_original"
                   type="number"
                   min="0.01"
-                  step="0.01"
+                  step="0.0001"
                   required
                 />
               </div>
@@ -206,8 +206,8 @@ export function PiCostManager({ orders, costs }: PiCostManagerProps) {
                   id="exchange_rate_to_cny"
                   name="exchange_rate_to_cny"
                   type="number"
-                  min="0.00000001"
-                  step="0.00000001"
+                  min="0"
+                  step="0.0001"
                   value={exchangeRate}
                   onChange={(event) => setExchangeRate(event.target.value)}
                   readOnly={currency === 'CNY'}

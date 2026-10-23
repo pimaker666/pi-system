@@ -33,7 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatAmount } from '@/lib/utils'
 import { getPiItemsForWeight, createWeightCalc } from '@/lib/actions/weight'
 import type { Product, ProductGroup, WeightCalcLineItem } from '@/types'
 
@@ -49,15 +49,14 @@ const NO_GROUP = '__none__'
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** Weight in grams → KG string with up to 3 decimals, trailing zeros trimmed. */
+/** Weight in grams → KG string, default 2 decimals, up to 4 kept. */
 function gToKg(grams: number): string {
-  const kg = grams / 1000
-  return kg.toLocaleString('en-US', { maximumFractionDigits: 3 })
+  return formatAmount(grams / 1000)
 }
 
-/** Plain number formatter with up to 2 decimals. */
+/** Plain number formatter, default 2 decimals, up to 4 kept. */
 function fmtNum(n: number): string {
-  return n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+  return formatAmount(n)
 }
 
 export function WeightCalcClient({

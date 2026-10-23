@@ -19,7 +19,7 @@ import {
   listBusinessCustomProductsLibrary,
   setBusinessCustomProductState,
 } from '@/lib/actions/business-orders'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, formatAmount } from '@/lib/utils'
 import type {
   BusinessCustomProductLibraryItem,
   BusinessCustomProductListItem,
@@ -268,7 +268,7 @@ export function BusinessCustomProductLibrary({
                   <div className="space-y-3 rounded-md border p-3">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <div className="font-medium">下单明细</div>
-                      <div className="text-xs text-muted-foreground">累计下单数量 {product.total_order_quantity.toLocaleString('zh-CN')}</div>
+                      <div className="text-xs text-muted-foreground">累计下单数量 {formatAmount(product.total_order_quantity)}</div>
                     </div>
                     {product.total_order_amounts.length > 0 && (
                       <div className="flex flex-wrap gap-x-3 gap-y-1 text-sm tabular-nums">
@@ -288,7 +288,7 @@ export function BusinessCustomProductLibrary({
                               <div className="min-w-0 flex-1">
                                 <div className="font-medium">{group.code || '未填写编码'}</div>
                                 <div className="mt-0.5 text-xs text-muted-foreground">
-                                  累计 {group.quantity.toLocaleString('zh-CN')} {group.unit || ''}
+                                  累计 {formatAmount(group.quantity)} {group.unit || ''}
                                   {Array.from(group.amounts.entries()).map(([currency, amount]) => ` · ${formatCurrency(amount, currency)}`).join('')}
                                 </div>
                               </div>
@@ -296,7 +296,7 @@ export function BusinessCustomProductLibrary({
                             <div className="mt-2 overflow-x-auto">
                               <table className="w-full min-w-[460px] text-left text-xs">
                                 <thead className="text-muted-foreground"><tr><th className="pb-1 font-medium">下单时间</th><th className="pb-1 font-medium">订单号</th><th className="pb-1 text-right font-medium">下单数量</th><th className="pb-1 text-right font-medium">下单金额</th></tr></thead>
-                                <tbody>{group.orders.map((order, index) => <tr key={`${order.order_number}-${order.order_date}-${index}`} className="border-t"><td className="py-1.5">{order.order_date}</td><td className="py-1.5">{order.external_order_number || order.order_number}</td><td className="py-1.5 text-right tabular-nums">{Number(order.quantity).toLocaleString('zh-CN')} {order.unit || ''}</td><td className="py-1.5 text-right tabular-nums">{formatCurrency(Number(order.order_amount), order.currency)}</td></tr>)}</tbody>
+                                <tbody>{group.orders.map((order, index) => <tr key={`${order.order_number}-${order.order_date}-${index}`} className="border-t"><td className="py-1.5">{order.order_date}</td><td className="py-1.5">{order.external_order_number || order.order_number}</td><td className="py-1.5 text-right tabular-nums">{formatAmount(Number(order.quantity))} {order.unit || ''}</td><td className="py-1.5 text-right tabular-nums">{formatCurrency(Number(order.order_amount), order.currency)}</td></tr>)}</tbody>
                               </table>
                             </div>
                           </div>

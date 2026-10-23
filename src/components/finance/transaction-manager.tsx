@@ -127,7 +127,7 @@ export function TransactionManager({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="amount_original">原币金额</Label>
-                <Input id="amount_original" name="amount_original" type="number" min="0.01" step="0.01" required />
+                <Input id="amount_original" name="amount_original" type="number" min="0.0001" step="0.0001" required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="currency">币种</Label>
@@ -154,9 +154,9 @@ export function TransactionManager({
                   id="exchange_rate_to_cny"
                   name="exchange_rate_to_cny"
                   type="number"
-                  min="0.00000001"
+                  min="0"
                   max="1000000"
-                  step="0.00000001"
+                  step="0.0001"
                   value={exchangeRate}
                   onChange={(event) => setExchangeRate(event.target.value)}
                   readOnly={currency === 'CNY'}

@@ -185,7 +185,7 @@ export function ProductForm({
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="unit_price">单价</Label>
-          <Input id="unit_price" type="number" step="0.01" {...register('unit_price')} />
+          <Input id="unit_price" type="number" step="0.0001" {...register('unit_price')} />
           {errors.unit_price && (
             <p className="text-sm text-destructive">{errors.unit_price.message}</p>
           )}

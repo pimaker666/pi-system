@@ -33,7 +33,7 @@ import {
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
 import { useFileDrop, useFilePaste } from '@/lib/hooks/use-file-drop'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatAmount } from '@/lib/utils'
 import type {
   BusinessOrder,
   BusinessOrderItem,
@@ -67,7 +67,7 @@ function newUuid() {
 }
 
 function formatQuantity(value: number) {
-  return Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 4 })
+  return formatAmount(Number(value))
 }
 
 export function BusinessShipmentManager({

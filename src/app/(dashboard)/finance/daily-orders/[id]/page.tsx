@@ -48,7 +48,7 @@ import { PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { formatCny } from '@/lib/finance'
 import { toImageSrc } from '@/lib/supabase/image'
 import { createClient } from '@/lib/supabase/server'
-import { formatCurrency, formatDate, displayProfileName } from '@/lib/utils'
+import { formatCurrency, formatDate, displayProfileName, formatAmount } from '@/lib/utils'
 import type {
   BusinessLifecycleAuditLog,
   BusinessOrderAuditLog,
@@ -465,7 +465,7 @@ export default async function BusinessOrderDetailPage({
               <div className="flex justify-between"><span className="text-muted-foreground">产品小计</span><span>{formatCurrency(Number(order.items_subtotal), order.currency)}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">运费</span><span>{formatCurrency(Number(order.shipping_fee), order.currency)}</span></div>
               <div className="flex justify-between border-t pt-2 text-base font-semibold"><span>订单应收</span><span>{formatCurrency(Number(order.total_amount), order.currency)}</span></div>
-              <div className="flex justify-between"><span className="text-muted-foreground">兑人民币汇率</span><span>{order.exchange_rate_to_cny === null ? '—' : Number(order.exchange_rate_to_cny).toLocaleString('zh-CN', { maximumFractionDigits: 8 })}</span></div>
+              <div className="flex justify-between"><span className="text-muted-foreground">兑人民币汇率</span><span>{order.exchange_rate_to_cny === null ? '—' : Number(order.exchange_rate_to_cny).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</span></div>
               <div className="flex justify-between font-medium"><span>折合人民币</span><span>{order.total_cny === null ? '—' : formatCny(Number(order.total_cny))}</span></div>
               {hasDailyFields && (
                 <div className="space-y-2 border-t pt-2">
@@ -592,7 +592,7 @@ export default async function BusinessOrderDetailPage({
                           <span className="pl-14 text-xs text-muted-foreground">同上</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">{Number(item.quantity).toLocaleString('zh-CN')}</TableCell>
+                      <TableCell className="text-right tabular-nums">{formatAmount(Number(item.quantity))}</TableCell>
                       <TableCell className="text-right tabular-nums">{formatCurrency(Number(item.unit_price), order.currency)}</TableCell>
                       <TableCell className="text-right font-medium tabular-nums">{formatCurrency(Number(item.line_amount), order.currency)}</TableCell>
                       {hasDailyFields && (
@@ -685,7 +685,7 @@ export default async function BusinessOrderDetailPage({
                           </span>
                         </div>
                         <div className="tabular-nums">
-                          累计数量 {group.quantity.toLocaleString('zh-CN')} {group.unit}
+                          累计数量 {formatAmount(group.quantity)} {group.unit}
                           <span className="mx-2 text-muted-foreground">·</span>
                           累计金额 {formatCurrency(group.amount, order.currency)}
                         </div>

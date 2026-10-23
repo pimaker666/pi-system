@@ -430,11 +430,11 @@ export function BusinessOrderPaymentManager({
     const itemRows = rows.map((row) => {
       const attributed = Math.min(toSubtract, row.outstanding)
       toSubtract -= attributed
-      return { item: row.item, outstanding: Math.round((row.outstanding - attributed) * 100) / 100 }
+      return { item: row.item, outstanding: Math.round((row.outstanding - attributed) * 10000) / 10000 }
     })
     return {
       itemRows,
-      shippingOutstanding: Math.round((shippingRaw - toSubtract) * 100) / 100,
+      shippingOutstanding: Math.round((shippingRaw - toSubtract) * 10000) / 10000,
     }
   }, [itemAllocationByItem, orderDetail, orderItems, orderId, settlement, shippingAllocationByOrder])
 
@@ -1081,8 +1081,8 @@ export function BusinessOrderPaymentManager({
                 <Input
                   id="transfer_amount"
                   type="number"
-                  min="0.01"
-                  step="0.01"
+                  min="0.0001"
+                  step="0.0001"
                   value={amount}
                   onChange={(event) => setAmount(event.target.value)}
                   required
@@ -1090,7 +1090,7 @@ export function BusinessOrderPaymentManager({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="transfer_rate">兑人民币汇率</Label>
-                <Input id="transfer_rate" type="number" min="0.00000001" step="0.00000001" value={exchangeRate} onChange={(event) => setExchangeRate(event.target.value)} disabled={currency === 'CNY'} />
+                <Input id="transfer_rate" type="number" min="0" step="0.0001" value={exchangeRate} onChange={(event) => setExchangeRate(event.target.value)} disabled={currency === 'CNY'} />
                 <p className="text-xs text-muted-foreground">选填，留空则该笔转账暂不折算人民币</p>
               </div>
               <div className="space-y-2">
@@ -1197,7 +1197,7 @@ export function BusinessOrderPaymentManager({
                         type="number"
                         min="0"
                         max={outstanding}
-                        step="0.01"
+                        step="0.0001"
                         placeholder="分摊金额"
                         value={allocationDraft[allocationKey(orderId, 'item', item.id)] ?? ''}
                         onChange={(event) =>
@@ -1221,7 +1221,7 @@ export function BusinessOrderPaymentManager({
                       type="number"
                       min="0"
                       max={currentOrderAllocationRows.shippingOutstanding}
-                      step="0.01"
+                      step="0.0001"
                       placeholder="分摊金额"
                       value={allocationDraft[allocationKey(orderId, 'shipping')] ?? ''}
                       onChange={(event) =>
@@ -1245,7 +1245,7 @@ export function BusinessOrderPaymentManager({
                     type="number"
                     min="0"
                     max={orderOutstandingAmount(order)}
-                    step="0.01"
+                    step="0.0001"
                     placeholder="分摊金额"
                     value={allocationDraft[allocationKey(order.id, 'order')] ?? ''}
                     onChange={(event) =>
@@ -1360,7 +1360,7 @@ export function BusinessOrderPaymentManager({
                       type="number"
                       min="0"
                       max={Math.min(outstanding, allocatingTransfer ? transferAvailable(allocatingTransfer) : 0)}
-                      step="0.01"
+                      step="0.0001"
                       placeholder="分摊金额"
                       value={extraAllocationDraft[allocationKey(orderId, 'item', item.id)] ?? ''}
                       onChange={(event) =>
@@ -1384,7 +1384,7 @@ export function BusinessOrderPaymentManager({
                     type="number"
                     min="0"
                     max={Math.min(currentOrderAllocationRows.shippingOutstanding, allocatingTransfer ? transferAvailable(allocatingTransfer) : 0)}
-                    step="0.01"
+                    step="0.0001"
                     placeholder="分摊金额"
                     value={extraAllocationDraft[allocationKey(orderId, 'shipping')] ?? ''}
                     onChange={(event) =>
@@ -1408,7 +1408,7 @@ export function BusinessOrderPaymentManager({
                   type="number"
                   min="0"
                   max={Math.min(orderOutstandingAmount(order), allocatingTransfer ? transferAvailable(allocatingTransfer) : 0)}
-                  step="0.01"
+                  step="0.0001"
                   placeholder="分摊金额"
                   value={extraAllocationDraft[allocationKey(order.id, 'order')] ?? ''}
                   onChange={(event) =>

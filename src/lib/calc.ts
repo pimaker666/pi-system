@@ -3,9 +3,9 @@ import type { PiLineItem, PiCharges, PiTotals } from '@/types'
 /** Minimal fields calcPiTotals needs from a line. */
 export type PiTotalsLine = Pick<PiLineItem, 'unit_price' | 'quantity'>
 
-/** Round to 2 decimal places avoiding float drift. */
+/** Round to 4 decimal places avoiding float drift（与 0108 金额列 scale=4 一致）. */
 export function round2(n: number): number {
-  return Math.round((n + Number.EPSILON) * 100) / 100
+  return Math.round((n + Number.EPSILON) * 10000) / 10000
 }
 
 export function calcLineTotal(

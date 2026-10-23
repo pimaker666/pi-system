@@ -44,14 +44,25 @@ const CURRENCY_LOCALE: Record<string, string> = {
   JPY: 'ja-JP',
 }
 
+// 全站数字口径：默认展示 2 位小数；输入支持 4 位，带 3-4 位小数的值按实际显示。
+export function formatAmount(amount: number) {
+  if (!Number.isFinite(amount)) return '—'
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(amount)
+}
+
 export function formatCurrency(amount: number, currency = 'USD') {
   try {
     return new Intl.NumberFormat(CURRENCY_LOCALE[currency] ?? 'en-US', {
       style: 'currency',
       currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
     }).format(amount)
   } catch {
-    return `${currency} ${amount.toFixed(2)}`
+    return `${currency} ${formatAmount(amount)}`
   }
 }
 

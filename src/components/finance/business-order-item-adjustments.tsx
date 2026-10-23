@@ -222,7 +222,7 @@ export function BusinessOrderItemAdjustments({
               <Input
                 type="number"
                 min="0"
-                step="any"
+                step="0.0001"
                 value={quantity}
                 onChange={(event) => setQuantity(event.target.value)}
                 disabled={pending}
@@ -233,7 +233,7 @@ export function BusinessOrderItemAdjustments({
               <Input
                 type="number"
                 min="0"
-                step="0.01"
+                step="0.0001"
                 value={unitPrice}
                 onChange={(event) => setUnitPrice(event.target.value)}
                 disabled={pending}
@@ -246,7 +246,7 @@ export function BusinessOrderItemAdjustments({
                   <Input
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="0.0001"
                     value={receivedAmount}
                     onChange={(event) => setReceivedAmount(event.target.value)}
                     placeholder="默认=数量×单价"
@@ -258,7 +258,7 @@ export function BusinessOrderItemAdjustments({
                   <Input
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="0.0001"
                     value={logisticsFee}
                     onChange={(event) => setLogisticsFee(event.target.value)}
                     placeholder="默认 0"

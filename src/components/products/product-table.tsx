@@ -713,7 +713,7 @@ export function ProductTable({
             <Input
               id="bulk-price"
               type="number"
-              step="0.01"
+              step="0.0001"
               min="0"
               value={priceValue}
               onChange={(e) => setPriceValue(e.target.value)}

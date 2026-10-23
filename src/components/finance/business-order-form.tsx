@@ -45,7 +45,7 @@ import { useImageUpload } from '@/lib/hooks/use-image-upload'
 import { useFilePaste } from '@/lib/hooks/use-file-drop'
 import { getBusinessDateKey } from '@/lib/business-orders'
 import { createClient } from '@/lib/supabase/client'
-import { cn, displayProfileName, formatCurrency, roundToScale } from '@/lib/utils'
+import { cn, displayProfileName, formatCurrency, formatAmount, roundToScale } from '@/lib/utils'
 import type {
   BusinessCustomProductListItem,
   BusinessFulfillmentType,
@@ -160,7 +160,7 @@ function newLocalId() {
 }
 
 function roundMoney(value: number) {
-  return roundToScale(value, 2)
+  return roundToScale(value, 4)
 }
 
 function derivedOrderAmount(quantity: number | '', unitPrice: number | '') {
@@ -1096,9 +1096,9 @@ export function BusinessOrderForm({
               <Input
                 id="exchange_rate"
                 type="number"
-                min="0.00000001"
+                min="0"
                 max="1000000"
-                step="0.00000001"
+                step="0.0001"
                 value={currency === 'CNY' ? '1' : exchangeRate}
                 onChange={(event) => setExchangeRate(event.target.value)}
                 readOnly={currency === 'CNY'}
@@ -1345,9 +1345,9 @@ export function BusinessOrderForm({
                           )}
                           {constraint.shippedQuantity > 0 && (
                             <div>
-                              累计发货 {constraint.shippedQuantity.toLocaleString('zh-CN')}、累计退货{' '}
-                              {constraint.returnedQuantity.toLocaleString('zh-CN')}，数量不得低于净已发{' '}
-                              {constraint.netShippedQuantity.toLocaleString('zh-CN')}。
+                              累计发货 {formatAmount(constraint.shippedQuantity)}、累计退货{' '}
+                              {formatAmount(constraint.returnedQuantity)}，数量不得低于净已发{' '}
+                              {formatAmount(constraint.netShippedQuantity)}。
                             </div>
                           )}
                         </div>
@@ -1371,7 +1371,7 @@ export function BusinessOrderForm({
                         <Input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="0.0001"
                           value={item.unit_price}
                           onChange={(event) => updateItem(item.key, 'unit_price', event.target.value)}
                           disabled={unitPriceLocked}
@@ -1393,7 +1393,7 @@ export function BusinessOrderForm({
                         <Input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="0.0001"
                           value={item.received_amount}
                           onChange={(event) => updateReceivedAmount(item.key, event.target.value)}
                           placeholder={
@@ -1421,7 +1421,7 @@ export function BusinessOrderForm({
                         <Label>未收尾款（{currency}）</Label>
                         <Input
                           type="number"
-                          step="0.01"
+                          step="0.0001"
                           value={item.outstanding_amount}
                           onChange={(event) => updateOutstandingAmount(item.key, event.target.value)}
                         />
@@ -1470,7 +1470,7 @@ export function BusinessOrderForm({
                   id="shipping_fee"
                   type="number"
                   min="0"
-                  step="0.01"
+                  step="0.0001"
                   value={shippingFee}
                   onChange={(event) => setShippingFee(event.target.value)}
                 />
@@ -1513,7 +1513,7 @@ export function BusinessOrderForm({
               <Input
                 type="number"
                 min="0"
-                step="0.01"
+                step="0.0001"
                 value={effectiveProductTotal}
                 onChange={(event) => setTotalProductOverride(Number(event.target.value))}
                 disabled={pending || lifecycleLocked}
@@ -1539,7 +1539,7 @@ export function BusinessOrderForm({
               <Input
                 type="number"
                 min="0"
-                step="0.01"
+                step="0.0001"
                 value={totalShippingOverride ?? ''}
                 placeholder={String(automaticShippingTotal)}
                 onChange={(event) => setTotalShippingOverride(Number(event.target.value))}

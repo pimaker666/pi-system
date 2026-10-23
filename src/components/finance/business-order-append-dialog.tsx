@@ -929,7 +929,7 @@ export function BusinessOrderAppendDialog({
                       <Input
                         type="number"
                         min="0"
-                        step="any"
+                        step="0.0001"
                         value={row.quantity}
                         onChange={(event) => updateQuantity(row.key, event.target.value)}
                         disabled={pending}
@@ -940,7 +940,7 @@ export function BusinessOrderAppendDialog({
                       <Input
                         type="number"
                         min="0"
-                        step="0.01"
+                        step="0.0001"
                         value={row.unitPrice}
                         onChange={(event) => updateUnitPrice(row.key, event.target.value)}
                         disabled={pending}
@@ -986,7 +986,7 @@ export function BusinessOrderAppendDialog({
                         <Input
                           type="number"
                           min="0"
-                          step="0.01"
+                          step="0.0001"
                           value={row.receivedAmount}
                           onChange={(event) => updateReceivedAmount(row.key, event.target.value)}
                           placeholder="自动计算，可修改"
@@ -997,7 +997,7 @@ export function BusinessOrderAppendDialog({
                         <Label>未收尾款（{currency}）</Label>
                         <Input
                           type="number"
-                          step="0.01"
+                          step="0.0001"
                           value={row.outstandingAmount}
                           onChange={(event) => updateOutstandingAmount(row.key, event.target.value)}
                           disabled={pending}
@@ -1189,7 +1189,7 @@ export function BusinessOrderAppendDialog({
                       <Input
                         type="number"
                         min="0"
-                        step="0.01"
+                        step="0.0001"
                         value={row.unitPrice}
                         onChange={(event) => updateUnitPrice(row.key, event.target.value)}
                         disabled={pending}
@@ -1211,7 +1211,7 @@ export function BusinessOrderAppendDialog({
                       <Input
                         type="number"
                         min="0"
-                        step="0.01"
+                        step="0.0001"
                         value={row.receivedAmount}
                         onChange={(event) => updateReceivedAmount(row.key, event.target.value)}
                         placeholder="可留空"
@@ -1222,7 +1222,7 @@ export function BusinessOrderAppendDialog({
                       <Label>未收尾款（{currency}）</Label>
                       <Input
                         type="number"
-                        step="0.01"
+                        step="0.0001"
                         value={row.outstandingAmount}
                         onChange={(event) => updateOutstandingAmount(row.key, event.target.value)}
                         disabled={pending}

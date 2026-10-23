@@ -82,7 +82,7 @@ function numericValue(value: string) {
 }
 
 function roundMoney(value: number) {
-  return roundToScale(value, 2)
+  return roundToScale(value, 4)
 }
 
 function derivedOrderAmount(quantity: string, unitPrice: string) {
@@ -402,7 +402,7 @@ export function BusinessCustomProductDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${mode}_custom_product_price`}>销售单价（{currency}）</Label>
-              <Input id={`${mode}_custom_product_price`} type="number" min="0" step="0.01" value={defaultUnitPrice} onChange={(event) => changeUnitPrice(event.target.value)} required />
+              <Input id={`${mode}_custom_product_price`} type="number" min="0" step="0.0001" value={defaultUnitPrice} onChange={(event) => changeUnitPrice(event.target.value)} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${mode}_custom_product_order_amount`}>订单金额（{currency}）</Label>
@@ -411,11 +411,11 @@ export function BusinessCustomProductDialog({
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${mode}_custom_product_received`}>实收金额（{currency}）</Label>
-              <Input id={`${mode}_custom_product_received`} type="number" min="0" step="0.01" value={receivedAmount} onChange={(event) => changeReceivedAmount(event.target.value)} placeholder="可留空" />
+              <Input id={`${mode}_custom_product_received`} type="number" min="0" step="0.0001" value={receivedAmount} onChange={(event) => changeReceivedAmount(event.target.value)} placeholder="可留空" />
             </div>
             <div className="space-y-2">
               <Label htmlFor={`${mode}_custom_product_outstanding`}>未收尾款（{currency}）</Label>
-              <Input id={`${mode}_custom_product_outstanding`} type="number" step="0.01" value={outstandingAmount} onChange={(event) => changeOutstandingAmount(event.target.value)} />
+              <Input id={`${mode}_custom_product_outstanding`} type="number" step="0.0001" value={outstandingAmount} onChange={(event) => changeOutstandingAmount(event.target.value)} />
               <p className="text-xs text-muted-foreground">订单金额 − 实收金额；修改后会反算实收金额</p>
             </div>
             <div className="space-y-2 sm:col-span-2">
