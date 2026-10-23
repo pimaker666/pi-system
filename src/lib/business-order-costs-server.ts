@@ -291,6 +291,11 @@ export async function fetchBusinessOrderProductCosts(
       const { cost: effectiveCost, overridden, catalogCost } = resolveMergedCost(item)
       const quantity = Number(item.quantity)
       const representativeItemId = item.item_ids[0] ?? order.id
+      // 与台账展示口径一致：财务维护了产品名称才整套换成财务名+财务编号，定制行始终用快照。
+      const displayFinancial =
+        item.daily_shipping_category !== 'custom' && item.product_id
+          ? financials.get(item.product_id)
+          : undefined
 
       result.push({
         order_id: order.id,
@@ -308,8 +313,10 @@ export async function fetchBusinessOrderProductCosts(
         payment_account: order.payment_account,
         shipping_number: order.daily_shipping_number,
         shipping_category: item.daily_shipping_category ?? null,
-        product_name: item.name_snapshot ?? '—',
-        product_sku: item.display_sku ?? item.sku_snapshot ?? '',
+        product_name: displayFinancial?.product_name ?? item.name_snapshot ?? '—',
+        product_sku: displayFinancial?.product_name
+          ? displayFinancial.financial_number || item.sku_snapshot || ''
+          : item.sku_snapshot ?? '',
         image_url: item.image_url_snapshot,
         quantity,
         shipping_progress: formatMergedBusinessDailyShippingProgress(item),

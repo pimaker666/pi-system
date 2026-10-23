@@ -304,6 +304,31 @@ async function fetchAllCommissionClearances(supabase: SupabaseClient): Promise<C
   }
 }
 
+interface ProductFinancialLabelRow {
+  product_id: string
+  financial_number: string | null
+  product_name: string | null
+}
+
+/** 产品财务标签；销售账号受 RLS 读到空表，行展示自然回落下单快照。 */
+async function fetchAllProductFinancialLabels(
+  supabase: SupabaseClient,
+): Promise<ProductFinancialLabelRow[]> {
+  const rows: ProductFinancialLabelRow[] = []
+  const PAGE_SIZE = 1000
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from('product_financials')
+      .select('product_id, financial_number, product_name')
+      .order('product_id')
+      .range(from, from + PAGE_SIZE - 1)
+    if (error) throw new Error(`产品财务资料读取失败：${error.message}`)
+    const page = (data ?? []) as ProductFinancialLabelRow[]
+    rows.push(...page)
+    if (page.length < PAGE_SIZE) return rows
+  }
+}
+
 export async function fetchBusinessOrderCommissionClearanceDetails(
   supabase: SupabaseClient,
 ): Promise<BusinessOrderCommissionClearanceDetail[]> {
@@ -390,7 +415,7 @@ export async function fetchBusinessOrderCommissions(
   customOrderRates: CustomerCustomOrderCommissionRate[]
   defaultFreightCommissionRate: number
 }> {
-  const [allOrders, categoryRates, itemCommissions, orderCommissions, customerTags, customOrderRates, clearances, defaultFreightCommissionRate] = await Promise.all([
+  const [allOrders, categoryRates, itemCommissions, orderCommissions, customerTags, customOrderRates, clearances, defaultFreightCommissionRate, financialLabels] = await Promise.all([
     fetchMatchingOrders(supabase, filters),
     fetchAllCategoryRates(supabase),
     fetchAllItemCommissions(supabase),
@@ -399,6 +424,7 @@ export async function fetchBusinessOrderCommissions(
     fetchAllCustomerCustomOrderCommissionRates(supabase),
     fetchAllCommissionClearances(supabase),
     fetchDefaultFreightCommissionRate(supabase),
+    fetchAllProductFinancialLabels(supabase),
   ])
 
   const categoryRateMap = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
@@ -406,6 +432,7 @@ export async function fetchBusinessOrderCommissions(
   const orderFreightMap = new Map(orderCommissions.map((row) => [row.business_order_id, row]))
   const tagMap = new Map(customerTags.map((tag) => [tag.tag_color.toLowerCase(), tag]))
   const clearanceMap = new Map(clearances.map((row) => [row.business_order_item_id, row]))
+  const financialLabelMap = new Map(financialLabels.map((row) => [row.product_id, row]))
 
   const eligibleOrders = allOrders
     .map((order) => ({
@@ -466,6 +493,11 @@ export async function fetchBusinessOrderCommissions(
     mergedItems.forEach((item, index) => {
       const category = item.daily_shipping_category
       const categoryDefault = category ? categoryRateMap.get(category) ?? null : null
+      // 与台账/成本页展示口径一致：财务维护了产品名称才整套换成财务名+财务编号。
+      const displayFinancial =
+        category !== 'custom' && item.product_id
+          ? financialLabelMap.get(item.product_id)
+          : undefined
       const customOrderRate = commissionCalculable && category === 'custom'
         ? customOrderRates
           .find((rate) => rate.maximum_custom_order_count >= customOrderCount)?.product_commission_rate ?? null
@@ -524,8 +556,10 @@ export async function fetchBusinessOrderCommissions(
         customer_tag_label: tag ? tag.label : null,
         custom_order_count: customOrderCount,
         shipping_category: category,
-        product_name: item.name_snapshot ?? '—',
-        product_sku: item.display_sku ?? item.sku_snapshot ?? '',
+        product_name: displayFinancial?.product_name ?? item.name_snapshot ?? '—',
+        product_sku: displayFinancial?.product_name
+          ? displayFinancial.financial_number || item.sku_snapshot || ''
+          : item.sku_snapshot ?? '',
         image_url: item.image_url_snapshot,
         quantity: Number(item.quantity),
         unit_price: Number(item.unit_price),
