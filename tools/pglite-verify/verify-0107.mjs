@@ -162,21 +162,32 @@ assert((await orderFulfillment(orderB)) === 'custom', 'changing the line back to
 await db.exec(`delete from public.business_order_items where order_id='${orderB}'`)
 assert((await orderFulfillment(orderB)) === 'stock', 'deleting the only custom line flips the order to stock')
 
-// 存量修正语句：把手工标记为 custom 但无定制明细的订单改回 stock。
-await db.exec('alter table public.business_order_items disable trigger trg_business_order_items_sync_fulfillment')
-await db.exec(`update public.business_orders set fulfillment_type='custom' where id='${orderA}'`)
-assert((await orderFulfillment(orderA)) === 'custom', 'legacy setup: order forced to custom while trigger is off')
-await db.exec(`
+// 存量修正语句（与 0107 一致，含作废单排除）：在途单翻回现货，作废单保持原标记。
+const backfillSql = `
   update public.business_orders o
   set fulfillment_type = 'stock'::public.business_fulfillment_type
   where o.fulfillment_type = 'custom'::public.business_fulfillment_type
+    and o.voided_at is null
     and not exists (
       select 1 from public.business_order_items i
       where i.order_id = o.id
         and i.daily_shipping_category = 'custom'
     )
-`)
+`
+await db.exec('alter table public.business_order_items disable trigger trg_business_order_items_sync_fulfillment')
+await db.exec(`update public.business_orders set fulfillment_type='custom' where id='${orderA}'`)
+assert((await orderFulfillment(orderA)) === 'custom', 'legacy setup: order forced to custom while trigger is off')
+await db.exec(backfillSql)
 assert((await orderFulfillment(orderA)) === 'stock', 'the 0107 backfill returns a forced-custom stock-only order to stock')
+
+// 作废单不在存量修正范围：protect_business_order_closure 禁止编辑作废单，统计口径亦排除作废单。
+await db.exec(`update public.business_orders set fulfillment_type='custom' where id='${orderA}'`)
+// set_config 的闸门是事务级的，必须与作废更新同事务执行（与作废 RPC 内部做法一致）。
+await db.exec(`select set_config('app.void_business_order_rpc', 'true', true);
+update public.business_orders set voided_at=now(), voided_by='${adminId}', void_reason='0107 演练作废', version=version+1 where id='${orderA}'`)
+assert(Boolean(await scalar(`select voided_at from public.business_orders where id='${orderA}'`)), 'order voided for the voided-order backfill case')
+await db.exec(backfillSql)
+assert((await orderFulfillment(orderA)) === 'custom', 'the 0107 backfill leaves voided orders untouched')
 await db.exec('alter table public.business_order_items enable trigger trg_business_order_items_sync_fulfillment')
 
 // 客户口径端到端：仅含定制明细行的订单计入定制订单数。
