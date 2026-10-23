@@ -384,6 +384,22 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Daily order item count does not match business order items', '产品明细与订单数据不一致，请刷新页面重试'],
     ['Daily order item override flags are required', '产品明细缺少实收覆盖标记，请刷新页面重试'],
     ['Daily order item does not match business order item', '产品明细与订单行不匹配，请刷新页面重试'],
+    [
+      'Shipped items cannot be removed; void the shipment batch first',
+      '该产品行有未作废的发货记录，不能删除或更换产品；请先撤回对应发货批次',
+    ],
+    [
+      'violates foreign key constraint "business_order_shipment_items_order_item_id_fkey"',
+      '该产品行已被发货批次记录引用，不能删除或更换产品；请保留原产品行',
+    ],
+    [
+      'violates foreign key constraint "business_order_payment_allocations_order_item_id_fkey"',
+      '该产品行已有收款分摊，不能删除或更换产品',
+    ],
+    [
+      'violates foreign key constraint "business_order_return_items_order_item_order_fk"',
+      '该产品行已有退货记录，不能删除或更换产品',
+    ],
   ]
   const mapped = mappings.find(([source]) => message.includes(source))?.[1]
   return mapped ?? `${fallback}：${message}`
