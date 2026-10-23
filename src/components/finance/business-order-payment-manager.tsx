@@ -84,7 +84,9 @@ interface OrderOption {
   completion_gate_version: number
 }
 
-type AllocationRow = BusinessOrderPaymentAllocation
+type AllocationRow = BusinessOrderPaymentAllocation & {
+  order?: { order_number: string } | null
+}
 
 type AllocationTarget = 'order' | 'item' | 'shipping'
 
@@ -244,22 +246,19 @@ export function BusinessOrderPaymentManager({
               .from('business_customer_transfers')
               .select('*')
               .or(`customer_id.eq.${currentCustomerId},order_id.eq.${orderId}`)
-              .eq('currency', currentCurrency)
               .order('received_at', { ascending: false })
           : supabase
               .from('business_customer_transfers')
               .select('*')
               .eq('order_id', orderId)
-              .eq('currency', currentCurrency)
               .order('received_at', { ascending: false }),
         customerScoped
           ? supabase
               .from('business_order_payment_allocations')
               .select(
-                '*, order:business_orders!business_order_payment_allocations_order_id_fkey!inner(customer_id, currency)',
+                '*, order:business_orders!business_order_payment_allocations_order_id_fkey!inner(order_number, customer_id, currency)',
               )
               .eq('order.customer_id', currentCustomerId)
-              .eq('order.currency', currentCurrency)
               .order('created_at', { ascending: false })
           : supabase
               .from('business_order_payment_allocations')
@@ -345,9 +344,34 @@ export function BusinessOrderPaymentManager({
     [allocations, orderId, transfers],
   )
 
+  const orderTransfersByCurrency = useMemo(() => {
+    const groups = new Map<CurrencyCode, BusinessCustomerTransfer[]>()
+    for (const transfer of orderTransfers) {
+      const list = groups.get(transfer.currency) ?? []
+      list.push(transfer)
+      groups.set(transfer.currency, list)
+    }
+    return groups
+  }, [orderTransfers])
+
   const availableBalanceTransfers = transfers
-    .filter((transfer) => !transfer.voided_at && transferAvailable(transfer) > 0.005)
+    .filter(
+      (transfer) =>
+        transfer.currency === currency && !transfer.voided_at && transferAvailable(transfer) > 0.005,
+    )
     .sort((left, right) => left.received_at.localeCompare(right.received_at))
+
+  // 有效已收中不经转账的部分 = 产品行/运费直接实收（建单或编辑时录入）。
+  const directReceivedAmount = (() => {
+    if (!settlement) return 0
+    const allocatedByTransfers = allocations.reduce((sum, allocation) => {
+      if (allocation.voided_at || allocation.order_id !== orderId) return sum
+      const transfer = transferById.get(allocation.transfer_id)
+      if (!transfer || transfer.voided_at) return sum
+      return sum + Number(allocation.amount)
+    }, 0)
+    return Math.max(Number(settlement.allocated_amount) - allocatedByTransfers, 0)
+  })()
 
   const orderById = useMemo(() => new Map(orders.map((order) => [order.id, order])), [orders])
 
@@ -951,100 +975,118 @@ export function BusinessOrderPaymentManager({
         {!loading && !loadError && orderTransfers.length === 0 && (
           <div className="rounded-md border border-dashed py-8 text-center text-sm text-muted-foreground">
             本订单暂无转账
+            {directReceivedAmount > 0.005 && (
+              <div className="mt-1">
+                已收 {formatCurrency(directReceivedAmount, settlement?.currency ?? currency)}
+                为产品行/运费直接实收（建单或编辑订单时录入），不经转账分摊，故无转账记录
+              </div>
+            )}
           </div>
         )}
 
-        {!loading && !loadError && orderTransfers.length > 0 && (
-          <div className="border-t pt-4">
-            <h3 className="mb-3 text-sm font-medium">本订单的 {currency} 转账</h3>
-            <div className="space-y-2">
-              {orderTransfers.map((transfer) => {
-                const available = transferAvailable(transfer)
-                const relatedAllocations = allocations.filter(
-                  (allocation) => allocation.transfer_id === transfer.id,
-                )
-                return (
-                  <div key={transfer.id} className="rounded-md border p-3 text-sm">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium">
-                            {formatCurrency(Number(transfer.amount), transfer.currency)} · {paymentTypeLabel(transfer.payment_type)}
-                          </span>
-                          <Badge variant={transfer.voided_at ? 'secondary' : 'success'}>
-                            {transfer.voided_at ? '已作废' : '有效'}
-                          </Badge>
-                          {!isOrderScoped && !transfer.voided_at && available > 0.005 && (
-                            <Badge variant="outline">预收余额 {formatCurrency(available, transfer.currency)}</Badge>
-                          )}
-                        </div>
-                        <div className="mt-1 text-muted-foreground">
-                          {formatDate(transfer.received_at, true)} · 已分摊 {formatCurrency(transferAllocated(transfer.id), transfer.currency)}
-                        </div>
-                        {relatedAllocations.length > 0 && (
-                          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                            {relatedAllocations.map((allocation) => {
-                              const targetOrder = orderById.get(allocation.order_id)
-                              const voidable =
-                                canManage &&
-                                allocation.order_id === orderId &&
-                                !allocation.voided_at &&
-                                !transfer.voided_at
-                              return (
-                                <span key={allocation.id} className="inline-flex items-center gap-1">
-                                  {targetOrder?.order_number ?? '不可见订单'}
-                                  {allocationTargetSuffix(allocation)} {formatCurrency(Number(allocation.amount), transfer.currency)}
-                                  {allocation.voided_at ? '（已作废）' : ''}
-                                  {voidable && (
-                                    <button
-                                      type="button"
-                                      className="text-destructive hover:underline disabled:opacity-50"
-                                      disabled={pending}
-                                      onClick={() => {
-                                        setVoidReason('')
-                                        setVoidTarget({ kind: 'allocation', item: allocation })
-                                      }}
-                                    >
-                                      撤回分摊
-                                    </button>
-                                  )}
+        {!loading &&
+          !loadError &&
+          (['CNY', 'USD', 'EUR', 'GBP', 'JPY'] as CurrencyCode[])
+            .filter((sectionCurrency) => (orderTransfersByCurrency.get(sectionCurrency)?.length ?? 0) > 0)
+            .map((sectionCurrency) => {
+              const sectionTransfers = orderTransfersByCurrency.get(sectionCurrency) ?? []
+              return (
+                <div key={sectionCurrency} className="border-t pt-4">
+                  <h3 className="mb-3 text-sm font-medium">本订单的 {sectionCurrency} 转账</h3>
+                  <div className="space-y-2">
+                    {sectionTransfers.map((transfer) => {
+                      const available = transferAvailable(transfer)
+                      const relatedAllocations = allocations.filter(
+                        (allocation) => allocation.transfer_id === transfer.id,
+                      )
+                      return (
+                        <div key={transfer.id} className="rounded-md border p-3 text-sm">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium">
+                                  {formatCurrency(Number(transfer.amount), transfer.currency)} · {paymentTypeLabel(transfer.payment_type)}
                                 </span>
-                              )
-                            })}
+                                <Badge variant={transfer.voided_at ? 'secondary' : 'success'}>
+                                  {transfer.voided_at ? '已作废' : '有效'}
+                                </Badge>
+                                {!isOrderScoped && !transfer.voided_at && available > 0.005 && (
+                                  <Badge variant="outline">预收余额 {formatCurrency(available, transfer.currency)}</Badge>
+                                )}
+                              </div>
+                              <div className="mt-1 text-muted-foreground">
+                                {formatDate(transfer.received_at, true)} · 已分摊 {formatCurrency(transferAllocated(transfer.id), transfer.currency)}
+                              </div>
+                              {relatedAllocations.length > 0 && (
+                                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                  {relatedAllocations.map((allocation) => {
+                                    const targetOrder = orderById.get(allocation.order_id)
+                                    const voidable =
+                                      canManage &&
+                                      allocation.order_id === orderId &&
+                                      !allocation.voided_at &&
+                                      !transfer.voided_at
+                                    return (
+                                      <span key={allocation.id} className="inline-flex items-center gap-1">
+                                        {targetOrder?.order_number ?? allocation.order?.order_number ?? '不可见订单'}
+                                        {allocationTargetSuffix(allocation)} {formatCurrency(Number(allocation.amount), transfer.currency)}
+                                        {allocation.voided_at ? '（已作废）' : ''}
+                                        {voidable && (
+                                          <button
+                                            type="button"
+                                            className="text-destructive hover:underline disabled:opacity-50"
+                                            disabled={pending}
+                                            onClick={() => {
+                                              setVoidReason('')
+                                              setVoidTarget({ kind: 'allocation', item: allocation })
+                                            }}
+                                          >
+                                            撤回分摊
+                                          </button>
+                                        )}
+                                      </span>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                              {transfer.void_reason && <div className="mt-1 text-xs text-destructive">作废原因：{transfer.void_reason}</div>}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" disabled={pending} onClick={() => handleViewProof(transfer)}>
+                                <Eye className="h-4 w-4" />凭证
+                              </Button>
+                              {!isOrderScoped &&
+                                canManage &&
+                                transfer.currency === currency &&
+                                !transfer.voided_at &&
+                                available > 0.005 &&
+                                availableOrders.length > 0 && (
+                                  <Button variant="outline" size="sm" disabled={pending} onClick={() => openAllocation(transfer)}>
+                                    <WalletCards className="h-4 w-4" />使用预收款
+                                  </Button>
+                                )}
+                              {canManage && !transfer.voided_at && (
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  disabled={pending}
+                                  onClick={() => {
+                                    setVoidReason('')
+                                    setVoidTarget({ kind: 'transfer', item: transfer })
+                                  }}
+                                >
+                                  作废转账
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                        )}
-                        {transfer.void_reason && <div className="mt-1 text-xs text-destructive">作废原因：{transfer.void_reason}</div>}
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" disabled={pending} onClick={() => handleViewProof(transfer)}>
-                          <Eye className="h-4 w-4" />凭证
-                        </Button>
-                        {!isOrderScoped && canManage && !transfer.voided_at && available > 0.005 && availableOrders.length > 0 && (
-                          <Button variant="outline" size="sm" disabled={pending} onClick={() => openAllocation(transfer)}>
-                            <WalletCards className="h-4 w-4" />使用预收款
-                          </Button>
-                        )}
-                        {canManage && !transfer.voided_at && (
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            disabled={pending}
-                            onClick={() => {
-                              setVoidReason('')
-                              setVoidTarget({ kind: 'transfer', item: transfer })
-                            }}
-                          >
-                            作废转账
-                          </Button>
-                        )}
-                      </div>
-                    </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                )
-              })}
-            </div>
-          </div>
-        )}
+                </div>
+              )
+            })}
       </CardContent>
 
       <Dialog
