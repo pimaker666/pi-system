@@ -145,11 +145,22 @@ export function BusinessDailyOrderTable({
   }
 
   const headCn = (index: number, extra?: string) =>
-    cn('sticky top-0 bg-background', extra, pinnedCol === index ? 'left-0 z-30' : 'z-20')
+    cn(
+      'sticky top-0 border-b border-slate-200 bg-slate-100/95 text-xs font-semibold text-slate-700 backdrop-blur',
+      extra,
+      pinnedCol === index ? 'left-0 z-30 shadow-[4px_0_8px_rgb(15_23_42/0.08)]' : 'z-20',
+    )
   const cellCn = (index: number, extra?: string) =>
-    cn(extra, pinnedCol === index && 'sticky left-0 z-10 bg-background')
+    cn(
+      extra,
+      pinnedCol === index && 'sticky left-0 z-10 bg-card shadow-[4px_0_8px_rgb(15_23_42/0.06)]',
+    )
   const mergedCn = (index: number, extra?: string) =>
-    cn('align-top', pinnedCol === index ? 'sticky left-0 z-10 bg-background' : 'bg-muted/20', extra)
+    cn(
+      'align-top bg-slate-50/70',
+      pinnedCol === index && 'sticky left-0 z-10 bg-slate-50 shadow-[4px_0_8px_rgb(15_23_42/0.06)]',
+      extra,
+    )
 
   const settledSet = useMemo(() => new Set(settledItemIds), [settledItemIds])
   const isMergedItemSettled = (item: MergedBusinessDailyItem) =>
@@ -297,14 +308,20 @@ export function BusinessDailyOrderTable({
   return (
     <div className="space-y-3">
       {orders.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+        <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)] lg:flex-row lg:items-center">
           {selectableOrders.length > 0 && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <span>已选 {selectedCount} 个订单</span>
+            <div className="flex items-center gap-2">
+              <Badge variant={selectedCount > 0 ? 'default' : 'muted'}>
+                已选 {selectedCount} 个订单
+              </Badge>
+              <span className="text-xs text-muted-foreground">
+                {selectableOrders.length} 个订单可勾选
+              </span>
             </div>
           )}
           {canManageShipments && shippableOrders.length > 0 && (
-            <>
+            <div className="flex flex-wrap items-center gap-2 lg:border-l lg:pl-3">
+              <span className="text-xs font-medium text-muted-foreground">批量发货时间</span>
               <Input
                 type="datetime-local"
                 value={shippedAt}
@@ -320,14 +337,15 @@ export function BusinessDailyOrderTable({
                 <Truck className="mr-1.5 h-4 w-4" />
                 整单发货
               </Button>
-            </>
+            </div>
           )}
-          <div className="ml-auto flex items-center gap-2">
-            <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
+            <label className="flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground">
               <input
                 type="checkbox"
                 checked={pinnedCol !== null}
                 onChange={(event) => togglePin(event.target.checked)}
+                className="accent-primary"
               />
               固定当前列
             </label>
@@ -353,7 +371,7 @@ export function BusinessDailyOrderTable({
 
       <Table
         ref={tableRef}
-        containerClassName="min-w-[2800px] overflow-visible rounded-md border"
+        containerClassName="min-w-[2800px] overflow-visible rounded-xl border bg-card shadow-[0_2px_8px_rgb(15_23_42/0.04)]"
         className="min-w-[2800px]"
       >
         <TableHeader>
@@ -365,6 +383,7 @@ export function BusinessDailyOrderTable({
                   aria-label="全选"
                   checked={allSelected}
                   onChange={(event) => toggleSelectAll(event.target.checked)}
+                  className="h-4 w-4 accent-primary"
                 />
               )}
             </TableHead>
@@ -398,7 +417,11 @@ export function BusinessDailyOrderTable({
                 return (
                   <TableRow
                     key={item ? item.id : order.id}
-                    className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
+                    className={cn(
+                      'hover:bg-primary/[0.025]',
+                      isFirstRow && groupIndex > 0 && 'border-t-2 border-t-primary/20',
+                      isSelected && 'bg-primary/[0.035]',
+                    )}
                   >
                     <TableCell className={cellCn(0, 'align-top')}>
                       {isFirstRow && canSelect && (
@@ -407,6 +430,7 @@ export function BusinessDailyOrderTable({
                           aria-label={`选择订单 ${order.order_number}`}
                           checked={isSelected}
                           onChange={(event) => toggleOrderSelection(order.id, event.target.checked)}
+                          className="h-4 w-4 accent-primary"
                         />
                       )}
                     </TableCell>
@@ -461,12 +485,12 @@ export function BusinessDailyOrderTable({
                         <TableCell rowSpan={rowSpan} className={mergedCn(4)}>
                           {salesperson}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(5, 'font-medium')}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(5, 'min-w-56 font-medium')}>
                           <Link
                             href={`/finance/daily-orders/${order.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="hover:underline"
+                            className="text-primary underline-offset-4 hover:underline"
                           >
                             {order.external_order_number || order.order_number}
                           </Link>
@@ -502,11 +526,18 @@ export function BusinessDailyOrderTable({
                               </Button>
                             )}
                           </div>
-                          <div className="mt-1 space-y-0.5 text-xs font-normal tabular-nums">
-                            <div>应收 {formatDailyMoney(totals.receivable, order.currency)}</div>
-                            <div>实收 {formatDailyMoney(totals.salesTotal, order.currency)}</div>
-                            <div className={totals.difference === 0 ? 'text-muted-foreground' : 'text-amber-700'}>
-                              差额 {formatDailyMoney(totals.difference, order.currency)}
+                          <div className="mt-2 grid gap-1 rounded-md border bg-card/80 p-2 text-xs font-normal tabular-nums">
+                            <div className="flex justify-between gap-3 text-muted-foreground">
+                              <span>应收</span>
+                              <span>{formatDailyMoney(totals.receivable, order.currency)}</span>
+                            </div>
+                            <div className="flex justify-between gap-3 font-medium text-foreground">
+                              <span>实收</span>
+                              <span>{formatDailyMoney(totals.salesTotal, order.currency)}</span>
+                            </div>
+                            <div className={cn('flex justify-between gap-3', totals.difference === 0 ? 'text-muted-foreground' : 'font-medium text-amber-700')}>
+                              <span>差额</span>
+                              <span>{formatDailyMoney(totals.difference, order.currency)}</span>
                             </div>
                             {totals.difference !== 0 && order.receivable_received_difference_reason && (
                               <div className="max-w-48 whitespace-normal text-muted-foreground">
@@ -557,10 +588,10 @@ export function BusinessDailyOrderTable({
                         '—'
                       )}
                     </TableCell>
-                    <TableCell className={cellCn(10)}>
-                      <div>{item ? businessOrderItemDisplayName(item) : '—'}</div>
+                    <TableCell className={cellCn(10, 'min-w-52')}>
+                      <div className="font-medium">{item ? businessOrderItemDisplayName(item) : '—'}</div>
                       {item && businessOrderItemDisplaySku(item) && (
-                        <div className="text-xs text-muted-foreground">
+                        <div className="mt-0.5 text-xs text-muted-foreground">
                           {businessOrderItemDisplaySku(item)}
                         </div>
                       )}
@@ -571,13 +602,13 @@ export function BusinessDailyOrderTable({
                     <TableCell className={cellCn(12, 'whitespace-nowrap tabular-nums')}>
                       {item ? formatMergedBusinessDailyShippingProgress(item) : '—'}
                     </TableCell>
-                    <TableCell className={cellCn(13)}>
+                    <TableCell className={cellCn(13, 'whitespace-nowrap tabular-nums')}>
                       {item ? formatDailyMoney(item.unit_price, order.currency) : '—'}
                     </TableCell>
-                    <TableCell className={cellCn(14)}>
+                    <TableCell className={cellCn(14, 'whitespace-nowrap font-medium tabular-nums')}>
                       {item ? formatDailyMoney(item.product_received_amount, order.currency) : '—'}
                     </TableCell>
-                    <TableCell className={cellCn(15)}>
+                    <TableCell className={cellCn(15, 'whitespace-nowrap tabular-nums')}>
                       {item && item.logistics_fee_amount !== null
                         ? formatDailyMoney(item.logistics_fee_amount, order.currency)
                         : '—'}
@@ -585,10 +616,19 @@ export function BusinessDailyOrderTable({
 
                     {isFirstRow && (
                       <>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(16, 'font-medium')}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(16, 'whitespace-nowrap font-semibold tabular-nums')}>
                           {formatDailyMoney(Number(order.total_amount), order.currency)}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(17, 'font-medium')}>
+                        <TableCell
+                          rowSpan={rowSpan}
+                          className={mergedCn(
+                            17,
+                            cn(
+                              'whitespace-nowrap font-semibold tabular-nums',
+                              order.outstanding_amount === 0 ? 'text-muted-foreground' : 'text-amber-700',
+                            ),
+                          )}
+                        >
                           {formatDailyMoney(order.outstanding_amount, order.currency)}
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={mergedCn(18)}>
@@ -627,7 +667,7 @@ export function BusinessDailyOrderTable({
                         isMergedItemSettled(item) ? (
                           <Badge variant="success">是</Badge>
                         ) : (
-                          <span className="text-muted-foreground">否</span>
+                          <Badge variant="muted">否</Badge>
                         )
                       ) : (
                         '—'
@@ -638,7 +678,7 @@ export function BusinessDailyOrderTable({
                         isMergedItemCommissionCleared(item) ? (
                           <Badge variant="success">已结清</Badge>
                         ) : (
-                          <span className="text-muted-foreground">未结清</span>
+                          <Badge variant="muted">未结清</Badge>
                         )
                       ) : (
                         '—'
@@ -650,8 +690,14 @@ export function BusinessDailyOrderTable({
             })}
             {orders.length === 0 && (
               <TableRow>
-                <TableCell colSpan={BUSINESS_DAILY_ORDER_COLUMNS.length + 1} className="py-12 text-center text-muted-foreground">
-                  没有符合筛选条件的订单
+                <TableCell colSpan={BUSINESS_DAILY_ORDER_COLUMNS.length + 1} className="py-16 text-center">
+                  <div className="mx-auto flex max-w-sm flex-col items-center gap-2">
+                    <div className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+                      暂无结果
+                    </div>
+                    <div className="font-medium">没有符合筛选条件的订单</div>
+                    <div className="text-xs text-muted-foreground">可调整日期、店铺或状态条件后重新筛选。</div>
+                  </div>
                 </TableCell>
               </TableRow>
             )}

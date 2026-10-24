@@ -109,173 +109,243 @@ export default async function DailyOrdersPage({
   const query = dailyOrderFilterQuery(filters)
   const canManageShops = profile.role === 'finance' || profile.role === 'admin'
   const canCreate = ['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)
+  const hasMoreFilters = Boolean(
+    filters.shopGroup ||
+    filters.category ||
+    filters.payment ||
+    filters.completion ||
+    (filters.recordStatus && filters.recordStatus !== 'active') ||
+    filters.balanceStatus ||
+    filters.customerBindingStatus ||
+    filters.fulfillmentStatuses.length > 0 ||
+    (filters.commissionClearanceStatus && filters.commissionClearanceStatus !== 'all'),
+  )
+
+  const selectClassName =
+    'h-10 min-w-0 rounded-md border border-input bg-card px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">财务每日订单台账</h1>
-          <p className="text-sm text-muted-foreground">
-            每行对应一个产品；当前筛选最多显示 {BUSINESS_DAILY_LEDGER_LIMIT} 行、导出 {BUSINESS_DAILY_EXPORT_LIMIT} 行。
-            建单、收款、发货、退货与结单全部使用业务订单作为单一事实源。
-          </p>
+    <div className="space-y-5">
+      <section className="rounded-xl border bg-card p-5 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 space-y-2">
+            <div className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+              订单台账
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">财务每日订单台账</h1>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+                每行对应一个产品；当前筛选最多显示 {BUSINESS_DAILY_LEDGER_LIMIT} 行、导出 {BUSINESS_DAILY_EXPORT_LIMIT} 行。
+                建单、收款、发货、退货与结单全部使用业务订单作为单一事实源。
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/finance/daily-orders/legacy" target="_blank" rel="noopener noreferrer"><Archive className="h-4 w-4" />历史台账</Link>
+            </Button>
+            {canManageShops && (
+              <>
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/finance/daily-orders/settings" target="_blank" rel="noopener noreferrer"><Settings className="h-4 w-4" />店铺设置</Link>
+                </Button>
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/finance/daily-orders/settings" target="_blank" rel="noopener noreferrer"><CreditCard className="h-4 w-4" />收款账户</Link>
+                </Button>
+              </>
+            )}
+            {canCreate && (
+              <>
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/finance/daily-orders/import" target="_blank" rel="noopener noreferrer"><Upload className="h-4 w-4" />批量导入</Link>
+                </Button>
+                <Button asChild size="sm">
+                  <Link href="/finance/daily-orders/new" target="_blank" rel="noopener noreferrer"><Plus className="h-4 w-4" />新建订单</Link>
+                </Button>
+              </>
+            )}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href="/finance/daily-orders/legacy" target="_blank" rel="noopener noreferrer"><Archive className="h-4 w-4" />历史台账</Link>
-          </Button>
-          {canManageShops && (
-            <>
-              <Button asChild variant="outline">
-                <Link href="/finance/daily-orders/settings" target="_blank" rel="noopener noreferrer"><Settings className="h-4 w-4" />店铺设置</Link>
-              </Button>
-              <Button asChild variant="outline">
-                <Link href="/finance/daily-orders/settings" target="_blank" rel="noopener noreferrer"><CreditCard className="h-4 w-4" />收款账户</Link>
-              </Button>
-            </>
-          )}
-          {canCreate && (
-            <>
-              <Button asChild variant="outline">
-                <Link href="/finance/daily-orders/import" target="_blank" rel="noopener noreferrer"><Upload className="h-4 w-4" />批量导入</Link>
-              </Button>
-              <Button asChild>
-                <Link href="/finance/daily-orders/new" target="_blank" rel="noopener noreferrer"><Plus className="h-4 w-4" />新建订单</Link>
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
+      </section>
 
-      <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-8">
-        <Input name="q" defaultValue={filters.q} placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU" className="xl:col-span-2" />
-        <DateRangePicker from={filters.dateFrom} to={filters.dateTo} className="md:col-span-2" />
-        <select name="shop" defaultValue={filters.shop ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="">全部店铺</option>
-          {options.shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}
-        </select>
-        <select name="shopGroup" defaultValue={filters.shopGroup ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="">全部店铺分组</option>
-          {options.groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-        </select>
-        <select name="salesperson" defaultValue={filters.salesperson ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="">全部业务员</option>
-          {options.salespeople.map((person) => (
-            <option key={person.id} value={person.id}>{displayProfileName(person)}</option>
-          ))}
-        </select>
-        <select name="category" defaultValue={filters.category ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="">全部发货分类</option>
-          <option value="stock">现货</option>
-          <option value="sample">现货样品</option>
-          <option value="custom_sample">定制打样</option>
-          <option value="custom">定制</option>
-          <option value="purchase">外采</option>
-        </select>
-        <select name="payment" defaultValue={filters.payment ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="">全部收款分类</option>
-          <option value="full">全款</option>
-          <option value="deposit">定金</option>
-          <option value="balance">尾款</option>
-        </select>
-        <select name="completion" defaultValue={filters.completion ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="">订单状态</option>
-          <option value="completed">已完成</option>
-          <option value="incomplete">未完成</option>
-        </select>
-        <select name="recordStatus" defaultValue={filters.recordStatus ?? 'active'} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="active">正常订单（含特殊关闭）</option>
-          <option value="special_closed">仅特殊关闭</option>
-          <option value="voided">仅已作废</option>
-          <option value="all">所有订单记录</option>
-        </select>
-        <select name="balanceStatus" defaultValue={filters.balanceStatus ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="">全部尾款状态</option>
-          <option value="settled">已收齐</option>
-          <option value="unsettled">未收齐</option>
-        </select>
-        <select name="customerBindingStatus" defaultValue={filters.customerBindingStatus ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="">全部客户状态</option>
-          <option value="bound">已绑定客户</option>
-          <option value="unbound">未绑定客户</option>
-        </select>
-        <select name="settlementStatus" defaultValue={filters.settlementStatus ?? 'unsettled'} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="all">全部结算状态</option>
-          <option value="settled">已结算</option>
-          <option value="unsettled">未结算</option>
-        </select>
-        <details className="group relative">
-          <summary className="flex h-10 cursor-pointer items-center justify-between gap-2 rounded-md border bg-background px-3 text-sm [&::-webkit-details-marker]:hidden">
-            <span>
-              {filters.fulfillmentStatuses.length > 0
-                ? `发货状态 (${filters.fulfillmentStatuses.length})`
-                : '全部发货状态'}
-            </span>
-            <span aria-hidden className="text-xs text-muted-foreground">▼</span>
+      <form className="overflow-hidden rounded-xl border bg-card shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+          <div>
+            <h2 className="text-sm font-semibold">筛选订单</h2>
+            <p className="text-xs text-muted-foreground">常用条件置顶，低频条件收进更多筛选。</p>
+          </div>
+          <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+            共 {orders.length} 个订单
+          </span>
+        </div>
+        <div className="grid gap-3 p-4 md:grid-cols-4 xl:grid-cols-12">
+          <Input
+            name="q"
+            defaultValue={filters.q}
+            placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU"
+            className="md:col-span-2 xl:col-span-4"
+          />
+          <DateRangePicker
+            from={filters.dateFrom}
+            to={filters.dateTo}
+            className="md:col-span-2 xl:col-span-3"
+          />
+          <select name="shop" defaultValue={filters.shop ?? ''} className={selectClassName + ' xl:col-span-2'}>
+            <option value="">全部店铺</option>
+            {options.shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}
+          </select>
+          <select name="salesperson" defaultValue={filters.salesperson ?? ''} className={selectClassName + ' xl:col-span-2'}>
+            <option value="">全部业务员</option>
+            {options.salespeople.map((person) => (
+              <option key={person.id} value={person.id}>{displayProfileName(person)}</option>
+            ))}
+          </select>
+          <select name="settlementStatus" defaultValue={filters.settlementStatus ?? 'unsettled'} className={selectClassName + ' xl:col-span-2'}>
+            <option value="all">全部结算状态</option>
+            <option value="settled">已结算</option>
+            <option value="unsettled">未结算</option>
+          </select>
+          <div className="flex flex-wrap gap-2 md:col-span-4 xl:col-span-3">
+            <Button type="submit">应用筛选</Button>
+            <Button asChild type="button" variant="outline">
+              <Link href="/finance/daily-orders">重置</Link>
+            </Button>
+          </div>
+        </div>
+        <details className="group border-t" open={hasMoreFilters}>
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
+            <span>更多筛选</span>
+            <span className="text-xs font-normal text-muted-foreground">店铺分组、分类、状态与结清条件 ▼</span>
           </summary>
-          <div className="absolute z-50 mt-1 w-44 rounded-md border bg-background p-2 shadow-md">
-            <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
-              <input
-                type="checkbox"
-                name="fulfillmentStatuses"
-                value="fully_shipped"
-                defaultChecked={filters.fulfillmentStatuses.includes('fully_shipped')}
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              全部发货
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
-              <input
-                type="checkbox"
-                name="fulfillmentStatuses"
-                value="partially_shipped"
-                defaultChecked={filters.fulfillmentStatuses.includes('partially_shipped')}
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              部分发货
-            </label>
-            <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
-              <input
-                type="checkbox"
-                name="fulfillmentStatuses"
-                value="unshipped"
-                defaultChecked={filters.fulfillmentStatuses.includes('unshipped')}
-                className="h-4 w-4 rounded border-gray-300"
-              />
-              未发货
-            </label>
+          <div className="grid gap-3 border-t bg-muted/15 p-4 md:grid-cols-4 xl:grid-cols-6">
+            <select name="shopGroup" defaultValue={filters.shopGroup ?? ''} className={selectClassName}>
+              <option value="">全部店铺分组</option>
+              {options.groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
+            </select>
+            <select name="category" defaultValue={filters.category ?? ''} className={selectClassName}>
+              <option value="">全部发货分类</option>
+              <option value="stock">现货</option>
+              <option value="sample">现货样品</option>
+              <option value="custom_sample">定制打样</option>
+              <option value="custom">定制</option>
+              <option value="purchase">外采</option>
+            </select>
+            <select name="payment" defaultValue={filters.payment ?? ''} className={selectClassName}>
+              <option value="">全部收款分类</option>
+              <option value="full">全款</option>
+              <option value="deposit">定金</option>
+              <option value="balance">尾款</option>
+            </select>
+            <select name="completion" defaultValue={filters.completion ?? ''} className={selectClassName}>
+              <option value="">订单状态</option>
+              <option value="completed">已完成</option>
+              <option value="incomplete">未完成</option>
+            </select>
+            <select name="recordStatus" defaultValue={filters.recordStatus ?? 'active'} className={selectClassName}>
+              <option value="active">正常订单（含特殊关闭）</option>
+              <option value="special_closed">仅特殊关闭</option>
+              <option value="voided">仅已作废</option>
+              <option value="all">所有订单记录</option>
+            </select>
+            <select name="balanceStatus" defaultValue={filters.balanceStatus ?? ''} className={selectClassName}>
+              <option value="">全部尾款状态</option>
+              <option value="settled">已收齐</option>
+              <option value="unsettled">未收齐</option>
+            </select>
+            <select name="customerBindingStatus" defaultValue={filters.customerBindingStatus ?? ''} className={selectClassName}>
+              <option value="">全部客户状态</option>
+              <option value="bound">已绑定客户</option>
+              <option value="unbound">未绑定客户</option>
+            </select>
+            <details className="group relative">
+              <summary className={selectClassName + ' flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden'}>
+                <span>
+                  {filters.fulfillmentStatuses.length > 0
+                    ? `发货状态 (${filters.fulfillmentStatuses.length})`
+                    : '全部发货状态'}
+                </span>
+                <span aria-hidden className="text-xs text-muted-foreground">▼</span>
+              </summary>
+              <div className="absolute z-50 mt-1 w-44 rounded-md border bg-card p-2 shadow-md">
+                <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                  <input
+                    type="checkbox"
+                    name="fulfillmentStatuses"
+                    value="fully_shipped"
+                    defaultChecked={filters.fulfillmentStatuses.includes('fully_shipped')}
+                    className="h-4 w-4 rounded border-gray-300 accent-primary"
+                  />
+                  全部发货
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                  <input
+                    type="checkbox"
+                    name="fulfillmentStatuses"
+                    value="partially_shipped"
+                    defaultChecked={filters.fulfillmentStatuses.includes('partially_shipped')}
+                    className="h-4 w-4 rounded border-gray-300 accent-primary"
+                  />
+                  部分发货
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
+                  <input
+                    type="checkbox"
+                    name="fulfillmentStatuses"
+                    value="unshipped"
+                    defaultChecked={filters.fulfillmentStatuses.includes('unshipped')}
+                    className="h-4 w-4 rounded border-gray-300 accent-primary"
+                  />
+                  未发货
+                </label>
+              </div>
+            </details>
+            <select name="commissionClearanceStatus" defaultValue={filters.commissionClearanceStatus ?? 'all'} className={selectClassName}>
+              <option value="all">全部提成结清状态</option>
+              <option value="cleared">已结清</option>
+              <option value="uncleared">未结清</option>
+            </select>
           </div>
         </details>
-        <select name="commissionClearanceStatus" defaultValue={filters.commissionClearanceStatus ?? 'all'} className="h-10 rounded-md border bg-background px-3 text-sm">
-          <option value="all">全部提成结清状态</option>
-          <option value="cleared">已结清</option>
-          <option value="uncleared">未结清</option>
-        </select>
-        <div className="flex flex-wrap gap-2 xl:col-span-8">
-          <Button type="submit">筛选</Button>
-          <Button asChild type="button" variant="outline">
-            <Link href="/finance/daily-orders">清空</Link>
-          </Button>
-        </div>
       </form>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {TOTAL_CARDS.map(({ label, totals }) => {
-          const totalsByCurrency = totals(orders)
-          return (
-            <Card key={label}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm text-muted-foreground">{label}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-1 font-semibold tabular-nums">
-                {businessDailyCurrencyOrder(totalsByCurrency).map((currency) => (
-                  <div key={currency}>{formatDailyMoney(totalsByCurrency[currency] ?? 0, currency)}</div>
-                ))}
-              </CardContent>
-            </Card>
-          )
-        })}
-      </div>
+      <section className="space-y-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">当前筛选汇总</h2>
+            <p className="text-xs text-muted-foreground">按币种分别统计，不做跨币种折算。</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
+          {TOTAL_CARDS.map(({ label, totals }) => {
+            const totalsByCurrency = totals(orders)
+            const emphasis = label === '实际实收总额'
+            const warning = label === '未收尾款'
+            return (
+              <Card
+                key={label}
+                className={
+                  emphasis
+                    ? 'border-primary/25 bg-primary/[0.04]'
+                    : warning
+                      ? 'border-amber-200 bg-amber-50/60'
+                      : 'bg-card'
+                }
+              >
+                <CardHeader className="p-4 pb-1">
+                  <CardTitle className={emphasis ? 'text-sm text-primary' : 'text-sm text-muted-foreground'}>
+                    {label}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1 px-4 pb-4 text-base font-semibold tabular-nums">
+                  {businessDailyCurrencyOrder(totalsByCurrency).map((currency) => (
+                    <div key={currency}>{formatDailyMoney(totalsByCurrency[currency] ?? 0, currency)}</div>
+                  ))}
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+      </section>
 
       <BusinessDailyOrderTable
         orders={orders}
