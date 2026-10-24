@@ -2,6 +2,7 @@ import { hasFinanceViewFor, requireApproved } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
 import { Sidebar } from '@/components/layout/sidebar'
+import { CommandPalette } from '@/components/layout/command-palette'
 import { LogoutButton } from '@/components/auth/logout-button'
 
 export default async function DashboardLayout({
@@ -40,7 +41,10 @@ export default async function DashboardLayout({
             <p className="truncate text-sm font-semibold">工作空间</p>
             <p className="hidden text-xs text-muted-foreground sm:block">订单 · 产品 · 客户 · 财务</p>
           </div>
-          <LogoutButton />
+          <div className="flex items-center gap-2">
+            <CommandPalette role={profile.role} canViewFinance={canViewFinance} />
+            <LogoutButton />
+          </div>
         </header>
         <main className="min-h-0 flex-1 overflow-auto p-4 md:p-6">{children}</main>
       </div>
