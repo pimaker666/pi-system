@@ -73,7 +73,7 @@ export function FinanceNav({
 
   return (
     <nav
-      className="mb-6 flex flex-wrap gap-2 border-b pb-3"
+      className="mb-6 flex flex-wrap gap-2 rounded-xl border bg-card p-2 shadow-sm"
       aria-label="财务模块导航"
     >
       {groups.map((group) => {
