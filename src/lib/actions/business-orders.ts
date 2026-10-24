@@ -642,6 +642,48 @@ export async function getBusinessOrderAttachmentUrl(
   return { url: signed.signedUrl }
 }
 
+const ATTACHMENT_URL_TTL_SECONDS = 60 * 10
+
+export async function getBusinessOrderAttachmentUrls(
+  attachmentIds: string[],
+): Promise<Map<string, string>> {
+  await requireApproved()
+  const validIds = [
+    ...new Set(attachmentIds.filter((id) => z.string().uuid().safeParse(id).success)),
+  ]
+  if (validIds.length === 0) return new Map()
+
+  const supabase = await createClient()
+  const { data: attachments, error } = await supabase
+    .from('business_order_attachments')
+    .select('id, object_path')
+    .in('id', validIds)
+    .eq('status', 'active')
+  if (error || !attachments) return new Map()
+
+  const paths = attachments
+    .filter((attachment) => attachment.object_path)
+    .map((attachment) => attachment.object_path as string)
+  if (paths.length === 0) return new Map()
+
+  const admin = createAdminClient()
+  const { data: signedList, error: signError } = await admin.storage
+    .from('finance-daily-order-screenshots')
+    .createSignedUrls(paths, ATTACHMENT_URL_TTL_SECONDS)
+  if (signError || !signedList) return new Map()
+
+  const urlByPath = new Map(
+    signedList
+      .filter((signed) => signed?.signedUrl)
+      .map((signed) => [signed.path, signed.signedUrl as string]),
+  )
+  return new Map(
+    attachments
+      .filter((attachment) => attachment.object_path && urlByPath.has(attachment.object_path))
+      .map((attachment) => [attachment.id, urlByPath.get(attachment.object_path as string) as string]),
+  )
+}
+
 export async function getBusinessOrderShipmentScreenshotUrl(
   shipmentId: string,
 ): Promise<{ urls?: string[]; error?: string }> {
@@ -662,14 +704,14 @@ export async function getBusinessOrderShipmentScreenshotUrl(
   if (error || paths.length === 0) return { error: '发货截图不存在或无权查看' }
 
   const admin = createAdminClient()
-  const urls: string[] = []
-  for (const path of paths) {
-    const { data: signed, error: signError } = await admin.storage
-      .from('business-shipment-screenshots')
-      .createSignedUrl(path, 60 * 10)
-    if (signError) return { error: '生成发货截图链接失败' }
-    urls.push(signed.signedUrl)
-  }
+  const { data: signedList, error: signError } = await admin.storage
+    .from('business-shipment-screenshots')
+    .createSignedUrls(paths, 60 * 10)
+  if (signError || !signedList) return { error: '生成发货截图链接失败' }
+  const urls = signedList
+    .map((signed) => signed?.signedUrl)
+    .filter((url): url is string => Boolean(url))
+  if (urls.length !== paths.length) return { error: '生成发货截图链接失败' }
   return { urls }
 }
 

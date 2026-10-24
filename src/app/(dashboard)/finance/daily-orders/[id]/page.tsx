@@ -26,7 +26,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
-  getBusinessOrderAttachmentUrl,
+  getBusinessOrderAttachmentUrls,
   getBusinessOrderEditConstraints,
   getBusinessOrderSettlementSummary,
 } from '@/lib/actions/business-orders'
@@ -257,12 +257,13 @@ export default async function BusinessOrderDetailPage({
   const attachments = (order.business_order_attachments ?? []).filter(
     (attachment) => attachment.status === 'active',
   )
-  const attachmentLinks = await Promise.all(
-    attachments.map(async (attachment) => ({
-      attachment,
-      url: (await getBusinessOrderAttachmentUrl(attachment.id)).url ?? null,
-    })),
+  const attachmentUrlMap = await getBusinessOrderAttachmentUrls(
+    attachments.map((attachment) => attachment.id),
   )
+  const attachmentLinks = attachments.map((attachment) => ({
+    attachment,
+    url: attachmentUrlMap.get(attachment.id) ?? null,
+  }))
 
   let auditLogs: BusinessOrderAuditLog[] = []
   let lifecycleAuditLogs: BusinessLifecycleAuditLog[] = []
