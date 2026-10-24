@@ -334,53 +334,58 @@ export default async function BusinessOrderDetailPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="icon" className="h-8 w-8">
-            <Link href={returnHref} aria-label={fromCustomer === order.customer_id ? '返回客户订单明细' : '返回每日订单'}>
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-semibold">{order.order_number}</h1>
-              {order.voided_at ? (
-                <Badge variant="destructive">已作废</Badge>
-              ) : order.closed_at ? (
-                <Badge variant="secondary">特殊关闭</Badge>
-              ) : (
-                <Badge variant={BUSINESS_ORDER_STATUS_VARIANTS[order.status]}>
-                  {BUSINESS_ORDER_STATUS_LABELS[order.status]}
-                </Badge>
-              )}
+      <section className="rounded-xl border bg-card p-5 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
+            <Button asChild variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+              <Link href={returnHref} aria-label={fromCustomer === order.customer_id ? '返回客户订单明细' : '返回每日订单'}>
+                <ArrowLeft className="h-4 w-4" />
+              </Link>
+            </Button>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+                  业务订单
+                </span>
+                <h1 className="text-2xl font-semibold tracking-tight">{order.order_number}</h1>
+                {order.voided_at ? (
+                  <Badge variant="destructive">已作废</Badge>
+                ) : order.closed_at ? (
+                  <Badge variant="secondary">特殊关闭</Badge>
+                ) : (
+                  <Badge variant={BUSINESS_ORDER_STATUS_VARIANTS[order.status]}>
+                    {BUSINESS_ORDER_STATUS_LABELS[order.status]}
+                  </Badge>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {formatDate(order.order_date)} · {BUSINESS_FULFILLMENT_LABELS[order.fulfillment_type]}
+              </p>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {formatDate(order.order_date)} · {BUSINESS_FULFILLMENT_LABELS[order.fulfillment_type]}
-            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button asChild>
+              <Link href="/finance/daily-orders/new"><Plus className="h-4 w-4" />新建订单</Link>
+            </Button>
+            <BusinessOrderActions
+              order={order}
+              profile={profile}
+              financeReady={financeReady}
+              canEditOrder={canEditOrder}
+              hasDailyFields={hasDailyFields}
+            />
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button asChild>
-            <Link href="/finance/daily-orders/new"><Plus className="h-4 w-4" />新建订单</Link>
-          </Button>
-          <BusinessOrderActions
-            order={order}
-            profile={profile}
-            financeReady={financeReady}
-            canEditOrder={canEditOrder}
-            hasDailyFields={hasDailyFields}
-          />
-        </div>
-      </div>
+      </section>
 
       {order.review_note && (
-        <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4 text-sm">
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm">
           <span className="font-medium">审核说明：</span>{order.review_note}
         </div>
       )}
 
       {order.voided_at ? (
-        <div className="rounded-md border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+        <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
           <div className="font-medium">此订单已作废</div>
           <div className="mt-1">
             作废时间：{formatDate(order.voided_at, true)} · 原因：{order.void_reason || '—'}
@@ -390,7 +395,7 @@ export default async function BusinessOrderDetailPage({
           </div>
         </div>
       ) : order.closed_at ? (
-        <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
           <div className="font-medium">此订单已特殊关闭</div>
           <div className="mt-1">
             关闭时间：{formatDate(order.closed_at, true)} · 原因：

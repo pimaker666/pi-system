@@ -1226,7 +1226,7 @@ export function BusinessOrderForm({
                 return (
                   <div
                     key={item.key}
-                    className="grid gap-3 rounded-md border-2 border-slate-300 p-3 shadow-sm dark:border-slate-700 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)_40px] lg:items-start"
+                    className="grid gap-3 rounded-xl border-2 border-border/60 bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)] lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)_40px] lg:items-start"
                   >
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -1461,7 +1461,7 @@ export function BusinessOrderForm({
                 )
               })}
               {items.length === 0 && (
-                <div className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
+                <div className="rounded-xl border border-dashed py-10 text-center text-sm text-muted-foreground">
                   尚未添加产品
                 </div>
               )}
@@ -1578,7 +1578,12 @@ export function BusinessOrderForm({
               </p>
             </div>
           </div>
-          <div className="rounded-md border p-3 text-sm">
+          <div className={cn(
+            'rounded-xl border p-4 text-sm',
+            hasReceivableReceivedDifference
+              ? 'border-amber-300 bg-amber-50'
+              : 'border-transparent bg-muted/40',
+          )}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-muted-foreground">应收 − 实收</span>
               <span className={cn('font-semibold tabular-nums', hasReceivableReceivedDifference && 'text-amber-700')}>
@@ -1615,7 +1620,7 @@ export function BusinessOrderForm({
           <div
             ref={pasteRef}
             className={cn(
-              'rounded-md border border-dashed p-4 text-sm text-muted-foreground',
+              'rounded-xl border border-dashed p-4 text-sm text-muted-foreground',
               isDragging && 'border-primary bg-primary/5',
             )}
             onDragOver={(event) => {

@@ -45,17 +45,22 @@ export default async function NewBusinessOrderPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Button asChild variant="ghost" size="icon" className="h-8 w-8">
-          <Link href="/finance/daily-orders"><ArrowLeft className="h-4 w-4" /></Link>
-        </Button>
-        <div>
-          <h1 className="text-2xl font-semibold">新建业务订单</h1>
-          <p className="text-sm text-muted-foreground">
-            先创建订单草稿，再登记每笔收款及截图凭证。
-          </p>
+      <section className="rounded-xl border bg-card p-5 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+        <div className="flex items-start gap-3">
+          <Button asChild variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+            <Link href="/finance/daily-orders"><ArrowLeft className="h-4 w-4" /></Link>
+          </Button>
+          <div className="min-w-0">
+            <div className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+              业务订单
+            </div>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">新建业务订单</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              先创建订单草稿，再登记每笔收款及截图凭证。
+            </p>
+          </div>
         </div>
-      </div>
+      </section>
       <BusinessOrderForm
         profile={profile}
         customers={(customersResult.data ?? []) as Customer[]}
