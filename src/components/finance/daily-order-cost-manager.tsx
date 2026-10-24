@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
 import { ImagePreview } from '@/components/ui/image-preview'
+import { BusinessOrderCostImporter } from '@/components/finance/business-order-cost-importer'
 import {
   Dialog,
   DialogContent,
@@ -321,12 +322,15 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
             修改成本仅覆盖当前订单行，不反写产品库。
           </p>
         </div>
-        <Button asChild variant="outline">
-          <a download href={`/api/finance/costs/export/xlsx${query ? `?${query}` : ''}`}>
-            <Download className="h-4 w-4" />
-            导出成本表
-          </a>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <BusinessOrderCostImporter />
+          <Button asChild variant="outline">
+            <a download href={`/api/finance/costs/export/xlsx${query ? `?${query}` : ''}`}>
+              <Download className="h-4 w-4" />
+              导出成本表
+            </a>
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
@@ -514,32 +518,35 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                           {row.shipping_date ?? '—'}
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={mergedCn(7)}>
+                          {row.shipping_number || '—'}
+                        </TableCell>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(8)}>
                           {row.payment_account || '—'}
                         </TableCell>
                       </>
                     )}
 
-                    <TableCell className={cellCn(8)}>
+                    <TableCell className={cellCn(9)}>
                       {row.shipping_category ? SHIPPING_LABELS[row.shipping_category] : '—'}
                     </TableCell>
-                    <TableCell className={cellCn(9)}>
+                    <TableCell className={cellCn(10)}>
                       <ImagePreview src={row.image_url} alt={row.product_name} />
                     </TableCell>
-                    <TableCell className={cellCn(10)}>
+                    <TableCell className={cellCn(11)}>
                       <div>{row.product_name}</div>
                       {row.product_sku && (
                         <div className="text-xs text-muted-foreground">{row.product_sku}</div>
                       )}
                     </TableCell>
-                    <TableCell className={cellCn(11, 'text-right tabular-nums')}>{quantityText(row.quantity)}</TableCell>
-                    <TableCell className={cellCn(12)}>
+                    <TableCell className={cellCn(12, 'text-right tabular-nums')}>{quantityText(row.quantity)}</TableCell>
+                    <TableCell className={cellCn(13)}>
                       <CostEditor row={row} />
                     </TableCell>
-                    <TableCell className={cellCn(13, 'tabular-nums')}>{formatCostValue(row.total_cost)}</TableCell>
-                    <TableCell className={cellCn(14, 'whitespace-nowrap tabular-nums')}>{row.shipping_progress}</TableCell>
-                    <TableCell className={cellCn(15)}>{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
-                    <TableCell className={cellCn(16)}>{formatDailyMoney(row.product_received_amount, row.currency)}</TableCell>
-                    <TableCell className={cellCn(17)}>
+                    <TableCell className={cellCn(14, 'tabular-nums')}>{formatCostValue(row.total_cost)}</TableCell>
+                    <TableCell className={cellCn(15, 'whitespace-nowrap tabular-nums')}>{row.shipping_progress}</TableCell>
+                    <TableCell className={cellCn(16)}>{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
+                    <TableCell className={cellCn(17)}>{formatDailyMoney(row.product_received_amount, row.currency)}</TableCell>
+                    <TableCell className={cellCn(18)}>
                       {row.logistics_fee_amount !== null
                         ? formatDailyMoney(row.logistics_fee_amount, row.currency)
                         : '—'}
@@ -547,22 +554,22 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
 
                     {isFirstRow && (
                       <>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(18, 'font-medium')}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(19, 'font-medium')}>
                           {formatDailyMoney(row.order_total_amount, row.currency)}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(19, 'font-medium')}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(20, 'font-medium')}>
                           {formatDailyMoney(row.outstanding_amount, row.currency)}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(20)}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(21)}>
                           {row.payment_category ? PAYMENT_LABELS[row.payment_category] : '—'}
                         </TableCell>
                         <TableCell
                           rowSpan={rowSpan}
-                          className={mergedCn(21, 'max-w-64 whitespace-normal')}
+                          className={mergedCn(22, 'max-w-64 whitespace-normal')}
                         >
                           {row.sales_notes || '—'}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(22)}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(23)}>
                           {row.attachments.length === 0
                             ? '—'
                             : row.attachments.map((attachment, attachmentIndex) => (
