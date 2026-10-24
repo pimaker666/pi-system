@@ -1,4 +1,6 @@
+import { dailyOrderShippingCategories } from '@/schemas/daily-order'
 import type { BusinessOrderCostFilters } from '@/schemas/business-order-cost'
+import type { DailyOrderShippingCategory } from '@/types'
 
 export const BUSINESS_ORDER_COST_COLUMNS = [
   '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '收款账户', '发货分类',
@@ -31,6 +33,10 @@ export function parseBusinessOrderCostFilters(
     shops: array(raw, 'shops'),
     salespeople: array(raw, 'salespeople'),
     shopGroups: array(raw, 'shopGroups'),
+    shippingCategories: array(raw, 'shippingCategories').filter(
+      (value): value is DailyOrderShippingCategory =>
+        (dailyOrderShippingCategories as readonly string[]).includes(value),
+    ),
     page: Math.max(1, Number(scalar(raw, 'page') || 1) || 1),
   }
 }
@@ -44,6 +50,7 @@ export function businessOrderCostFilterQuery(filters: BusinessOrderCostFilters) 
   filters.shops.forEach((id) => params.append('shops', id))
   filters.salespeople.forEach((id) => params.append('salespeople', id))
   filters.shopGroups.forEach((id) => params.append('shopGroups', id))
+  filters.shippingCategories.forEach((category) => params.append('shippingCategories', category))
   if (filters.page && filters.page > 1) params.set('page', String(filters.page))
   return params.toString()
 }

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { BusinessOrderProductCost, CurrencyCode } from '@/types'
+import type { BusinessOrderProductCost, CurrencyCode, DailyOrderShippingCategory } from '@/types'
 import type { BusinessOrderCostFilters } from '@/schemas/business-order-cost'
 import { displayProfileName, formatAmount } from '@/lib/utils'
 import { COST_PAGE_SIZE } from '@/lib/business-order-cost'
@@ -202,9 +202,15 @@ function isMergedRowSettled(item: MergedBusinessDailyItem, settledIds: Set<strin
 function eligibleCostRows(
   order: BusinessDailyLedgerOrder,
   settledIds: Set<string>,
+  categories: readonly DailyOrderShippingCategory[],
 ): MergedBusinessDailyItem[] {
+  const allowed = categories.length > 0 ? new Set(categories) : null
   return mergeBusinessDailyItems(order).filter(
-    (item) => isMergedBusinessDailyItemPaidAndShipped(item) && !isMergedRowSettled(item, settledIds),
+    (item) =>
+      isMergedBusinessDailyItemPaidAndShipped(item) &&
+      !isMergedRowSettled(item, settledIds) &&
+      (allowed === null ||
+        (item.daily_shipping_category !== null && allowed.has(item.daily_shipping_category))),
   )
 }
 
@@ -248,7 +254,7 @@ export async function fetchBusinessOrderProductCosts(
   )
 
   const eligibleOrders = allOrders
-    .map((order) => ({ order, rows: eligibleCostRows(order, settledIds) }))
+    .map((order) => ({ order, rows: eligibleCostRows(order, settledIds, filters.shippingCategories) }))
     .filter((entry) => entry.rows.length > 0)
 
   const totalCount = eligibleOrders.length

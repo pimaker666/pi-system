@@ -134,6 +134,11 @@ interface Option {
   name: string
 }
 
+const SHIPPING_CATEGORY_OPTIONS: Option[] = Object.entries(SHIPPING_LABELS).map(([id, name]) => ({
+  id,
+  name,
+}))
+
 function MultiSelect({
   name,
   label,
@@ -347,7 +352,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
         </label>
       </div>
 
-      <form className="overflow-hidden rounded-xl border bg-card shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+      <form className="rounded-xl border bg-card shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
           <h2 className="text-sm font-semibold">筛选成本订单</h2>
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
@@ -383,6 +388,12 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
           label="店铺分组"
           options={options.groups.map((group) => ({ id: group.id, name: group.name }))}
           selected={filters.shopGroups}
+        />
+        <MultiSelect
+          name="shippingCategories"
+          label="发货分类"
+          options={SHIPPING_CATEGORY_OPTIONS}
+          selected={filters.shippingCategories}
         />
         <div className="flex flex-wrap gap-2 xl:col-span-9">
           <Button type="submit">筛选</Button>

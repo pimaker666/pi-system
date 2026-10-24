@@ -144,12 +144,20 @@ export function BusinessCustomProductLibrary({
   const [query, setQuery] = useState('')
   const [groupFilter, setGroupFilter] = useState(ALL)
   const [statusFilter, setStatusFilter] = useState('active')
+  const [salespersonFilter, setSalespersonFilter] = useState(ALL)
   const [refreshing, startRefresh] = useTransition()
   const [stateProductId, setStateProductId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<NormalizedProduct | null>(null)
   const [deletePending, setDeletePending] = useState(false)
 
   const normalizedProducts = useMemo(() => latestProducts(products), [products])
+  const salespersonOptions = useMemo(() => {
+    const names = new Set<string>()
+    for (const product of normalizedProducts) {
+      for (const name of product.salespeople) names.add(name)
+    }
+    return [...names].sort((a, b) => a.localeCompare(b, 'zh-CN'))
+  }, [normalizedProducts])
   const filteredProducts = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase()
     return normalizedProducts.filter((product) => {
@@ -162,9 +170,11 @@ export function BusinessCustomProductLibrary({
       ].filter(Boolean).some((value) => String(value).toLocaleLowerCase().includes(normalizedQuery))
       const matchesGroup = groupFilter === ALL || product.product_group_id === groupFilter
       const matchesStatus = statusFilter === ALL || (statusFilter === 'active' ? !product.is_archived : product.is_archived)
-      return matchesQuery && matchesGroup && matchesStatus
+      const matchesSalesperson =
+        salespersonFilter === ALL || product.salespeople.includes(salespersonFilter)
+      return matchesQuery && matchesGroup && matchesStatus && matchesSalesperson
     })
-  }, [groupFilter, normalizedProducts, query, statusFilter])
+  }, [groupFilter, normalizedProducts, query, salespersonFilter, statusFilter])
 
   async function loadProducts() {
     const result = await listBusinessCustomProductsLibrary({ status: 'all' })
@@ -236,7 +246,7 @@ export function BusinessCustomProductLibrary({
             <Input id="custom-product-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索编号、名称、分组、规格或备注" className="pl-9" />
           </div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:w-[420px]">
+        <div className="grid gap-3 sm:grid-cols-3 lg:w-[640px]">
           <div className="space-y-2">
             <span className="text-sm font-medium">产品分组</span>
             <Select value={groupFilter} onValueChange={setGroupFilter}>
@@ -244,6 +254,16 @@ export function BusinessCustomProductLibrary({
               <SelectContent>
                 <SelectItem value={ALL}>全部产品分组</SelectItem>
                 {productGroups.map((group) => <SelectItem key={group.id} value={group.id}>{group.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <span className="text-sm font-medium">归属业务</span>
+            <Select value={salespersonFilter} onValueChange={setSalespersonFilter}>
+              <SelectTrigger aria-label="按归属业务筛选"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>全部归属业务</SelectItem>
+                {salespersonOptions.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

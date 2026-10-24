@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { dailyOrderShippingCategories } from '@/schemas/daily-order'
 
 export const businessOrderCostFilterSchema = z.object({
   q: z.string().trim().max(200).optional().default(''),
@@ -8,6 +9,7 @@ export const businessOrderCostFilterSchema = z.object({
   shops: z.array(z.string().uuid()).optional().default([]),
   salespeople: z.array(z.string().uuid()).optional().default([]),
   shopGroups: z.array(z.string().uuid()).optional().default([]),
+  shippingCategories: z.array(z.enum(dailyOrderShippingCategories)).optional().default([]),
   page: z.coerce.number().int().min(1).optional().default(1),
 })
 
