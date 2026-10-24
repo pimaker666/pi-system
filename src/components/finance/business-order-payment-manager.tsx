@@ -865,18 +865,14 @@ export function BusinessOrderPaymentManager({
         return
       }
       const supabase = createClient()
-      const urls: string[] = []
-      for (const path of paths) {
-        const { data, error } = await supabase.storage
-          .from('business-payment-proofs')
-          .createSignedUrl(path, 60 * 10)
-        if (error || !data?.signedUrl) {
-          toast.error('凭证打开失败')
-          return
-        }
-        urls.push(data.signedUrl)
+      const { data: signedList, error } = await supabase.storage
+        .from('business-payment-proofs')
+        .createSignedUrls(paths, 60 * 10)
+      if (error || !signedList || signedList.some((item) => item.error || !item.signedUrl)) {
+        toast.error('凭证打开失败')
+        return
       }
-      setViewingProof({ urls })
+      setViewingProof({ urls: signedList.map((item) => item.signedUrl as string) })
     })
   }
 

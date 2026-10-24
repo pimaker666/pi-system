@@ -5,6 +5,7 @@ import {
   applyBusinessOrderItemDisplay,
   fetchProductFinancialLabels,
 } from '@/lib/business-order-financials'
+import { fetchProductFinancialLabelsCached } from '@/lib/business-order-financials-server'
 
 /** 台账页面展示上限，和旧版每日订单台账保持一致。 */
 export const BUSINESS_DAILY_LEDGER_LIMIT = 500
@@ -68,16 +69,21 @@ export async function fetchCurrentCustomerCountries(
   return result
 }
 
-async function attachCurrentCustomerCountry(
+/** 台账尾部两项 attach（产品财务标签、实时客户国家）互不依赖，取数并行后在内存合并。 */
+async function attachLedgerDisplays(
   supabase: SupabaseClient,
   orders: BusinessDailyLedgerOrder[],
+  viewerRole?: string,
 ): Promise<BusinessDailyLedgerOrder[]> {
   if (orders.length === 0) return orders
-  const countries = await fetchCurrentCustomerCountries(
-    supabase,
-    orders.map((order) => order.id),
-  )
-  return orders.map((order) => ({
+  const [labelled, countries] = await Promise.all([
+    attachItemDisplayLabels(supabase, orders, viewerRole),
+    fetchCurrentCustomerCountries(
+      supabase,
+      orders.map((order) => order.id),
+    ),
+  ])
+  return labelled.map((order) => ({
     ...order,
     current_customer_country: countries.get(order.id) ?? null,
   }))
@@ -87,13 +93,17 @@ async function attachCurrentCustomerCountry(
 async function attachItemDisplayLabels(
   supabase: SupabaseClient,
   orders: BusinessDailyLedgerOrder[],
+  viewerRole?: string,
 ): Promise<BusinessDailyLedgerOrder[]> {
   const items = orders.flatMap((order) => order.business_order_items ?? [])
   const hasLinkedProducts = items.some(
     (item) => item.source_type !== 'custom' && item.product_id,
   )
   if (!hasLinkedProducts) return orders
-  const labels = await fetchProductFinancialLabels(supabase)
+  const labels =
+    viewerRole === undefined
+      ? await fetchProductFinancialLabels(supabase)
+      : await fetchProductFinancialLabelsCached(supabase, viewerRole)
   return orders.map((order) => ({
     ...order,
     business_order_items: (order.business_order_items ?? []).map((item) =>
@@ -244,6 +254,7 @@ export async function fetchBusinessDailyLedger(
   filters: DailyOrderFilters,
   limit = BUSINESS_DAILY_LEDGER_LIMIT,
   ids?: string[],
+  viewerRole?: string,
 ): Promise<BusinessDailyLedgerOrder[]> {
   const effectiveLimit = Math.min(limit, BUSINESS_DAILY_EXPORT_LIMIT)
   const keyword = normalizeKeyword(filters.q)
@@ -290,7 +301,7 @@ export async function fetchBusinessDailyLedger(
       ),
       filters.commissionClearanceStatus,
     )
-    return attachCurrentCustomerCountry(supabase, await attachItemDisplayLabels(supabase, orders))
+    return attachLedgerDisplays(supabase, orders, viewerRole)
   }
 
   const [headResult, itemResult] = await Promise.all([
@@ -308,30 +319,25 @@ export async function fetchBusinessDailyLedger(
     if (!merged.has(order.id)) merged.set(order.id, order)
   }
 
-  return attachCurrentCustomerCountry(
+  const orders = await applyCommissionClearanceFilter(
     supabase,
-    await attachItemDisplayLabels(
+    await applySettlementFilter(
       supabase,
-      await applyCommissionClearanceFilter(
-        supabase,
-        await applySettlementFilter(
-          supabase,
-          applyBalanceStatusFilter(
-            applyCompletionFilter(
-              await attachOutstandingAmounts(
-                supabase,
-                [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
-              ),
-              filters.completion,
-            ),
-            filters.balanceStatus,
+      applyBalanceStatusFilter(
+        applyCompletionFilter(
+          await attachOutstandingAmounts(
+            supabase,
+            [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
           ),
-          filters.settlementStatus,
+          filters.completion,
         ),
-        filters.commissionClearanceStatus,
+        filters.balanceStatus,
       ),
+      filters.settlementStatus,
     ),
+    filters.commissionClearanceStatus,
   )
+  return attachLedgerDisplays(supabase, orders, viewerRole)
 }
 
 /**

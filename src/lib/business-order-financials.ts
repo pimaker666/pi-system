@@ -20,20 +20,33 @@ export interface BusinessOrderItemDisplayFields {
 
 export type BusinessOrderItemWithDisplay = BusinessOrderItem & BusinessOrderItemDisplayFields
 
-/** 全量读取产品财务标签；表与产品库同级大小，且 RLS 已按角色过滤。 */
-export async function fetchProductFinancialLabels(
+/** 全量读取产品财务标签原始行；表与产品库同级大小，且 RLS 已按角色过滤。 */
+export async function queryProductFinancialLabels(
   supabase: SupabaseClient,
-): Promise<Map<string, ProductFinancialLabel>> {
+): Promise<Array<ProductFinancialLabel & { product_id: string }>> {
   const { data, error } = await supabase
     .from('product_financials')
     .select('product_id, financial_number, product_name')
   if (error) throw new Error(`产品财务信息读取失败：${error.message}`)
+  return (data ?? []) as Array<ProductFinancialLabel & { product_id: string }>
+}
+
+export function productFinancialLabelMap(
+  rows: Array<ProductFinancialLabel & { product_id: string }>,
+): Map<string, ProductFinancialLabel> {
   return new Map(
-    ((data ?? []) as Array<ProductFinancialLabel & { product_id: string }>).map((row) => [
+    rows.map((row) => [
       row.product_id,
       { financial_number: row.financial_number, product_name: row.product_name },
     ]),
   )
+}
+
+/** 全量读取产品财务标签；表与产品库同级大小，且 RLS 已按角色过滤。 */
+export async function fetchProductFinancialLabels(
+  supabase: SupabaseClient,
+): Promise<Map<string, ProductFinancialLabel>> {
+  return productFinancialLabelMap(await queryProductFinancialLabels(supabase))
 }
 
 export function applyBusinessOrderItemDisplay<T extends BusinessOrderItem>(

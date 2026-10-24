@@ -34,10 +34,10 @@ import { hasCurrentPermission, requireApproved } from '@/lib/auth'
 import { sortedBusinessDailyItems } from '@/lib/business-daily-orders'
 import { fetchCurrentCustomerCountries } from '@/lib/business-daily-orders-server'
 import {
-  attachBusinessOrderItemsDisplay,
   businessOrderItemDisplayName,
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
+import { attachBusinessOrderItemsDisplayCached } from '@/lib/business-order-financials-server'
 import {
   BUSINESS_FULFILLMENT_LABELS,
   BUSINESS_ORDER_STATUS_LABELS,
@@ -134,9 +134,10 @@ export default async function BusinessOrderDetailPage({
   const returnHref = fromCustomer === order.customer_id
     ? `/customers/${order.customer_id}`
     : '/finance/daily-orders'
-  order.business_order_items = await attachBusinessOrderItemsDisplay(
+  order.business_order_items = await attachBusinessOrderItemsDisplayCached(
     supabase,
     order.business_order_items,
+    profile.role,
   )
   order.business_order_items = sortedBusinessDailyItems(
     order as unknown as Parameters<typeof sortedBusinessDailyItems>[0],
@@ -189,7 +190,24 @@ export default async function BusinessOrderDetailPage({
   const returnItems = returns.flatMap(
     (returnRecord) => returnRecord.business_order_return_items ?? [],
   )
-  const settlementResult = await getBusinessOrderSettlementSummary(order.id)
+  const attachments = (order.business_order_attachments ?? []).filter(
+    (attachment) => attachment.status === 'active',
+  )
+  // 结算 RPC、收款分摊、编辑约束、附件签名、实时国旗互不依赖，一次并行取回，
+  // 避免串行等待五个同主机往返。
+  const [settlementResult, allocationRowsResult, editConstraintsResult, attachmentUrlMap, countryById] =
+    await Promise.all([
+      getBusinessOrderSettlementSummary(order.id),
+      supabase
+        .from('business_order_payment_allocations')
+        .select(
+          'transfer_id, order_id, order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at)',
+        )
+        .eq('order_id', id),
+      getBusinessOrderEditConstraints(order.id),
+      getBusinessOrderAttachmentUrls(attachments.map((attachment) => attachment.id)),
+      fetchCurrentCustomerCountries(supabase, [order.id]),
+    ])
   if (!settlementResult.ok || !settlementResult.data) {
     throw new Error(settlementResult.error ?? '订单结算汇总读取失败')
   }
@@ -204,12 +222,6 @@ export default async function BusinessOrderDetailPage({
     voided_at: string | null
     transfer: { voided_at: string | null } | null
   }
-  const allocationRowsResult = await supabase
-    .from('business_order_payment_allocations')
-    .select(
-      'transfer_id, order_id, order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at)',
-    )
-    .eq('order_id', id)
   if (allocationRowsResult.error) {
     throw new Error(`订单收款分摊读取失败：${allocationRowsResult.error.message}`)
   }
@@ -238,7 +250,6 @@ export default async function BusinessOrderDetailPage({
     (sum, value) => sum + value,
     0,
   )
-  const editConstraintsResult = await getBusinessOrderEditConstraints(order.id)
   const canEditOrder = editConstraintsResult.ok
     ? editConstraintsResult.data?.can_edit_order
     : undefined
@@ -254,12 +265,6 @@ export default async function BusinessOrderDetailPage({
   const receivableReceivedDifference = hasDailyFields
     ? Number(settlement.outstanding_amount)
     : Math.round((Number(order.total_amount) - actualReceived) * 100) / 100
-  const attachments = (order.business_order_attachments ?? []).filter(
-    (attachment) => attachment.status === 'active',
-  )
-  const attachmentUrlMap = await getBusinessOrderAttachmentUrls(
-    attachments.map((attachment) => attachment.id),
-  )
   const attachmentLinks = attachments.map((attachment) => ({
     attachment,
     url: attachmentUrlMap.get(attachment.id) ?? null,
@@ -318,9 +323,9 @@ export default async function BusinessOrderDetailPage({
     financeDetail = financeResult.data as BusinessOrderFinanceDetail | null
   }
 
-  // 国旗读实时客户国家（走 security definer RPC），未关联客户时回落到下单快照。
-  const currentCustomerCountry =
-    (await fetchCurrentCustomerCountries(supabase, [order.id])).get(order.id) ?? null
+  // 国旗读实时客户国家（走 security definer RPC），未关联客户时回落到下单快照；
+  // RPC 已并入上方并行批次，这里只取结果。
+  const currentCustomerCountry = countryById.get(order.id) ?? null
 
   const customer = order.customer_snapshot
   const financeReady = Boolean(
