@@ -1259,6 +1259,8 @@ export async function getBusinessOrderEditConstraints(
 export interface BusinessPerformanceFilters {
   dateFrom?: string
   dateTo?: string
+  createdFrom?: string
+  createdTo?: string
   salespersonIds?: string[]
   shopIds?: string[]
   productGroupIds?: string[]
@@ -1273,6 +1275,8 @@ export async function getBusinessPerformanceSummary(
   const { data, error } = await supabase.rpc('get_business_performance_summary', {
     p_date_from: filters.dateFrom ?? null,
     p_date_to: filters.dateTo ?? null,
+    p_created_from: filters.createdFrom ?? null,
+    p_created_to: filters.createdTo ?? null,
     p_salesperson_ids: filters.salespersonIds ?? null,
     p_shop_ids: filters.shopIds ?? null,
     p_product_group_ids: filters.productGroupIds ?? null,
@@ -1295,6 +1299,8 @@ export async function getBusinessPerformanceByProduct(
     p_source_type: sourceType,
     p_date_from: filters.dateFrom ?? null,
     p_date_to: filters.dateTo ?? null,
+    p_created_from: filters.createdFrom ?? null,
+    p_created_to: filters.createdTo ?? null,
     p_salesperson_ids: filters.salespersonIds ?? null,
     p_shop_ids: filters.shopIds ?? null,
     p_product_group_ids: filters.productGroupIds ?? null,
@@ -1331,6 +1337,8 @@ export async function getBusinessPerformanceMultiDimension(
     p_dimension_3: dimensions[2],
     p_date_from: filters.dateFrom ?? null,
     p_date_to: filters.dateTo ?? null,
+    p_created_from: filters.createdFrom ?? null,
+    p_created_to: filters.createdTo ?? null,
     p_salesperson_ids: filters.salespersonIds ?? null,
     p_shop_ids: filters.shopIds ?? null,
     p_product_group_ids: filters.productGroupIds ?? null,
@@ -1360,6 +1368,8 @@ export async function getBusinessPerformanceByGroup(
     p_group_by: groupBy,
     p_date_from: filters.dateFrom ?? null,
     p_date_to: filters.dateTo ?? null,
+    p_created_from: filters.createdFrom ?? null,
+    p_created_to: filters.createdTo ?? null,
     p_salesperson_ids: filters.salespersonIds ?? null,
     p_shop_ids: filters.shopIds ?? null,
     p_product_group_ids: filters.productGroupIds ?? null,

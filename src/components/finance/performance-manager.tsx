@@ -275,6 +275,8 @@ export function PerformanceManager({
 
   const [dateFrom, setDateFrom] = useState(filters.dateFrom ?? '')
   const [dateTo, setDateTo] = useState(filters.dateTo ?? '')
+  const [createdFrom, setCreatedFrom] = useState(filters.createdFrom ?? '')
+  const [createdTo, setCreatedTo] = useState(filters.createdTo ?? '')
   const [selectedSalespeople, setSelectedSalespeople] = useState(
     filters.salespersonIds ?? [],
   )
@@ -302,6 +304,8 @@ export function PerformanceManager({
     const params = new URLSearchParams()
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
+    if (createdFrom) params.set('createdFrom', createdFrom)
+    if (createdTo) params.set('createdTo', createdTo)
     if (selectedSalespeople.length > 0) {
       params.set('salesperson', selectedSalespeople.join(','))
     }
@@ -332,6 +336,8 @@ export function PerformanceManager({
   function clearFilters() {
     setDateFrom('')
     setDateTo('')
+    setCreatedFrom('')
+    setCreatedTo('')
     setSelectedSalespeople([])
     setSelectedShops([])
     setSelectedProductGroups([])
@@ -580,12 +586,19 @@ export function PerformanceManager({
       )}
 
       <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
           <div className="space-y-1.5 sm:col-span-2">
-            <label className="text-xs font-medium text-muted-foreground">日期</label>
+            <label className="text-xs font-medium text-muted-foreground">下单日期</label>
             <DateRangePicker from={dateFrom} to={dateTo} onChange={({ from, to }) => {
               setDateFrom(from)
               setDateTo(to)
+            }} className="w-full" />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">建单日期</label>
+            <DateRangePicker from={createdFrom} to={createdTo} onChange={({ from, to }) => {
+              setCreatedFrom(from)
+              setCreatedTo(to)
             }} className="w-full" />
           </div>
           <div className="space-y-1.5">
