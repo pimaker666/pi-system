@@ -34,15 +34,20 @@ export default async function FinanceCommissionPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">业务提成</h1>
-          <p className="text-sm text-muted-foreground">
-            已收齐且已发货的产品行自动进入本页；全部确认结清的订单会自动移入“已结清订单”。未关联客户的订单保留展示，补充客户后即可按产品行计算提成。
-          </p>
+      <section className="flex flex-wrap items-start justify-between gap-4 rounded-xl border bg-card p-5 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+        <div className="min-w-0 space-y-2">
+          <div className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+            业绩与提成
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">业务提成</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              已收齐且已发货的产品行自动进入本页；全部确认结清的订单会自动移入“已结清订单”。未关联客户的订单保留展示，补充客户后即可按产品行计算提成。
+            </p>
+          </div>
         </div>
         {canManageCategoryRates && <CommissionClearanceDetails rows={clearanceDetails} />}
-      </div>
+      </section>
       <CommissionManager
         rows={commissions.rows}
         totalCount={commissions.totalCount}

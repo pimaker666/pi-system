@@ -324,7 +324,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
         </Button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
         <span className="text-sm text-muted-foreground">已选 {selectedCount} 个订单</span>
         <Button
           type="button"
@@ -347,7 +347,14 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
         </label>
       </div>
 
-      <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
+      <form className="overflow-hidden rounded-xl border bg-card shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+          <h2 className="text-sm font-semibold">筛选成本订单</h2>
+          <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+            共 {totalCount} 个订单
+          </span>
+        </div>
+        <div className="grid gap-3 p-4 md:grid-cols-4 xl:grid-cols-9">
         <input type="hidden" name="page" value="1" />
         <Input
           name="q"
@@ -382,6 +389,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
           <Button asChild type="button" variant="outline">
             <Link href="/finance/costs">清空</Link>
           </Button>
+        </div>
         </div>
       </form>
 

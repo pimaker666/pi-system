@@ -203,12 +203,19 @@ export default async function FinancePerformancePage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">业务业绩</h1>
-        <p className="text-sm text-muted-foreground">
-          按业务、渠道、时间、发货分类等维度汇总业务订单业绩；数据在服务端聚合，与订单级权限一致。
-        </p>
-      </div>
+      <section className="rounded-xl border bg-card p-5 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+        <div className="min-w-0 space-y-2">
+          <div className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+            业绩分析
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">业务业绩</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              按业务、渠道、时间、发货分类等维度汇总业务订单业绩；数据在服务端聚合，与订单级权限一致。
+            </p>
+          </div>
+        </div>
+      </section>
       <PerformanceManager
         summary={summaryResult.data}
         groupRows={groupResult.data}

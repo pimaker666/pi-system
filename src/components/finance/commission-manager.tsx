@@ -1339,7 +1339,7 @@ export function CommissionManager({
         </div>
       </div>
 
-      {!readOnly && <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card p-4">
+      {!readOnly && <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
         <label htmlFor="commission-exchange-rate" className="text-sm font-medium">
           USD→CNY 汇率
         </label>
@@ -1372,7 +1372,7 @@ export function CommissionManager({
       <CustomerTagsLegend customerTags={customerTags} />
 
       {!readOnly && canManageCategoryRates && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
           <span className="text-sm text-muted-foreground">已选 {selectedCount} 个产品行</span>
           <Button
             type="button"
@@ -1389,7 +1389,7 @@ export function CommissionManager({
       )}
 
       {!readOnly && isSalespersonView && confirmationSelectableRows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border p-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
           <span className="text-sm text-muted-foreground">已选 {selectedConfirmationCount} 个待确认产品行</span>
           <Button
             type="button"
@@ -1404,7 +1404,7 @@ export function CommissionManager({
       )}
 
       {readOnly && canCancelClearances && cancelClearanceSelectableRows.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border bg-card p-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
           <span className="text-sm text-muted-foreground">已选 {selectedCancelledClearanceCount} 个产品行</span>
           <Button
             type="button"
@@ -1419,7 +1419,14 @@ export function CommissionManager({
         </div>
       )}
 
-      <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-9">
+      <form className="overflow-hidden rounded-xl border bg-card shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
+          <h2 className="text-sm font-semibold">筛选提成产品行</h2>
+          <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
+            共 {totalCount} 个产品行
+          </span>
+        </div>
+        <div className="grid gap-3 p-4 md:grid-cols-4 xl:grid-cols-9">
         <input type="hidden" name="page" value="1" />
         <Input
           name="q"
@@ -1459,6 +1466,7 @@ export function CommissionManager({
           <Button asChild type="button" variant="outline">
             <Link href="/finance/commission">清空</Link>
           </Button>
+        </div>
         </div>
       </form>
 

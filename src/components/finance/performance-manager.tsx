@@ -433,7 +433,7 @@ export function PerformanceManager({
 
   return (
     <div className={cn('space-y-4', pending && 'opacity-70')}>
-      <div className="flex items-center gap-3 rounded-md border bg-card p-4">
+      <div className="flex items-center gap-3 rounded-xl border bg-card p-4 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
         <label className="text-sm font-medium text-muted-foreground">
           USD→CNY 汇率
         </label>
@@ -579,7 +579,7 @@ export function PerformanceManager({
         </Card>
       )}
 
-      <div className="flex flex-col gap-3 rounded-md border bg-card p-4">
+      <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <div className="space-y-1.5 sm:col-span-2">
             <label className="text-xs font-medium text-muted-foreground">日期</label>
@@ -767,7 +767,7 @@ export function PerformanceManager({
       </div>
       )}
 
-      <div className="space-y-3 rounded-md border bg-card p-4">
+      <div className="space-y-3 rounded-xl border bg-card p-4 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
         <div>
           <h2 className="font-semibold">多维销售总览</h2>
           <p className="text-sm text-muted-foreground">按最多三层维度交叉汇总销售产品行，沿用上方筛选条件。</p>

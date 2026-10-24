@@ -62,21 +62,28 @@ export default async function FinanceCostsPage({
   const costs = (costsResult.data ?? []) as FinanceOrderCost[]
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">订单成本</h1>
-        <p className="text-sm text-muted-foreground">
-          已收款并发货的产品行自动匹配产品库财务资料；修改成本仅覆盖当前订单产品行，不反写产品库。
-        </p>
-      </div>
+    <div className="space-y-6">
+      <section className="rounded-xl border bg-card p-5 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+        <div className="min-w-0 space-y-2">
+          <div className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+            成本核算
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">订单成本</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              已收款并发货的产品行自动匹配产品库财务资料；修改成本仅覆盖当前订单产品行，不反写产品库。
+            </p>
+          </div>
+        </div>
+      </section>
       <DailyOrderCostManager
         rows={dailyOrderCosts.rows}
         totalCount={dailyOrderCosts.totalCount}
         filters={filters}
         options={options}
       />
-      <div className="border-t pt-8">
-        <h2 className="mb-1 text-lg font-semibold">其他订单费用</h2>
+      <div className="border-t pt-6">
+        <h2 className="text-lg font-semibold tracking-tight">其他订单费用</h2>
         <p className="mb-4 text-sm text-muted-foreground">
           按历史 PI 或已审核业务订单归集采购、物流、关税、平台费和收款手续费等成本。
         </p>

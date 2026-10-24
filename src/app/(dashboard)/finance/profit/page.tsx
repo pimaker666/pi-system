@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { getBusinessOrderProfitRows } from '@/lib/actions/business-order-profit'
@@ -47,11 +48,20 @@ export default async function FinanceProfitPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">利润核算</h1>
-        <p className="text-sm text-muted-foreground">仅展示产品成本与提成均已结清的订单；所有金额按结清汇率统一折算为人民币，归属月份取两者最后确认的月份。</p>
-      </div>
-      <form className="flex flex-wrap items-end gap-3 rounded-md border p-4">
+      <section className="rounded-xl border bg-card p-5 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+        <div className="min-w-0 space-y-2">
+          <div className="inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">
+            利润分析
+          </div>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">利润核算</h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              仅展示产品成本与提成均已结清的订单；所有金额按结清汇率统一折算为人民币，归属月份取两者最后确认的月份。
+            </p>
+          </div>
+        </div>
+      </section>
+      <form className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
         <div className="space-y-1.5">
           <label className="text-sm font-medium" htmlFor="period">归属月份</label>
           <Input id="period" name="period" type="month" defaultValue={period} />
@@ -60,15 +70,17 @@ export default async function FinanceProfitPage({
         <Button asChild type="button" variant="outline"><Link href="/finance/profit">本月</Link></Button>
       </form>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="rounded-md border p-4">
-          <div className="text-xs text-muted-foreground">CNY 已结清订单 / 利润</div>
-          <div className="mt-1 text-xl font-semibold">{rows.length} 单 / {money(total(rows, 'profit_amount'), 'CNY')}</div>
-          <div className="mt-1 text-sm text-muted-foreground">实收 {money(total(rows, 'received_amount'), 'CNY')} · 扣减 {money(total(rows, 'product_cost') + total(rows, 'freight_cost') + total(rows, 'commission_amount') + total(rows, 'fee_amount'), 'CNY')}</div>
-        </div>
+        <Card className="border-primary/25 bg-primary/[0.04]">
+          <CardContent className="p-4">
+            <div className="text-sm text-primary">CNY 已结清订单 / 利润</div>
+            <div className="mt-1 text-xl font-semibold tabular-nums">{rows.length} 单 / {money(total(rows, 'profit_amount'), 'CNY')}</div>
+            <div className="mt-1 text-sm text-muted-foreground">实收 {money(total(rows, 'received_amount'), 'CNY')} · 扣减 {money(total(rows, 'product_cost') + total(rows, 'freight_cost') + total(rows, 'commission_amount') + total(rows, 'fee_amount'), 'CNY')}</div>
+          </CardContent>
+        </Card>
       </div>
       <div className="grid gap-4 xl:grid-cols-3">
         {groupSummaries.map((summary) => (
-          <div key={summary.label} className="overflow-hidden rounded-md border">
+          <div key={summary.label} className="overflow-hidden rounded-md border bg-card">
             <div className="border-b bg-muted/30 px-4 py-3 text-sm font-medium">按{summary.label}汇总</div>
             <Table>
               <TableHeader><TableRow><TableHead>{summary.label}</TableHead><TableHead className="text-right">订单数</TableHead><TableHead className="text-right">实收</TableHead><TableHead className="text-right">利润</TableHead></TableRow></TableHeader>
