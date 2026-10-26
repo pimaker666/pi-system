@@ -144,40 +144,48 @@ function isClearanceSelectable(row: BusinessOrderCommissionRow) {
 function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOnly?: boolean }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
-  const initialValue = row.product_commission_rate_overridden ? String(row.product_commission_rate) : ''
+  const rate = row.product_commission_rate_source === 'none' ? null : row.product_commission_rate
+  const rateText = rate == null ? '—' : `${rate}%`
+  const initialValue = rate == null ? '' : String(rate)
   const [draft, setDraft] = useState(initialValue)
   const normalized = draft.trim()
   const unchanged = normalized === initialValue
 
   function save() {
-    const rate = normalized === '' ? null : Number(normalized)
-    if (rate !== null && (!Number.isFinite(rate) || rate < 0 || rate > 100)) {
+    const nextRate = normalized === '' ? null : Number(normalized)
+    if (nextRate !== null && (!Number.isFinite(nextRate) || nextRate < 0 || nextRate > 100)) {
       toast.error('提点必须是 0~100 的数字')
       return
     }
     startTransition(async () => {
       const result = await saveBusinessOrderItemCommission({
         business_order_item_ids: row.item_ids,
-        rate,
+        rate: nextRate,
       })
       if (!result.ok) {
         const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
         toast.error(firstFieldError ?? result.error ?? '产品提点保存失败')
         return
       }
-      toast.success(rate === null ? '已恢复分类默认提点' : '产品提点已保存')
+      toast.success(nextRate === null ? '已恢复分类默认提点' : '产品提点已保存')
       router.refresh()
     })
   }
 
-  const placeholder =
-    row.product_commission_rate_source === 'customer_tag'
-      ? `客户标记 ${row.product_commission_rate}`
-      : row.product_commission_rate_source === 'custom_order_count'
-        ? `定制单数 ${row.product_commission_rate}`
-        : row.product_commission_rate_source === 'shipping_category'
-          ? `分类默认 ${row.product_commission_rate}`
-          : '未设置'
+  const sourceLabel =
+    row.product_commission_rate_source === 'override'
+      ? '手动设置'
+      : row.product_commission_rate_source === 'customer_tag'
+        ? '客户标记'
+        : row.product_commission_rate_source === 'custom_order_count'
+          ? '定制单数'
+          : row.product_commission_rate_source === 'shipping_category'
+            ? '分类默认'
+            : '未设置'
+  const sourceDetail =
+    row.product_commission_rate_source === 'customer_tag' && row.customer_tag_label
+      ? `${sourceLabel}：${row.customer_tag_label}`
+      : sourceLabel
 
   if (!row.commission_calculable) {
     return <span className="text-sm text-muted-foreground">待补客户</span>
@@ -185,47 +193,56 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
 
   if (readOnly) {
     return (
-      <div className="text-sm tabular-nums">
-        {row.product_commission_rate}
-        {row.product_commission_rate_overridden && (
-          <span className="ml-1 text-xs text-muted-foreground">(覆盖)</span>
-        )}
+      <div className="leading-tight tabular-nums">
+        <div className="font-semibold">{rateText}</div>
+        <div className="truncate text-[11px] text-muted-foreground" title={sourceDetail}>
+          {sourceDetail}
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="flex w-24 items-center gap-1">
-      <Input
-        value={draft}
-        type="number"
-        min={0}
-        max={100}
-        step="0.0001"
-        disabled={pending}
-        placeholder={placeholder}
-        title={`${placeholder}${row.product_commission_rate_source === 'none' ? '' : '%'}；留空保存则恢复发货分类默认值`}
-        onChange={(event) => setDraft(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && !pending && !unchanged) {
-            event.preventDefault()
-            save()
+    <div className="w-full min-w-0 leading-tight">
+      <div className="flex items-center gap-1">
+        <Input
+          value={draft}
+          type="number"
+          min={0}
+          max={100}
+          step="0.0001"
+          disabled={pending}
+          placeholder={rate == null ? '—' : String(rate)}
+          title={
+            row.product_commission_rate_overridden
+              ? `当前 ${rateText}（手动设置）；留空保存则恢复发货分类默认值`
+              : `当前 ${rateText}（${sourceDetail}）`
           }
-        }}
-        className="h-7 w-16 px-1 text-xs"
-      />
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className="h-7 w-7 shrink-0"
-        disabled={pending || unchanged}
-        onClick={save}
-        aria-label={`保存订单 ${row.order_number} 的产品提点`}
-        title="保存；留空则恢复分类默认提点"
-      >
-        <Save className="h-3.5 w-3.5" />
-      </Button>
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !pending && !unchanged) {
+              event.preventDefault()
+              save()
+            }
+          }}
+          className="h-7 w-full min-w-0 px-1 text-xs"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="h-7 w-7 shrink-0"
+          disabled={pending || unchanged}
+          onClick={save}
+          aria-label={`保存订单 ${row.order_number} 的产品提点`}
+          title="保存；留空则恢复分类默认提点"
+        >
+          <Save className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <div className="mt-0.5 truncate text-[11px] text-muted-foreground" title={sourceDetail}>
+        {sourceDetail}
+      </div>
     </div>
   )
 }
@@ -1419,7 +1436,7 @@ export function CommissionManager({
         </div>
       )}
 
-      <form className="overflow-hidden rounded-xl border bg-card shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+      <form className="rounded-xl border bg-card shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
           <h2 className="text-sm font-semibold">筛选提成产品行</h2>
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
