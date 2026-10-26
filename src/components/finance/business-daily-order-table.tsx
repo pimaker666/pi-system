@@ -2,7 +2,16 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Download, Eye, FileText, Pencil, Truck, UserRoundPlus } from 'lucide-react'
+import {
+  Bookmark,
+  BookmarkX,
+  Download,
+  Eye,
+  FileText,
+  Pencil,
+  Truck,
+  UserRoundPlus,
+} from 'lucide-react'
 import { useMemo, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { CustomerCombobox } from '@/components/customers/customer-combobox'
@@ -32,6 +41,7 @@ import {
   bulkShipBusinessOrders,
   getBusinessOrderAttachmentUrl,
   setBusinessOrderCustomer,
+  setBusinessOrderMarks,
 } from '@/lib/actions/business-orders'
 import {
   BUSINESS_ORDER_STATUS_LABELS,
@@ -161,7 +171,10 @@ export function BusinessDailyOrderTable({
   const [pending, startTransition] = useTransition()
   const [bulkPending, startBulkTransition] = useTransition()
   const [customerPending, startCustomerTransition] = useTransition()
+  const [markPending, startMarkTransition] = useTransition()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  // 标记先本地生效，失败时清空覆盖层回到服务端真值，避免每次点击都等刷新。
+  const [markOverrides, setMarkOverrides] = useState<Record<string, boolean>>({})
   const [exportPending, setExportPending] = useState<'xlsx' | 'pdf' | null>(null)
   const [customerOrder, setCustomerOrder] = useState<BusinessDailyLedgerOrder | null>(null)
   const [customerDraft, setCustomerDraft] = useState<Customer | null>(null)
@@ -232,16 +245,40 @@ export function BusinessDailyOrderTable({
     () => orders.filter((order) => canBulkShipOrder(order, actor, canShip)),
     [orders, actor, canShip],
   )
-  const selectableOrders = canManageShipments ? shippableOrders : orders
+  // 勾选同时服务于「标记」与「整单发货」：所有订单都可勾选，发货只取其中可发货的订单。
+  const selectableOrders = orders
   const selectableIds = useMemo(
     () => new Set(selectableOrders.map((order) => order.id)),
     [selectableOrders],
+  )
+  const shippableIds = useMemo(
+    () => new Set(shippableOrders.map((order) => order.id)),
+    [shippableOrders],
   )
   const selectedCount = useMemo(
     () => [...selectedIds].filter((id) => selectableIds.has(id)).length,
     [selectedIds, selectableIds],
   )
   const allSelected = selectableOrders.length > 0 && selectedCount === selectableOrders.length
+
+  // 标记按账号隔离，服务端只返回本人标记；点击后先本地覆盖，失败再回退。
+  const serverMarkedIds = useMemo(
+    () =>
+      new Set(
+        orders
+          .filter((order) => (order.business_order_marks?.length ?? 0) > 0)
+          .map((order) => order.id),
+      ),
+    [orders],
+  )
+  const isOrderMarked = (orderId: string) =>
+    markOverrides[orderId] ?? serverMarkedIds.has(orderId)
+  const markedCount = useMemo(
+    () =>
+      orders.filter((order) => markOverrides[order.id] ?? serverMarkedIds.has(order.id)).length,
+    [markOverrides, orders, serverMarkedIds],
+  )
+  const selectedOrderIds = () => [...selectedIds].filter((id) => selectableIds.has(id))
 
   // 导出走 POST：ids 放请求体。选中行多时 URL 拼 ids 会被 Kong（~8k）或 Node（16k）拒绝。
   async function downloadExport(kind: 'xlsx' | 'pdf') {
@@ -329,6 +366,27 @@ export function BusinessDailyOrderTable({
     }
   }
 
+  function setOrdersMarked(ids: string[], marked: boolean) {
+    if (ids.length === 0) return
+    setMarkOverrides((previous) => {
+      const next = { ...previous }
+      ids.forEach((id) => {
+        next[id] = marked
+      })
+      return next
+    })
+    startMarkTransition(async () => {
+      const result = await setBusinessOrderMarks(ids, marked)
+      if (!result.ok) {
+        setMarkOverrides({})
+        toast.error(result.error ?? (marked ? '标记订单失败' : '取消标记失败'))
+        return
+      }
+      toast.success(marked ? `已标记 ${ids.length} 个订单` : `已取消标记 ${ids.length} 个订单`)
+      router.refresh()
+    })
+  }
+
   function bulkShipSelected(ids: string[], shippedAtIso: string) {
     startBulkTransition(async () => {
       const result = await bulkShipBusinessOrders(ids, shippedAtIso)
@@ -349,20 +407,45 @@ export function BusinessDailyOrderTable({
       {orders.length > 0 && (
         <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)] lg:flex-row lg:items-center">
           {selectableOrders.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Badge variant={selectedCount > 0 ? 'default' : 'muted'}>
                 已选 {selectedCount} 个订单
               </Badge>
               <span className="text-xs text-muted-foreground">
                 {selectableOrders.length} 个订单可勾选
               </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={selectedCount === 0 || markPending}
+                onClick={() => setOrdersMarked(selectedOrderIds(), true)}
+              >
+                <Bookmark className="h-4 w-4" />
+                标记所选
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={selectedCount === 0 || markPending}
+                onClick={() => setOrdersMarked(selectedOrderIds(), false)}
+              >
+                <BookmarkX className="h-4 w-4" />
+                取消标记
+              </Button>
+              {markedCount > 0 && (
+                <Badge variant="muted" className="border-sky-200 bg-sky-50 text-sky-700">
+                  已标记 {markedCount} 个订单
+                </Badge>
+              )}
             </div>
           )}
           {canManageShipments && shippableOrders.length > 0 && (
             <BulkShipControls
               pending={bulkPending}
               selectedIds={selectedIds}
-              selectableIds={selectableIds}
+              selectableIds={shippableIds}
               onShip={bulkShipSelected}
             />
           )}
@@ -427,10 +510,9 @@ export function BusinessDailyOrderTable({
               const rows = items.length > 0 ? items : [null]
               const rowSpan = rows.length
               const canEdit = canEditBusinessDailyOrder(order, actor)
-              const canShipOrder = canBulkShipOrder(order, actor, canShip)
-              const canSelect = canManageShipments ? canShipOrder : true
               const canSetCustomer = canSetOrderCustomer(order, actor)
               const isSelected = selectedIds.has(order.id)
+              const isMarked = isOrderMarked(order.id)
               const salesperson = displayProfileName(
                 order.salesperson,
                 order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
@@ -445,13 +527,15 @@ export function BusinessDailyOrderTable({
                   <TableRow
                     key={item ? item.id : order.id}
                     className={cn(
-                      'hover:bg-primary/[0.025]',
+                      isMarked
+                        ? 'bg-sky-50 [&>td]:bg-sky-50'
+                        : 'hover:bg-primary/[0.025]',
                       isFirstRow && groupIndex > 0 && 'border-t-2 border-t-primary/20',
-                      isSelected && 'bg-primary/[0.035]',
+                      isSelected && !isMarked && 'bg-primary/[0.035]',
                     )}
                   >
                     <TableCell className={cellCn(0, 'align-top')}>
-                      {isFirstRow && canSelect && (
+                      {isFirstRow && (
                         <input
                           type="checkbox"
                           aria-label={`选择订单 ${order.order_number}`}
@@ -470,6 +554,22 @@ export function BusinessDailyOrderTable({
                       </div>
                       {isFirstRow && (
                         <div className="flex">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            disabled={markPending}
+                            onClick={() => setOrdersMarked([order.id], !isMarked)}
+                            aria-label={isMarked ? `取消标记 ${order.order_number}` : `标记 ${order.order_number}`}
+                            title={isMarked ? '取消标记' : '标记订单'}
+                          >
+                            <Bookmark
+                              className={cn(
+                                'h-3.5 w-3.5',
+                                isMarked ? 'fill-sky-500 text-sky-600' : 'text-muted-foreground',
+                              )}
+                            />
+                          </Button>
                           <Button asChild variant="ghost" size="icon">
                             <Link
                               href={`/finance/daily-orders/${order.id}`}

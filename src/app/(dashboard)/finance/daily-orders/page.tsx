@@ -113,6 +113,7 @@ export default async function DailyOrdersPage({
     filters.balanceStatus ||
     filters.customerBindingStatus ||
     filters.fulfillmentStatuses.length > 0 ||
+    filters.markedOnly ||
     (filters.commissionClearanceStatus && filters.commissionClearanceStatus !== 'all'),
   )
 
@@ -210,7 +211,7 @@ export default async function DailyOrdersPage({
         <details className="group border-t" open={hasMoreFilters}>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm font-medium transition-colors hover:bg-muted/40 [&::-webkit-details-marker]:hidden">
             <span>更多筛选</span>
-            <span className="text-xs font-normal text-muted-foreground">店铺分组、分类、状态与结清条件 ▼</span>
+            <span className="text-xs font-normal text-muted-foreground">店铺分组、分类、状态、标记与结清条件 ▼</span>
           </summary>
           <div className="grid gap-3 border-t bg-muted/15 p-4 md:grid-cols-4 xl:grid-cols-6">
             <select name="shopGroup" defaultValue={filters.shopGroup ?? ''} className={selectClassName}>
@@ -241,6 +242,10 @@ export default async function DailyOrdersPage({
               <option value="special_closed">仅特殊关闭</option>
               <option value="voided">仅已作废</option>
               <option value="all">所有订单记录</option>
+            </select>
+            <select name="markedOnly" defaultValue={filters.markedOnly ?? ''} className={selectClassName}>
+              <option value="">全部订单标记</option>
+              <option value="1">只看我标记的订单</option>
             </select>
             <select name="balanceStatus" defaultValue={filters.balanceStatus ?? ''} className={selectClassName}>
               <option value="">全部尾款状态</option>

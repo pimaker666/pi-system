@@ -127,10 +127,14 @@ function buildLedgerQuery(
   // 发货分类落在明细上；下推到明细的筛选必须用 !inner，否则父订单不会被过滤。
   const needInner = Boolean(filters.category) || productSearch
   const itemsEmbed = needInner ? 'business_order_items!inner(*)' : 'business_order_items(*)'
+  // 标记按账号隔离（RLS 只返回本人行）；筛选时用 !inner 才能过滤掉未标记订单。
+  const marksEmbed = filters.markedOnly
+    ? 'business_order_marks!inner(order_id)'
+    : 'business_order_marks(order_id)'
 
   let query = supabase
     .from('business_orders')
-    .select(`*, ${itemsEmbed}, ${LEDGER_TAIL}`)
+    .select(`*, ${itemsEmbed}, ${marksEmbed}, ${LEDGER_TAIL}`)
     // 内嵌过滤只筛子行，不会误删没有附件的订单。
     .eq('business_order_attachments.status', 'active')
     .order('order_date', { ascending: false })

@@ -46,6 +46,8 @@ export interface BusinessDailyLedgerOrder extends BusinessOrder {
   business_order_payment_allocations?: BusinessOrderPaymentAllocationLite[]
   outstanding_amount: number
   customer?: { tag_color?: string | null }
+  /** 当前账号对该订单的个人标记（RLS 只返回本人行），非空即已标记。 */
+  business_order_marks?: Array<{ order_id: string }>
 }
 
 /**

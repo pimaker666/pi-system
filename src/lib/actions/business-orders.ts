@@ -173,6 +173,8 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Voided business order costs are immutable', '已作废订单的成本记录不可修改'],
     ['Idempotency key was already used with a different payload', '该作废请求标识已用于不同内容，请关闭弹窗后重试'],
     ['Approved account required', '账号尚未审核通过'],
+    ['new row violates row-level security policy', '无权标记该订单'],
+    ['permission denied for table business_order_marks', '当前账号无权标记订单'],
     ['Customer does not exist or is not manageable by current user', '客户不存在或当前账号无权管理'],
     ['Customer does not exist or is not owned', '客户不存在或不属于当前业务员'],
     ['Customer does not exist', '客户不存在或不属于该业务员'],
@@ -1212,6 +1214,42 @@ export async function bulkShipBusinessOrders(
   revalidateBusinessOrderIds(orders.map((order) => order.id))
   if (errors.length > 0) return { ok: false, error: errors.join('；') }
   return { ok: true, shippedCount, skippedCount }
+}
+
+/**
+ * 个人标记/取消标记每日订单。标记按账号隔离（business_order_marks 的 RLS
+ * 只允许本人读写，并限制为可查看的订单），不修改订单本身与任何金额口径。
+ */
+export async function setBusinessOrderMarks(
+  orderIds: string[],
+  marked: boolean,
+): Promise<ActionResult> {
+  const profile = await requireApproved()
+  const validIds = [...new Set(orderIds.filter((id) => z.string().uuid().safeParse(id).success))]
+  if (validIds.length === 0) return { ok: false, error: '请选择有效订单' }
+  if (validIds.length > 500) return { ok: false, error: '一次最多标记 500 个订单' }
+
+  const supabase = await createClient()
+  if (marked) {
+    const { error } = await supabase
+      .from('business_order_marks')
+      .upsert(
+        validIds.map((orderId) => ({ order_id: orderId, user_id: profile.id })),
+        { onConflict: 'order_id,user_id', ignoreDuplicates: true },
+      )
+    if (error) return { ok: false, error: businessOrderError(error.message, '标记订单失败') }
+  } else {
+    const { error } = await supabase
+      .from('business_order_marks')
+      .delete()
+      .eq('user_id', profile.id)
+      .in('order_id', validIds)
+      .select('order_id')
+    if (error) return { ok: false, error: businessOrderError(error.message, '取消标记失败') }
+  }
+
+  revalidatePath('/finance/daily-orders')
+  return { ok: true }
 }
 
 export async function voidBusinessOrderShipment(

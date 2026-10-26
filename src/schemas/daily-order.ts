@@ -70,6 +70,8 @@ export const dailyOrderFilterSchema = z.object({
   customerBindingStatus: z.enum(dailyOrderCustomerBindingStatuses).optional(),
   recordStatus: z.enum(dailyOrderRecordStatuses).optional(),
   fulfillmentStatuses: z.array(z.enum(dailyOrderFulfillmentStatuses)).default([]),
+  /** 只看当前账号标记过的订单；空表示不限制。 */
+  markedOnly: z.enum(['1']).optional(),
 })
 
 export const dailyOrderShopSchema = z.object({
