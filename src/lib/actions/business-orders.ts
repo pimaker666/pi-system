@@ -1023,7 +1023,7 @@ export async function createBusinessOrderShipment(
   orderId: string,
   rawInput: unknown,
 ): Promise<BusinessOrderShipmentActionResult> {
-  await requireApproved()
+  const profile = await requireApproved()
   if (!await hasCurrentPermission('orders.ship')) {
     return { ok: false, error: '当前账号没有登记发货权限' }
   }
@@ -1053,7 +1053,53 @@ export async function createBusinessOrderShipment(
     shipment: BusinessOrderShipment
     items: BusinessOrderShipmentItem[]
   }>(data)
-  if (!result?.shipment) return { ok: false, error: '数据库未返回发货批次信息' }
+  if (!result?.shipment) {
+    // 运输层偶发返回 200 空响应：批次可能已创建，回查本订单最新有效批次与请求逐项核对后视为成功。
+    console.error('[shipment] create_business_order_shipment_v2 未返回批次数据', {
+      orderId,
+      dataKind: data === null ? 'null' : Array.isArray(data) ? `array:${data.length}` : typeof data,
+    })
+    const { data: latestRows } = await supabase
+      .from('business_order_shipments')
+      .select('*, items:business_order_shipment_items(*)')
+      .eq('order_id', orderId)
+      .is('voided_at', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+    const latest = (latestRows?.[0] ?? null) as
+      | (BusinessOrderShipment & { items?: BusinessOrderShipmentItem[] })
+      | null
+    const requested = [...parsed.data.items].sort((a, b) =>
+      a.order_item_id.localeCompare(b.order_item_id),
+    )
+    const found = [...(latest?.items ?? [])].sort((a, b) =>
+      a.order_item_id.localeCompare(b.order_item_id),
+    )
+    const payloadMatches =
+      latest !== null &&
+      latest.created_by === profile.id &&
+      Date.now() - new Date(latest.created_at).getTime() <= 10 * 60 * 1000 &&
+      Math.abs(
+        new Date(latest.shipped_at).getTime() - new Date(parsed.data.shipped_at).getTime(),
+      ) <= 60 * 1000 &&
+      (latest.tracking_number ?? '') === (parsed.data.tracking_number ?? '') &&
+      requested.length === found.length &&
+      requested.every(
+        (item, index) =>
+          item.order_item_id === found[index].order_item_id &&
+          Math.abs(item.quantity - found[index].quantity) < 0.0001,
+      )
+    if (payloadMatches && latest) {
+      const { items: recoveredItems, ...shipment } = latest
+      revalidateBusinessOrders(orderId)
+      return { ok: true, shipment, items: recoveredItems ?? [] }
+    }
+    return {
+      ok: false,
+      error:
+        '发货结果未返回，无法确认是否已创建发货批次；请先刷新页面核对，确认未发货后再重试，避免重复发货',
+    }
+  }
 
   revalidateBusinessOrders(orderId)
   return { ok: true, shipment: result.shipment, items: result.items ?? [] }
