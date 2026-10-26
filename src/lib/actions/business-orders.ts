@@ -311,8 +311,18 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ['Sales user cannot allocate', '业务员不能向其他业务员的订单分摊'],
     ['Role cannot allocate', '当前角色不能追加转账分摊'],
     ['Active allocation does not exist', '有效收款分摊不存在'],
+    ['Voided allocation does not exist', '已作废的收款分摊不存在'],
+    ['Allocation is not voided', '该收款分摊尚未作废'],
     ['Sales user cannot void another salesperson allocation', '业务员不能作废其他业务员的分摊'],
+    ['Sales user cannot restore another owner allocation', '业务员不能重新分摊其他业务员的分摊'],
     ['Role cannot void payment allocations', '当前角色不能作废收款分摊'],
+    ['Role cannot restore payment allocations', '当前角色不能重新分摊收款'],
+    ['Customer transfer is not manageable by current user', '当前账号无权管理该转账'],
+    ['Restore reason cannot exceed', '重新分摊原因不能超过 1000 字'],
+    ['Voided business order is immutable', '已作废订单不可修改'],
+    ['Closed business order is immutable', '已特殊关闭的订单不可修改'],
+    ['Allocation exceeds order item outstanding amount', '分摊金额超过该产品行的未收金额'],
+    ['Allocation exceeds order shipping outstanding amount', '分摊金额超过该订单运费的未收金额'],
     [
       'Completed order allocations require the legacy admin/finance correction path',
       '已完成订单仅允许管理员或财务修正历史订单收款；新版完成订单不可修改',
@@ -963,6 +973,26 @@ export async function voidBusinessOrderPaymentAllocation(
     p_reason: parsedReason.data,
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '作废收款分摊失败') }
+
+  const allocation = firstRpcRow<BusinessOrderPaymentAllocation>(data)
+  revalidateBusinessOrders(allocation?.order_id)
+  return { ok: true }
+}
+
+export async function restoreBusinessOrderPaymentAllocation(
+  allocationId: string,
+): Promise<ActionResult> {
+  const profile = await requireApproved()
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '当前角色不能重新分摊收款' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('restore_business_order_payment_allocation', {
+    p_allocation_id: allocationId,
+    p_reason: null,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '重新分摊失败') }
 
   const allocation = firstRpcRow<BusinessOrderPaymentAllocation>(data)
   revalidateBusinessOrders(allocation?.order_id)

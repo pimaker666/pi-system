@@ -30,6 +30,7 @@ import {
   getBusinessCustomerPrepayment,
   getBusinessOrderSettlementSummary,
   recordBusinessCustomerTransfer,
+  restoreBusinessOrderPaymentAllocation,
   voidBusinessCustomerTransfer,
   voidBusinessOrderPaymentAllocation,
 } from '@/lib/actions/business-orders'
@@ -496,6 +497,17 @@ export function BusinessOrderPaymentManager({
     return Math.max(Number(transfer.amount) - transferAllocated(transfer.id), 0)
   }
 
+  function hasActiveAllocationFor(allocation: AllocationRow) {
+    return allocations.some(
+      (candidate) =>
+        !candidate.voided_at &&
+        candidate.transfer_id === allocation.transfer_id &&
+        candidate.order_id === allocation.order_id &&
+        candidate.allocation_target === allocation.allocation_target &&
+        (candidate.order_item_id ?? null) === (allocation.order_item_id ?? null),
+    )
+  }
+
   const pendingUploadStorageKey = `business-transfer-upload:${profile.id}:${orderId}`
 
   function readPendingUpload() {
@@ -855,6 +867,19 @@ export function BusinessOrderPaymentManager({
     })
   }
 
+  function handleRestoreAllocation(allocation: AllocationRow) {
+    startTransition(async () => {
+      const result = await restoreBusinessOrderPaymentAllocation(allocation.id)
+      if (!result.ok) {
+        toast.error(result.error ?? '重新分摊失败')
+        return
+      }
+      toast.success('收款分摊已恢复')
+      await loadData()
+      router.refresh()
+    })
+  }
+
   function handleViewProof(transfer: BusinessCustomerTransfer) {
     startTransition(async () => {
       const paths = [transfer.proof_path, ...(transfer.extra_proof_paths ?? [])].filter(
@@ -1027,6 +1052,20 @@ export function BusinessOrderPaymentManager({
                                         {targetOrder?.order_number ?? allocation.order?.order_number ?? '不可见订单'}
                                         {allocationTargetSuffix(allocation)} {formatCurrency(Number(allocation.amount), transfer.currency)}
                                         {allocation.voided_at ? '（已作废）' : ''}
+                                        {allocation.voided_at &&
+                                          canManage &&
+                                          !transfer.voided_at &&
+                                          !hasActiveAllocationFor(allocation) && (
+                                            <Button
+                                              variant="success"
+                                              size="sm"
+                                              className="h-6 px-2 text-xs"
+                                              disabled={pending}
+                                              onClick={() => handleRestoreAllocation(allocation)}
+                                            >
+                                              重新分摊
+                                            </Button>
+                                          )}
                                         {voidable && (
                                           <button
                                             type="button"
