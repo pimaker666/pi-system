@@ -1,7 +1,8 @@
+import { cookies } from 'next/headers'
 import { hasFinanceViewFor, requireApproved } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
-import { Sidebar } from '@/components/layout/sidebar'
+import { Sidebar, type SidebarMode } from '@/components/layout/sidebar'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { LogoutButton } from '@/components/auth/logout-button'
 
@@ -11,6 +12,9 @@ export default async function DashboardLayout({
   children: React.ReactNode
 }) {
   const profile = await requireApproved()
+  const cookieMode = (await cookies()).get('pi_sidebar_mode')?.value
+  const sidebarMode: SidebarMode =
+    cookieMode === 'expanded' || cookieMode === 'collapsed' ? cookieMode : 'auto'
   const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
   const supabase = isSalesperson ? await createClient() : null
   const [canViewFinance, commissionAttentionCount] = await Promise.all([
@@ -34,6 +38,7 @@ export default async function DashboardLayout({
         fullName={displayProfileName(profile)}
         canViewFinance={canViewFinance}
         commissionAttentionCount={commissionAttentionCount}
+        mode={sidebarMode}
       />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b bg-card px-4 md:px-6">
