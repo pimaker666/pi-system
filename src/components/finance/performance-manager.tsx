@@ -403,6 +403,35 @@ export function PerformanceManager({
     })
   }, [groupRows, rate])
 
+  const isItemLevelGroup = groupBy === 'product_group' || groupBy === 'shipping_category'
+  const amountLabel = isItemLevelGroup ? '产品金额' : '订单总额'
+
+  const groupTotals = useMemo(() => {
+    return sortedRows.reduce(
+      (acc, row) => {
+        acc.orderCount += Number(row.order_count)
+        acc.overdueCount += Number(row.overdue_count)
+        acc.cnyTotal += Number(row.order_total_cny_native)
+        acc.usdTotal += Number(row.order_total_usd)
+        acc.cnyReceived += Number(row.received_cny_native)
+        acc.usdReceived += Number(row.received_usd)
+        acc.cnyOutstanding += Number(row.outstanding_cny_native)
+        acc.usdOutstanding += Number(row.outstanding_usd)
+        return acc
+      },
+      {
+        orderCount: 0,
+        overdueCount: 0,
+        cnyTotal: 0,
+        usdTotal: 0,
+        cnyReceived: 0,
+        usdReceived: 0,
+        cnyOutstanding: 0,
+        usdOutstanding: 0,
+      },
+    )
+  }, [sortedRows])
+
   const multiDimensionLabels = multiDimensions
     .filter((dimension): dimension is BusinessPerformanceDimension => dimension !== null)
     .map((dimension) => DIMENSION_OPTIONS.find((option) => option.value === dimension)?.label ?? dimension)
@@ -651,6 +680,7 @@ export function PerformanceManager({
       {isProductView ? (
         <ProductPerformanceTable rows={productRows} />
       ) : (
+      <>
       <div className="overflow-x-auto rounded-md border">
         <Table className="min-w-[900px]">
           <TableHeader>
@@ -659,14 +689,14 @@ export function PerformanceManager({
               <TableHead className="text-right">订单数</TableHead>
               {rate ? (
                 <>
-                  <TableHead className="text-right">订单总额（CNY）</TableHead>
+                  <TableHead className="text-right">{amountLabel}（CNY）</TableHead>
                   <TableHead className="text-right">已收（CNY）</TableHead>
                   <TableHead className="text-right">未收（CNY）</TableHead>
                 </>
               ) : (
                 <>
-                  <TableHead className="text-right">订单总额（CNY）</TableHead>
-                  <TableHead className="text-right">订单总额（USD）</TableHead>
+                  <TableHead className="text-right">{amountLabel}（CNY）</TableHead>
+                  <TableHead className="text-right">{amountLabel}（USD）</TableHead>
                   <TableHead className="text-right">已收（CNY）</TableHead>
                   <TableHead className="text-right">已收（USD）</TableHead>
                   <TableHead className="text-right">未收（CNY）</TableHead>
@@ -752,6 +782,70 @@ export function PerformanceManager({
                 </TableRow>
               )
             })}
+            {sortedRows.length > 0 && (
+              <TableRow className="border-t-2 bg-muted/40 font-semibold">
+                <TableCell>合计</TableCell>
+                <TableCell
+                  className="text-right tabular-nums"
+                  title={isItemLevelGroup ? '跨分组订单会计入多个分类，故不合计订单数' : undefined}
+                >
+                  {isItemLevelGroup ? '—' : groupTotals.orderCount}
+                </TableCell>
+                {rate ? (
+                  <>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCny(groupTotals.cnyTotal + groupTotals.usdTotal * rate)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-green-700">
+                      {formatCny(groupTotals.cnyReceived + groupTotals.usdReceived * rate)}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        'text-right tabular-nums',
+                        groupTotals.cnyOutstanding + groupTotals.usdOutstanding * rate > 0.005 &&
+                          'text-destructive',
+                      )}
+                    >
+                      {formatCny(groupTotals.cnyOutstanding + groupTotals.usdOutstanding * rate)}
+                    </TableCell>
+                  </>
+                ) : (
+                  <>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCny(groupTotals.cnyTotal)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatUsd(groupTotals.usdTotal)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-green-700">
+                      {formatCny(groupTotals.cnyReceived)}
+                    </TableCell>
+                    <TableCell className="text-right tabular-nums text-green-700">
+                      {formatUsd(groupTotals.usdReceived)}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        'text-right tabular-nums',
+                        groupTotals.cnyOutstanding > 0.005 && 'text-destructive',
+                      )}
+                    >
+                      {formatCny(groupTotals.cnyOutstanding)}
+                    </TableCell>
+                    <TableCell
+                      className={cn(
+                        'text-right tabular-nums',
+                        groupTotals.usdOutstanding > 0.005 && 'text-destructive',
+                      )}
+                    >
+                      {formatUsd(groupTotals.usdOutstanding)}
+                    </TableCell>
+                  </>
+                )}
+                <TableCell className="text-right tabular-nums">
+                  {isItemLevelGroup ? '—' : groupTotals.overdueCount}
+                </TableCell>
+              </TableRow>
+            )}
             {sortedRows.length === 0 && (
               <TableRow>
                 <TableCell
@@ -765,6 +859,14 @@ export function PerformanceManager({
           </TableBody>
         </Table>
       </div>
+      {isItemLevelGroup && (
+        <p className="text-xs text-muted-foreground">
+          {groupBy === 'shipping_category'
+            ? '本表按产品明细行汇总：产品金额不含整单运费应收，也不含未填发货分类的产品行，因此合计小于上方「订单总额」。'
+            : '本表按产品明细行汇总：产品金额不含整单运费应收，因此合计小于上方「订单总额」。'}
+        </p>
+      )}
+      </>
       )}
 
       <div className="space-y-3 rounded-xl border bg-card p-4 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
