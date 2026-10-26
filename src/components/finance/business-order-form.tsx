@@ -383,6 +383,7 @@ export function BusinessOrderForm({
   )
   const [customVersionPendingKey, setCustomVersionPendingKey] = useState<string | null>(null)
   const [customImageDragKey, setCustomImageDragKey] = useState<string | null>(null)
+  const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({})
   const { upload: uploadCustomProductImage, uploading: customProductImageUploading } = useImageUpload({
     bucket: 'product-images',
     folder: 'business-custom-products',
@@ -540,6 +541,29 @@ export function BusinessOrderForm({
             next.quantity === '' || next.unit_price === ''
               ? ''
               : String(derivedOrderAmount(next.quantity, next.unit_price))
+        }
+        next.outstanding_amount = derivedOutstanding(
+          next.quantity,
+          next.unit_price,
+          next.received_amount,
+        )
+        return next
+      }),
+    )
+  }
+
+  // 订单金额由数量 × 单价推导；直接改金额时反算单价（4 位小数），
+  // 保证入库口径仍是「行金额 = 数量 × 单价」，不新增金额覆盖字段。
+  function updateItemAmount(key: string, value: string) {
+    const amount = numericValue(value)
+    setItems((current) =>
+      current.map((item) => {
+        if (item.key !== key) return item
+        const quantity = numericValue(item.quantity)
+        if (value === '' || quantity <= 0) return item
+        const next = { ...item, unit_price: roundToScale(amount / quantity, 4) }
+        if (next.source_type === 'catalog' && !next.received_amount_overridden) {
+          next.received_amount = String(derivedOrderAmount(next.quantity, next.unit_price))
         }
         next.outstanding_amount = derivedOutstanding(
           next.quantity,
@@ -1135,7 +1159,7 @@ export function BusinessOrderForm({
               )}
               {!productRowsLocked && normalizedConstraints.hasActiveAllocation && (
                 <Badge variant="outline" className="gap-1 font-normal">
-                  <LockKeyhole className="h-3 w-3" />已有有效分摊，产品身份及成交单价锁定
+                  <LockKeyhole className="h-3 w-3" />已有有效分摊，产品身份锁定
                 </Badge>
               )}
             </CardTitle>
@@ -1344,7 +1368,7 @@ export function BusinessOrderForm({
                         <div className="mt-1 space-y-0.5 text-xs text-amber-700">
                           {constraint.hasActiveAllocation && (
                             <div>
-                              已有有效收款分摊：产品身份与数量不可删除更换，可更新编码/图片版本并调整单价，但订单总额不得低于已分摊金额。
+                              已有有效收款分摊：不能删除或更换产品；可调整数量、单价与金额，但数量不得低于净已发数量，订单总额不得低于已分摊金额。
                             </div>
                           )}
                           {constraint.shippedQuantity > 0 && (
@@ -1386,10 +1410,22 @@ export function BusinessOrderForm({
                         <Label>订单金额（{currency}）</Label>
                         <Input
                           type="number"
-                          value={derivedOrderAmount(item.quantity, item.unit_price)}
-                          readOnly
-                          tabIndex={-1}
-                          className="bg-muted/40"
+                          min="0"
+                          step="0.0001"
+                          value={amountDrafts[item.key] ?? String(derivedOrderAmount(item.quantity, item.unit_price))}
+                          onChange={(event) => {
+                            const value = event.target.value
+                            setAmountDrafts((current) => ({ ...current, [item.key]: value }))
+                            updateItemAmount(item.key, value)
+                          }}
+                          onBlur={() =>
+                            setAmountDrafts((current) => {
+                              if (!(item.key in current)) return current
+                              const next = { ...current }
+                              delete next[item.key]
+                              return next
+                            })
+                          }
                         />
                       </div>
                       <div className="space-y-1">
