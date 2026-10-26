@@ -435,7 +435,7 @@ export function BusinessDailyOrderTable({
                 取消标记
               </Button>
               {markedCount > 0 && (
-                <Badge variant="muted" className="border-sky-200 bg-sky-50 text-sky-700">
+                <Badge variant="muted" className="border-amber-200 bg-amber-50 text-amber-700">
                   已标记 {markedCount} 个订单
                 </Badge>
               )}
@@ -528,7 +528,7 @@ export function BusinessDailyOrderTable({
                     key={item ? item.id : order.id}
                     className={cn(
                       isMarked
-                        ? 'bg-sky-50 [&>td]:bg-sky-50'
+                        ? 'bg-amber-50 [&>td]:bg-amber-50'
                         : 'hover:bg-primary/[0.025]',
                       isFirstRow && groupIndex > 0 && 'border-t-2 border-t-primary/20',
                       isSelected && !isMarked && 'bg-primary/[0.035]',
@@ -566,7 +566,7 @@ export function BusinessDailyOrderTable({
                             <Bookmark
                               className={cn(
                                 'h-3.5 w-3.5',
-                                isMarked ? 'fill-sky-500 text-sky-600' : 'text-muted-foreground',
+                                isMarked ? 'fill-amber-400 text-amber-600' : 'text-muted-foreground',
                               )}
                             />
                           </Button>
