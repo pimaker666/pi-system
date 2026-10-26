@@ -99,6 +99,51 @@ function toDateTimeLocalValue(date: Date) {
 }
 
 /**
+ * 批量发货时间输入独立成组件：输入框的每次按键只重渲染这一小块，
+ * 不牵动整张台账表格（数百行产品行）。
+ */
+function BulkShipControls({
+  pending,
+  selectedIds,
+  selectableIds,
+  onShip,
+}: {
+  pending: boolean
+  selectedIds: Set<string>
+  selectableIds: Set<string>
+  onShip: (ids: string[], shippedAtIso: string) => void
+}) {
+  const [shippedAt, setShippedAt] = useState(() => toDateTimeLocalValue(new Date()))
+  const hasSelection = [...selectedIds].some((id) => selectableIds.has(id))
+
+  function ship() {
+    const ids = [...selectedIds].filter((id) => selectableIds.has(id))
+    if (ids.length === 0) {
+      toast.error('请先勾选订单')
+      return
+    }
+    onShip(ids, new Date(shippedAt).toISOString())
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 lg:border-l lg:pl-3">
+      <span className="text-xs font-medium text-muted-foreground">批量发货时间</span>
+      <Input
+        type="datetime-local"
+        value={shippedAt}
+        onChange={(event) => setShippedAt(event.target.value)}
+        disabled={pending}
+        className="w-auto"
+      />
+      <Button type="button" onClick={ship} disabled={!hasSelection || pending}>
+        <Truck className="mr-1.5 h-4 w-4" />
+        整单发货
+      </Button>
+    </div>
+  )
+}
+
+/**
  * 恢复后的每日订单台账：表头字段跨明细行合并，产品字段逐行展示，
  * 列顺序与每日订单导出完全一致，数据来自 business_orders 单一事实源。
  */
@@ -118,7 +163,6 @@ export function BusinessDailyOrderTable({
   const [customerPending, startCustomerTransition] = useTransition()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [exportPending, setExportPending] = useState<'xlsx' | 'pdf' | null>(null)
-  const [shippedAt, setShippedAt] = useState(() => toDateTimeLocalValue(new Date()))
   const [customerOrder, setCustomerOrder] = useState<BusinessDailyLedgerOrder | null>(null)
   const [customerDraft, setCustomerDraft] = useState<Customer | null>(null)
   const [attachmentUrl, setAttachmentUrl] = useState<string | null>(null)
@@ -285,14 +329,9 @@ export function BusinessDailyOrderTable({
     }
   }
 
-  function bulkShipSelected() {
-    const ids = [...selectedIds].filter((id) => selectableIds.has(id))
-    if (ids.length === 0) {
-      toast.error('请先勾选订单')
-      return
-    }
+  function bulkShipSelected(ids: string[], shippedAtIso: string) {
     startBulkTransition(async () => {
-      const result = await bulkShipBusinessOrders(ids, new Date(shippedAt).toISOString())
+      const result = await bulkShipBusinessOrders(ids, shippedAtIso)
       if (!result.ok) {
         toast.error(result.error ?? '整单发货失败')
         return
@@ -320,24 +359,12 @@ export function BusinessDailyOrderTable({
             </div>
           )}
           {canManageShipments && shippableOrders.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 lg:border-l lg:pl-3">
-              <span className="text-xs font-medium text-muted-foreground">批量发货时间</span>
-              <Input
-                type="datetime-local"
-                value={shippedAt}
-                onChange={(event) => setShippedAt(event.target.value)}
-                disabled={bulkPending}
-                className="w-auto"
-              />
-              <Button
-                type="button"
-                onClick={bulkShipSelected}
-                disabled={selectedCount === 0 || bulkPending}
-              >
-                <Truck className="mr-1.5 h-4 w-4" />
-                整单发货
-              </Button>
-            </div>
+            <BulkShipControls
+              pending={bulkPending}
+              selectedIds={selectedIds}
+              selectableIds={selectableIds}
+              onShip={bulkShipSelected}
+            />
           )}
           <div className="flex flex-wrap items-center gap-2 lg:ml-auto">
             <label className="flex h-9 items-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm text-muted-foreground">

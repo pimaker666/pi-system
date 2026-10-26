@@ -18,8 +18,6 @@ export default async function ProductsPage({
     ? financialNumber
     : ''
   const profile = await getCurrentProfile()
-  const canDeleteProducts =
-    profile?.status === 'approved' && (await hasCurrentPermission('products.delete'))
   const canManageFinancials =
     profile?.status === 'approved' && (profile.role === 'admin' || profile.role === 'finance')
   const supabase = await createClient()
@@ -31,24 +29,26 @@ export default async function ProductsPage({
   if (group === '__none__') query = query.is('group_id', null)
   else if (group) query = query.eq('group_id', group)
 
-  const [{ data }, { data: groupData }] = await Promise.all([
+  // 财务资料全量拉取与产品列表互不依赖，和权限判定一起并行发出。
+  const [{ data }, { data: groupData }, financialResult, canDeleteProducts] = await Promise.all([
     query,
     supabase.from('product_groups').select('*').order('sort_order'),
+    canManageFinancials
+      ? supabase.from('product_financials').select('*')
+      : Promise.resolve({ data: [] as ProductFinancial[], error: null }),
+    profile?.status === 'approved' ? hasCurrentPermission('products.delete') : Promise.resolve(false),
   ])
 
   let products = (data ?? []) as Product[]
   const groups = (groupData ?? []) as ProductGroup[]
 
   let financials: ProductFinancial[] = []
-  if (canManageFinancials && products.length > 0) {
+  if (canManageFinancials) {
     // 不要按 product_id 逐个 .in() 过滤：商品数量较多时会拼出超长 GET URL，
     // 被网关以 HTTP 414 (URI too long) 拒绝。product_financials 已由 RLS 限定
     // 仅财务/管理员可见，且每个产品至多一行，直接全量拉取后在内存中按当前展示的产品过滤。
-    const { data: financialData, error: financialError } = await supabase
-      .from('product_financials')
-      .select('*')
-    if (financialError) throw new Error('加载产品财务资料失败')
-    financials = (financialData ?? []) as ProductFinancial[]
+    if (financialResult.error) throw new Error('加载产品财务资料失败')
+    financials = (financialResult.data ?? []) as ProductFinancial[]
 
     const financialByProductId = new Map(
       financials.map((financial) => [financial.product_id, financial]),

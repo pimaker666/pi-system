@@ -14,9 +14,7 @@ import {
 import {
   BUSINESS_DAILY_EXPORT_LIMIT,
   BUSINESS_DAILY_LEDGER_LIMIT,
-  fetchBusinessDailyLedger,
-  fetchConfirmedCommissionItemIdsForOrders,
-  fetchSettledItemIdsForOrders,
+  fetchBusinessDailyLedgerWithStatusSets,
 } from '@/lib/business-daily-orders-server'
 import { dailyOrderFilterQuery, formatDailyMoney, parseDailyOrderFilters } from '@/lib/daily-orders'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
@@ -88,12 +86,12 @@ export default async function DailyOrdersPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const profile = await requireApproved()
-  const canShip = await hasCurrentPermission('orders.ship')
   const filters = parseDailyOrderFilters(await searchParams)
   const supabase = await createClient()
   const customersQuery = supabase.from('customers').select('*').is('deleted_at', null)
-  const [orders, options, customersResult, customerGroupsResult] = await Promise.all([
-    fetchBusinessDailyLedger(supabase, filters, undefined, undefined, profile.role),
+  const [ledger, canShip, options, customersResult, customerGroupsResult] = await Promise.all([
+    fetchBusinessDailyLedgerWithStatusSets(supabase, filters, undefined, undefined, profile.role),
+    hasCurrentPermission('orders.ship'),
     fetchDailyOrderOptions(supabase),
     ['admin', 'finance'].includes(profile.role)
       ? customersQuery.order('name')
@@ -102,10 +100,7 @@ export default async function DailyOrdersPage({
   ])
   const customerError = customersResult.error || customerGroupsResult.error
   if (customerError) throw new Error(`订单客户数据读取失败：${customerError.message}`)
-  const [settledItemIds, confirmedCommissionItemIds] = await Promise.all([
-    fetchSettledItemIdsForOrders(supabase, orders),
-    fetchConfirmedCommissionItemIdsForOrders(supabase, orders),
-  ])
+  const { orders, settledItemIds, confirmedCommissionItemIds } = ledger
   const query = dailyOrderFilterQuery(filters)
   const canManageShops = profile.role === 'finance' || profile.role === 'admin'
   const canCreate = ['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)

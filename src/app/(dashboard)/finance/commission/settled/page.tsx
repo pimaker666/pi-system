@@ -14,10 +14,9 @@ export default async function SettledCommissionPage({
   const profile = await requireFinanceView()
   const filters = parseBusinessOrderCommissionFilters(await searchParams)
   const supabase = await createClient()
-  const [options, commissions, summary] = await Promise.all([
+  const [options, commissions] = await Promise.all([
     fetchDailyOrderOptions(supabase),
-    fetchBusinessOrderCommissions(supabase, filters, filters.page, undefined, 'settled'),
-    fetchBusinessOrderCommissions(supabase, { ...filters, page: 1 }, 1, 1000, 'settled'),
+    fetchBusinessOrderCommissions(supabase, filters, filters.page, undefined, 'settled', true),
   ])
 
   return (
@@ -26,7 +25,7 @@ export default async function SettledCommissionPage({
         <h1 className="text-2xl font-semibold">已结清订单</h1>
         <p className="text-sm text-muted-foreground">所有产品行均已确认结清的订单归档于此；点击订单号可进入详情，财务和管理员仍可作废。</p>
       </div>
-      <CommissionSummary rows={summary.rows} />
+      <CommissionSummary rows={commissions.allRows ?? commissions.rows} />
       <CommissionManager
         rows={commissions.rows}
         totalCount={commissions.totalCount}

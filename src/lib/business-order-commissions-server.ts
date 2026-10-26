@@ -54,7 +54,8 @@ function buildOrdersQuery(
   let query = supabase
     .from('business_orders')
     .select(
-      `*, ${itemsEmbed}, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), customer:customers!customer_id(tag_color), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`,
+      // 提成只需发货/退货的净发货量，按白名单取字段，避免把截图路径等大字段整行拉回。
+      `*, ${itemsEmbed}, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), customer:customers!customer_id(tag_color), business_order_shipments(id, voided_at, business_order_shipment_items(order_item_id, quantity)), business_order_returns(id, voided_at, business_order_return_items(order_item_id, quantity)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`,
     )
     .is('voided_at', null)
     .order('order_date', { ascending: false })
@@ -338,6 +339,8 @@ export async function fetchBusinessOrderCommissionClearanceDetails(
       'business_order_item_id, period, status, submitted_at, confirmed_at, rejected_reason, rejected_read_at, item:business_order_items!inner(order_id, name_snapshot, sku_snapshot, quantity, order:business_orders!inner(order_number, external_order_number, salesperson:profiles!salesperson_id(chinese_name, full_name, email))), submitted:profiles!submitted_by(chinese_name, full_name, email), confirmer:profiles!confirmed_by(chinese_name, full_name, email)',
     )
     .order('submitted_at', { ascending: false })
+    // 明细抽屉只做近期追溯，加宽裕上限避免历史记录无限增长后拖慢整页。
+    .limit(500)
   if (error) throw new Error(`提成结清明细读取失败：${error.message}`)
 
   return (data ?? []).map((row) => {
@@ -407,8 +410,11 @@ export async function fetchBusinessOrderCommissions(
   page = 1,
   pageSize = COMMISSION_PAGE_SIZE,
   scope: 'pending' | 'settled' = 'pending',
+  includeAllRows = false,
 ): Promise<{
   rows: BusinessOrderCommissionRow[]
+  /** 仅在 includeAllRows 时返回：该筛选下的全部行（供汇总一次取全，避免二次重复查询）。 */
+  allRows?: BusinessOrderCommissionRow[]
   totalCount: number
   categoryRates: CommissionCategoryRate[]
   customerTags: CustomerCommissionTag[]
@@ -448,22 +454,23 @@ export async function fetchBusinessOrderCommissions(
   })
   const offset = (page - 1) * pageSize
   const pagedOrders = scopedOrders.slice(offset, offset + pageSize)
+  const buildOrders = includeAllRows ? scopedOrders : pagedOrders
 
   const customerIds = [
     ...new Set(
-      pagedOrders
+      buildOrders
         .map(({ order }) => order.customer_id)
         .filter((id): id is string => typeof id === 'string' && id.length > 0),
     ),
   ]
   const [customOrderCounts, customerTagColors] = await Promise.all([
     fetchCustomOrderCounts(supabase, customerIds),
-    fetchCustomerTagColors(supabase, pagedOrders.map(({ order }) => order.id)),
+    fetchCustomerTagColors(supabase, buildOrders.map(({ order }) => order.id)),
   ])
 
-  const rows: BusinessOrderCommissionRow[] = []
+  const builtRows: BusinessOrderCommissionRow[] = []
 
-  for (const { order, items: mergedItems } of pagedOrders) {
+  for (const { order, items: mergedItems } of buildOrders) {
     const salespersonName = displayProfileName(
       order.salesperson,
       order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
@@ -539,7 +546,7 @@ export async function fetchBusinessOrderCommissions(
         return priority[current.status] > priority[acc.status] ? current : acc
       }, undefined)
 
-      rows.push({
+      builtRows.push({
         order_id: order.id,
         item_id: representativeItemId,
         item_ids: item.item_ids,
@@ -587,7 +594,8 @@ export async function fetchBusinessOrderCommissions(
   }
 
   return {
-    rows,
+    rows: includeAllRows ? builtRows.slice(offset, offset + pageSize) : builtRows,
+    allRows: includeAllRows ? builtRows : undefined,
     totalCount: scopedOrders.length,
     categoryRates,
     customerTags,

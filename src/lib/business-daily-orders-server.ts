@@ -212,36 +212,42 @@ function applyBalanceStatusFilter(
   return orders.filter((order) => order.outstanding_amount !== 0)
 }
 
+function isOrderFullyInSet(order: BusinessDailyLedgerOrder, itemIdSet: Set<string>) {
+  const itemIds = (order.business_order_items ?? []).map((item) => item.id)
+  return itemIds.length > 0 && itemIds.every((id) => itemIdSet.has(id))
+}
+
 /**
  * 结算状态后过滤：结算按明细行记录（finance_business_order_item_settlements）。
  * 订单级判定——该订单本次读到的所有明细行都已结算才算“已结算”。`all` 或缺省不过滤。
  */
-async function applySettlementFilter(
-  supabase: SupabaseClient,
+function applySettlementFilter(
   orders: BusinessDailyLedgerOrder[],
   settlementStatus: DailyOrderFilters['settlementStatus'],
-): Promise<BusinessDailyLedgerOrder[]> {
+  settledItemIdSet: Set<string>,
+): BusinessDailyLedgerOrder[] {
   if (!settlementStatus || settlementStatus === 'all') return orders
-  const settledSet = new Set(await fetchSettledItemIdsForOrders(supabase, orders))
-  const isOrderSettled = (order: BusinessDailyLedgerOrder) => {
-    const itemIds = (order.business_order_items ?? []).map((item) => item.id)
-    return itemIds.length > 0 && itemIds.every((id) => settledSet.has(id))
-  }
-  return orders.filter((order) => isOrderSettled(order) === (settlementStatus === 'settled'))
+  return orders.filter(
+    (order) => isOrderFullyInSet(order, settledItemIdSet) === (settlementStatus === 'settled'),
+  )
 }
 
-async function applyCommissionClearanceFilter(
-  supabase: SupabaseClient,
+function applyCommissionClearanceFilter(
   orders: BusinessDailyLedgerOrder[],
   commissionClearanceStatus: DailyOrderFilters['commissionClearanceStatus'],
-): Promise<BusinessDailyLedgerOrder[]> {
+  clearedItemIdSet: Set<string>,
+): BusinessDailyLedgerOrder[] {
   if (!commissionClearanceStatus || commissionClearanceStatus === 'all') return orders
-  const clearedSet = new Set(await fetchConfirmedCommissionItemIdsForOrders(supabase, orders))
-  const isOrderCleared = (order: BusinessDailyLedgerOrder) => {
-    const itemIds = (order.business_order_items ?? []).map((item) => item.id)
-    return itemIds.length > 0 && itemIds.every((id) => clearedSet.has(id))
-  }
-  return orders.filter((order) => isOrderCleared(order) === (commissionClearanceStatus === 'cleared'))
+  return orders.filter(
+    (order) =>
+      isOrderFullyInSet(order, clearedItemIdSet) === (commissionClearanceStatus === 'cleared'),
+  )
+}
+
+export interface BusinessDailyLedgerResult {
+  orders: BusinessDailyLedgerOrder[]
+  settledItemIds: string[]
+  confirmedCommissionItemIds: string[]
 }
 
 /**
@@ -249,19 +255,20 @@ async function applyCommissionClearanceFilter(
  * 一次匹配订单号 / 平台订单号 / 发货单号 / 收款账户，一次匹配产品名称与 SKU，再按同一排序合并去重。
  * 表头命中的结果保留完整明细，优先于产品命中的结果。
  */
-export async function fetchBusinessDailyLedger(
+export async function fetchBusinessDailyLedgerWithStatusSets(
   supabase: SupabaseClient,
   filters: DailyOrderFilters,
   limit = BUSINESS_DAILY_LEDGER_LIMIT,
   ids?: string[],
   viewerRole?: string,
-): Promise<BusinessDailyLedgerOrder[]> {
+  includeStatusSets = true,
+): Promise<BusinessDailyLedgerResult> {
   const effectiveLimit = Math.min(limit, BUSINESS_DAILY_EXPORT_LIMIT)
   const keyword = normalizeKeyword(filters.q)
+  const merged = new Map<string, BusinessDailyLedgerOrder>()
 
   if (ids && ids.length > 0 || !keyword) {
     // Kong 网关 URI 上限约 8k：.in('id', ids) 一批最多 100 个订单，超出拆分查询后按同一排序合并。
-    const merged = new Map<string, BusinessDailyLedgerOrder>()
     if (ids && ids.length > 0) {
       for (let i = 0; i < ids.length; i += 100) {
         const { data, error } = await buildLedgerQuery(
@@ -283,61 +290,78 @@ export async function fetchBusinessDailyLedger(
         merged.set(order.id, order)
       }
     }
-    const orders = await applyCommissionClearanceFilter(
-      supabase,
-      await applySettlementFilter(
-        supabase,
-        applyBalanceStatusFilter(
-          applyCompletionFilter(
-            await attachOutstandingAmounts(
-              supabase,
-              [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
-            ),
-            filters.completion,
-          ),
-          filters.balanceStatus,
-        ),
-        filters.settlementStatus,
-      ),
-      filters.commissionClearanceStatus,
+  } else {
+    const [headResult, itemResult] = await Promise.all([
+      buildLedgerQuery(supabase, filters, effectiveLimit, false),
+      buildLedgerQuery(supabase, filters, effectiveLimit, true),
+    ])
+    const error = headResult.error || itemResult.error
+    if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
+
+    for (const order of (headResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
+      merged.set(order.id, order)
+    }
+    for (const order of (itemResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
+      if (!merged.has(order.id)) merged.set(order.id, order)
+    }
+  }
+
+  const candidates = [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit)
+  // 未收金额由 RPC 事后附加，结算/提成结清按明细行单独读取；三者互不依赖，并行发出。
+  const needSettled =
+    includeStatusSets ||
+    Boolean(filters.settlementStatus && filters.settlementStatus !== 'all')
+  const needCleared =
+    includeStatusSets ||
+    Boolean(
+      filters.commissionClearanceStatus && filters.commissionClearanceStatus !== 'all',
     )
-    return attachLedgerDisplays(supabase, orders, viewerRole)
-  }
-
-  const [headResult, itemResult] = await Promise.all([
-    buildLedgerQuery(supabase, filters, effectiveLimit, false),
-    buildLedgerQuery(supabase, filters, effectiveLimit, true),
+  const [withOutstanding, settledItemIds, confirmedCommissionItemIds] = await Promise.all([
+    attachOutstandingAmounts(supabase, candidates),
+    needSettled
+      ? fetchSettledItemIdsForOrders(supabase, candidates)
+      : Promise.resolve<string[]>([]),
+    needCleared
+      ? fetchConfirmedCommissionItemIdsForOrders(supabase, candidates)
+      : Promise.resolve<string[]>([]),
   ])
-  const error = headResult.error || itemResult.error
-  if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
 
-  const merged = new Map<string, BusinessDailyLedgerOrder>()
-  for (const order of (headResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
-    merged.set(order.id, order)
-  }
-  for (const order of (itemResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
-    if (!merged.has(order.id)) merged.set(order.id, order)
-  }
-
-  const orders = await applyCommissionClearanceFilter(
-    supabase,
-    await applySettlementFilter(
-      supabase,
+  const orders = applyCommissionClearanceFilter(
+    applySettlementFilter(
       applyBalanceStatusFilter(
-        applyCompletionFilter(
-          await attachOutstandingAmounts(
-            supabase,
-            [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit),
-          ),
-          filters.completion,
-        ),
+        applyCompletionFilter(withOutstanding, filters.completion),
         filters.balanceStatus,
       ),
       filters.settlementStatus,
+      new Set(settledItemIds),
     ),
     filters.commissionClearanceStatus,
+    new Set(confirmedCommissionItemIds),
   )
-  return attachLedgerDisplays(supabase, orders, viewerRole)
+
+  return {
+    orders: await attachLedgerDisplays(supabase, orders, viewerRole),
+    settledItemIds,
+    confirmedCommissionItemIds,
+  }
+}
+
+export async function fetchBusinessDailyLedger(
+  supabase: SupabaseClient,
+  filters: DailyOrderFilters,
+  limit = BUSINESS_DAILY_LEDGER_LIMIT,
+  ids?: string[],
+  viewerRole?: string,
+): Promise<BusinessDailyLedgerOrder[]> {
+  const result = await fetchBusinessDailyLedgerWithStatusSets(
+    supabase,
+    filters,
+    limit,
+    ids,
+    viewerRole,
+    false,
+  )
+  return result.orders
 }
 
 /**

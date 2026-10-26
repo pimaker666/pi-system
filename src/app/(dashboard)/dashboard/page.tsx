@@ -27,14 +27,16 @@ interface RecentPi {
 }
 
 export default async function DashboardPage() {
-  const stats = await getDashboardStats()
   const supabase = await createClient()
-  const { data } = await supabase
-    .from('proforma_invoices')
-    .select('id, pi_number, customer_snapshot, currency, total, status, created_at')
-    .is('deleted_at', null)
-    .order('created_at', { ascending: false })
-    .limit(8)
+  const [stats, { data }] = await Promise.all([
+    getDashboardStats(),
+    supabase
+      .from('proforma_invoices')
+      .select('id, pi_number, customer_snapshot, currency, total, status, created_at')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .limit(8),
+  ])
 
   const recent = (data ?? []) as RecentPi[]
 

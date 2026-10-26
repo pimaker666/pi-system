@@ -19,20 +19,28 @@ export default async function FinanceCostsPage({
   const filters = parseBusinessOrderCostFilters(await searchParams)
   const supabase = await createClient()
 
+  // 下拉选项与费用列表都只做近期参考，加上宽裕上限防止无界拉取拖慢首屏。
+  const OPTION_LIMIT = 2000
   const [legacyOrdersResult, businessOrdersResult, costsResult, options, dailyOrderCosts] =
     await Promise.all([
       supabase
         .from('finance_orders')
         .select('id, pi_number_snapshot, customer_name_snapshot')
         .eq('status', 'active')
-        .order('order_date', { ascending: false }),
+        .order('order_date', { ascending: false })
+        .limit(OPTION_LIMIT),
       supabase
         .from('business_orders')
         .select('id, order_number, customer_snapshot, customer:customers!customer_id(tag_color)')
         .in('status', ['approved', 'completed'])
         .is('voided_at', null)
-        .order('order_date', { ascending: false }),
-      supabase.from('finance_order_costs').select('*').order('incurred_date', { ascending: false }),
+        .order('order_date', { ascending: false })
+        .limit(OPTION_LIMIT),
+      supabase
+        .from('finance_order_costs')
+        .select('*')
+        .order('incurred_date', { ascending: false })
+        .limit(OPTION_LIMIT),
       fetchDailyOrderOptions(supabase),
       fetchBusinessOrderProductCosts(supabase, filters, filters.page),
     ])

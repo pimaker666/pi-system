@@ -7,16 +7,20 @@ export default async function FinanceTransactionsPage() {
   await requireFinanceView()
   const supabase = await createClient()
 
+  // 流水与可选订单都按时间倒序展示，宽裕上限只用于兜底，正常业务量不会触顶。
+  const LIST_LIMIT = 2000
   const [transactionsResult, ordersResult, salespeopleResult] = await Promise.all([
     supabase
       .from('finance_transactions')
       .select('*, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email)')
-      .order('transaction_date', { ascending: false }),
+      .order('transaction_date', { ascending: false })
+      .limit(LIST_LIMIT),
     supabase
       .from('finance_orders')
       .select('id, pi_number_snapshot')
       .eq('status', 'active')
-      .order('order_date', { ascending: false }),
+      .order('order_date', { ascending: false })
+      .limit(LIST_LIMIT),
     supabase
       .from('profiles')
       .select('id, full_name, email, chinese_name')

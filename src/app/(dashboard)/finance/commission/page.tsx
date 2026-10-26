@@ -14,9 +14,12 @@ export default async function FinanceCommissionPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const profile = await requireApproved()
-  const canManageExchangeRate = await hasCurrentPermission('finance.exchange_rate')
-  const parsedFilters = parseBusinessOrderCommissionFilters(await searchParams)
+  const [profile, canManageExchangeRate, search] = await Promise.all([
+    requireApproved(),
+    hasCurrentPermission('finance.exchange_rate'),
+    searchParams,
+  ])
+  const parsedFilters = parseBusinessOrderCommissionFilters(search)
   const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
   const filters = isSalesperson
     ? { ...parsedFilters, salespeople: [profile.id] }
