@@ -156,16 +156,13 @@ export const NAV: NavItem[] = [
 export const NAV_GROUPS = [
   { label: null, hrefs: ['/dashboard', '/finance'] },
   { label: 'PI 与工具', hrefs: ['/pi/create', '/pi/history', '/weight-calc'] },
-  { label: '办公', hrefs: ['/reimbursement'] },
   {
     label: '订单与收款',
-    hrefs: [
-      '/finance/daily-orders',
-      '/finance/costs',
-      '/finance/settled-orders',
-      '/finance/transactions',
-      '/finance/journal',
-    ],
+    hrefs: ['/finance/daily-orders', '/finance/costs', '/finance/settled-orders'],
+  },
+  {
+    label: '财务账簿',
+    hrefs: ['/finance/journal', '/finance/transactions', '/reimbursement'],
   },
   {
     label: '业绩与提成',
