@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { filterNavItems, NAV_GROUPS } from '@/components/layout/nav-config'
 import { cn } from '@/lib/utils'
@@ -91,14 +91,6 @@ export function Sidebar({
     document.cookie = `${MODE_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`
   }
   const pathname = usePathname()
-  const router = useRouter()
-  // 内嵌浏览器/插件会给页面注入 target=_blank，侧边栏强制走本页跳转
-  const navigateInPlace = (event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
-    if (event.defaultPrevented || event.button !== 0) return
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
-    event.preventDefault()
-    router.push(href)
-  }
   const attentionBadge = commissionAttentionCount > 99 ? '99+' : commissionAttentionCount
   const items = filterNavItems(role, canViewFinance)
   const groups = NAV_GROUPS.map((group) => ({
@@ -132,8 +124,8 @@ export function Sidebar({
                 <Link
                   key={item.href}
                   href={item.href}
-                  target="_self"
-                  onClick={(event) => navigateInPlace(event, item.href)}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   title={item.label}
                   aria-label={item.label}
                   aria-current={active ? 'page' : undefined}
