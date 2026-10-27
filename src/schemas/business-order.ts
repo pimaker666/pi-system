@@ -87,7 +87,7 @@ function decimalNumber(scale: number, label: string, emptyAsZero = false) {
     .refine((value) => decimalPlaces(value) <= scale, `${label}最多保留 ${scale} 位小数`)
 }
 
-const nonNegativeAmountSchema = decimalNumber(2, '金额', true).pipe(
+const nonNegativeAmountSchema = decimalNumber(4, '金额', true).pipe(
   z.number().min(0, '金额不能为负').max(MAX_AMOUNT, '金额不能超过上限'),
 )
 const nonNegativeFeeSchema = decimalNumber(4, '手续费').pipe(
@@ -97,7 +97,7 @@ const optionalFeeSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
   z.union([nonNegativeFeeSchema, z.null()]),
 )
-const positiveAmountSchema = decimalNumber(2, '金额').pipe(
+const positiveAmountSchema = decimalNumber(4, '金额').pipe(
   z.number().positive('金额必须大于 0').max(MAX_AMOUNT, '金额不能超过上限'),
 )
 const positiveQuantitySchema = decimalNumber(4, '数量').pipe(

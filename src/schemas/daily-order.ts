@@ -15,7 +15,7 @@ const amount = z.union([
   z.number(),
   z.string().trim().min(1, '请输入金额'),
 ])
-  .refine((value) => /^\d+(?:\.\d{1,2})?$/.test(String(value)), '金额最多保留 2 位小数')
+  .refine((value) => /^\d+(?:\.\d{1,4})?$/.test(String(value)), '金额最多保留 4 位小数')
   .pipe(z.coerce.number().min(0, '金额不能小于 0').max(999999999999, '金额超过上限'))
 const quantity = z.union([
   z.number(),
