@@ -176,6 +176,14 @@ export const financeReimbursementItemSchema = z.object({
       '凭证图片路径无效',
     )
     .nullable(),
+}).superRefine((item, ctx) => {
+  if (item.unit_price * item.quantity >= 1e14) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['quantity'],
+      message: '单价乘数量必须小于 100000000000000',
+    })
+  }
 })
 
 export const financeReimbursementRequestSchema = z.object({

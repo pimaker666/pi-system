@@ -46,6 +46,7 @@ import {
   voidJournalEntry,
 } from '@/lib/actions/finance'
 import { formatCny, FINANCE_TRANSACTION_LABELS } from '@/lib/finance'
+import { DEFAULT_JOURNAL_FILTERS, filterJournalEntries, journalMonthRange, journalTotals, type JournalFilters } from '@/lib/finance-journal'
 import { parseBocStatementText, parseCmbCsv, type JournalImportParsedRow } from '@/lib/journal-import'
 import { cn, formatCurrency, formatDate, displayProfileName } from '@/lib/utils'
 import { financeCurrencies } from '@/schemas/finance'
@@ -107,13 +108,13 @@ export function JournalManager({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
-  const [dateRange, setDateRange] = useState({ from: '', to: '' })
-  const [accountFilter, setAccountFilter] = useState('all')
-  const [kindFilter, setKindFilter] = useState<'all' | FinanceTransactionType>('all')
-  const [categoryFilter, setCategoryFilter] = useState('all')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'normal' | 'voided'>('all')
-  const [shopFilter, setShopFilter] = useState('all')
-  const [keyword, setKeyword] = useState('')
+  const [filters, setFilters] = useState<JournalFilters>({ ...DEFAULT_JOURNAL_FILTERS })
+  const [page, setPage] = useState(1)
+  const [exporting, setExporting] = useState(false)
+  function patchFilters(patch: Partial<JournalFilters>) {
+    setFilters((current) => ({ ...current, ...patch }))
+    setPage(1)
+  }
 
   // 月度汇总
   const [summaryOpen, setSummaryOpen] = useState(false)
@@ -161,35 +162,17 @@ export function JournalManager({
     [entries],
   )
 
-  const filteredEntries = useMemo(() => {
-    const term = keyword.trim().toLowerCase()
-    return entries.filter((row) => {
-      if (accountFilter !== 'all' && row.account_id !== accountFilter) return false
-      if (kindFilter !== 'all' && row.kind !== kindFilter) return false
-      if (categoryFilter !== 'all' && row.category_id !== categoryFilter) return false
-      if (shopFilter !== 'all' && row.shop !== shopFilter) return false
-      if (statusFilter === 'normal' && row.voided_at) return false
-      if (statusFilter === 'voided' && !row.voided_at) return false
-      if (dateRange.from && row.entry_date < dateRange.from) return false
-      if (dateRange.to && row.entry_date > dateRange.to) return false
-      if (term) {
-        const haystack = [
-          row.summary,
-          row.remark ?? '',
-          row.counterparty ?? '',
-          row.reimbursee ?? '',
-          row.shop ?? '',
-          row.reference_no ?? '',
-          row.account?.name ?? '',
-          row.category?.name ?? '',
-        ]
-          .join(' ')
-          .toLowerCase()
-        if (!haystack.includes(term)) return false
-      }
-      return true
-    })
-  }, [entries, accountFilter, kindFilter, categoryFilter, shopFilter, statusFilter, dateRange, keyword])
+  const reimburseeOptions = useMemo(
+    () => [...new Set(entries.map((row) => row.reimbursee).filter((name): name is string => Boolean(name)))].sort(),
+    [entries],
+  )
+  const filteredEntries = useMemo(() => filterJournalEntries(entries, filters), [entries, filters])
+  const totals = useMemo(() => journalTotals(filteredEntries), [filteredEntries])
+  const pageCount = Math.max(1, Math.ceil(filteredEntries.length / 100))
+  const currentPage = Math.min(page, pageCount)
+  const visibleEntries = filteredEntries.slice((currentPage - 1) * 100, currentPage * 100)
+  const selectedMonth = filters.from && journalMonthRange(filters.from.slice(0, 7))?.from === filters.from &&
+    journalMonthRange(filters.from.slice(0, 7))?.to === filters.to ? filters.from.slice(0, 7) : ''
 
   const expenseByCategory = useMemo(() => {
     const sums = new Map<string, number>()
@@ -212,7 +195,7 @@ export function JournalManager({
   // 月度汇总（行维度 × 月份矩阵，折合人民币，排除作废；维度=分类或报销人）
   const [summaryDim, setSummaryDim] = useState<'category' | 'reimbursee'>('category')
   const monthlySummary = useMemo(() => {
-    const scoped = entries.filter(
+    const scoped = filteredEntries.filter(
       (row) => !row.voided_at && (summaryAccount === 'all' || row.account_id === summaryAccount),
     )
     const monthSet = new Set<string>()
@@ -248,15 +231,15 @@ export function JournalManager({
       incomeOf: (month: string) => monthIncome.get(month) ?? 0,
       expenseOf: (month: string) => monthExpense.get(month) ?? 0,
     }
-  }, [entries, summaryAccount, summaryDim])
+  }, [filteredEntries, summaryAccount, summaryDim])
 
   function resetEntryForm() {
     setEditingEntry(null)
     setEntryAccount(activeAccounts[0]?.id ?? '')
     setEntryKind('expense')
     setEntryCategory('')
-    setEntryCurrency('CNY')
-    setEntryRate('1')
+    setEntryCurrency(activeAccounts[0]?.currency ?? 'CNY')
+    setEntryRate(!activeAccounts[0] || activeAccounts[0].currency === 'CNY' ? '1' : '')
   }
 
   function openEntryDialog(entry?: FinanceJournalEntry) {
@@ -285,11 +268,6 @@ export function JournalManager({
       setEntryCurrency(account.currency)
       setEntryRate(account.currency === 'CNY' ? '1' : '')
     }
-  }
-
-  function handleEntryCurrencyChange(value: CurrencyCode) {
-    setEntryCurrency(value)
-    setEntryRate(value === 'CNY' ? '1' : '')
   }
 
   function handleEntrySubmit(event: FormEvent<HTMLFormElement>) {
@@ -393,7 +371,7 @@ export function JournalManager({
   function openImportDialog() {
     setImportTab('csv')
     setImportAccount(activeAccounts[0]?.id ?? '')
-    setImportRate('1')
+    setImportRate(!activeAccounts[0] || activeAccounts[0].currency === 'CNY' ? '1' : '')
     setImportText('')
     setImportFileName('')
     setPreviewRows(null)
@@ -461,6 +439,14 @@ export function JournalManager({
 
   function handleImportConfirm() {
     if (!previewRows) return
+    if (previewRows.some((row) => row.checked && !row.category_id)) {
+      toast.error('请先为所有勾选的流水选择分类，未分类行不会自动跳过')
+      return
+    }
+    if (!importRate.trim() || !Number.isFinite(Number(importRate)) || Number(importRate) <= 0) {
+      toast.error('请填写大于 0 的兑人民币汇率')
+      return
+    }
     const rows = previewRows
       .filter((row) => row.checked && row.category_id)
       .map((row) => ({
@@ -481,7 +467,7 @@ export function JournalManager({
     startTransition(async () => {
       const result = await importJournalEntries({
         account_id: importAccount,
-        exchange_rate_to_cny: Number(importRate || '1'),
+        exchange_rate_to_cny: Number(importRate),
         rows,
       })
       if (!result.ok) {
@@ -524,25 +510,34 @@ export function JournalManager({
     })
   }
 
-  function handleExport() {
-    startTransition(async () => {
+  async function handleExport() {
+    setExporting(true)
+    try {
       const response = await fetch('/api/finance/journal/export/xlsx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: filteredEntries.map((row) => row.id) }),
+        body: JSON.stringify({ filters }),
       })
       if (!response.ok) {
-        toast.error('导出失败，请稍后重试')
+        const result = await response.json().catch(() => null)
+        toast.error(result?.error ?? '导出失败，请稍后重试')
         return
       }
       const blob = await response.blob()
       const url = URL.createObjectURL(blob)
       const anchor = document.createElement('a')
       anchor.href = url
-      anchor.download = `财务日记账_${todayString()}.xlsx`
+      const scope = selectedMonth || (filters.from || filters.to
+        ? `${filters.from || '不限'}至${filters.to || '不限'}` : todayString())
+      anchor.download = `财务日记账_${scope}.xlsx`
       anchor.click()
       URL.revokeObjectURL(url)
-    })
+      toast.success('已导出当前条件下的全部记录，含筛选说明与收支汇总')
+    } catch {
+      toast.error('导出失败，请检查网络后重试')
+    } finally {
+      setExporting(false)
+    }
   }
 
   const totalIncomeCny = balances.reduce((sum, b) => sum + Number(b.total_income_cny), 0)
@@ -622,13 +617,20 @@ export function JournalManager({
 
       {/* 筛选条 + 操作 */}
       <div className="flex flex-wrap items-center gap-2">
-        <DateRangePicker
-          from={dateRange.from}
-          to={dateRange.to}
-          onChange={(range) => setDateRange(range)}
+        <Input
+          type="month"
+          aria-label="按月份筛选"
+          value={selectedMonth}
+          onChange={(event) => {
+            const range = journalMonthRange(event.target.value)
+            patchFilters(range ?? { from: '', to: '' })
+          }}
+          className="w-44"
         />
-        <Select value={accountFilter} onValueChange={setAccountFilter}>
-          <SelectTrigger className="w-40"><SelectValue placeholder="账户" /></SelectTrigger>
+        <Button variant="outline" onClick={() => patchFilters(journalMonthRange(todayString().slice(0, 7))!)}>本月</Button>
+        <DateRangePicker from={filters.from} to={filters.to} onChange={patchFilters} />
+        <Select value={filters.account} onValueChange={(account) => patchFilters({ account })}>
+          <SelectTrigger aria-label="筛选账户" className="w-40"><SelectValue placeholder="账户" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部账户</SelectItem>
             {accounts.map((account) => (
@@ -636,25 +638,25 @@ export function JournalManager({
             ))}
           </SelectContent>
         </Select>
-        <Select value={kindFilter} onValueChange={(v) => setKindFilter(v as typeof kindFilter)}>
-          <SelectTrigger className="w-28"><SelectValue placeholder="类型" /></SelectTrigger>
+        <Select value={filters.kind} onValueChange={(kind) => patchFilters({ kind: kind as JournalFilters['kind'], category: 'all' })}>
+          <SelectTrigger aria-label="筛选收支类型" className="w-28"><SelectValue placeholder="类型" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部类型</SelectItem>
             <SelectItem value="income">收入</SelectItem>
             <SelectItem value="expense">支出</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="分类" /></SelectTrigger>
+        <Select value={filters.category} onValueChange={(category) => patchFilters({ category })}>
+          <SelectTrigger aria-label="筛选分类" className="w-40"><SelectValue placeholder="分类" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部分类</SelectItem>
-            {categories.map((category) => (
-              <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
+            {categories.filter((category) => filters.kind === 'all' || category.kind === filters.kind).map((category) => (
+              <SelectItem key={category.id} value={category.id}>{category.name}（{FINANCE_TRANSACTION_LABELS[category.kind]}）</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}>
-          <SelectTrigger className="w-28"><SelectValue placeholder="状态" /></SelectTrigger>
+        <Select value={filters.status} onValueChange={(status) => patchFilters({ status: status as JournalFilters['status'] })}>
+          <SelectTrigger aria-label="筛选状态" className="w-28"><SelectValue placeholder="状态" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">全部状态</SelectItem>
             <SelectItem value="normal">正常</SelectItem>
@@ -662,22 +664,32 @@ export function JournalManager({
           </SelectContent>
         </Select>
         {shopOptions.length > 0 && (
-          <Select value={shopFilter} onValueChange={setShopFilter}>
-            <SelectTrigger className="w-32"><SelectValue placeholder="店铺" /></SelectTrigger>
+          <Select value={filters.shop} onValueChange={(shop) => patchFilters({ shop })}>
+            <SelectTrigger aria-label="筛选店铺" className="w-32"><SelectValue placeholder="店铺" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">全部店铺</SelectItem>
-              {shopOptions.map((shop) => (
-                <SelectItem key={shop} value={shop}>{shop}</SelectItem>
-              ))}
+              {shopOptions.map((shop) => <SelectItem key={shop} value={shop}>{shop}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        )}
+        {reimburseeOptions.length > 0 && (
+          <Select value={filters.reimbursee} onValueChange={(reimbursee) => patchFilters({ reimbursee })}>
+            <SelectTrigger aria-label="筛选报销人" className="w-36"><SelectValue placeholder="报销人" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部报销人</SelectItem>
+              {reimburseeOptions.map((name) => <SelectItem key={name} value={name}>{name}</SelectItem>)}
             </SelectContent>
           </Select>
         )}
         <Input
-          value={keyword}
-          onChange={(event) => setKeyword(event.target.value)}
-          placeholder="搜索摘要 / 对方 / 店铺 / 备注"
-          className="w-52"
+          value={filters.keyword}
+          onChange={(event) => patchFilters({ keyword: event.target.value })}
+          aria-label="搜索日记账"
+          maxLength={500}
+          placeholder="摘要 / 对方 / 报销人 / 流水号 / 备注"
+          className="w-64"
         />
+        <Button variant="ghost" onClick={() => patchFilters({ ...DEFAULT_JOURNAL_FILTERS })}>重置筛选</Button>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="outline" onClick={() => { setSummaryOpen(true); setSummaryAccount('all') }}>
             <BarChart3 className="h-4 w-4" />
@@ -687,9 +699,9 @@ export function JournalManager({
             <FileUp className="h-4 w-4" />
             导入
           </Button>
-          <Button variant="outline" onClick={handleExport} disabled={pending || filteredEntries.length === 0}>
+          <Button variant="outline" onClick={handleExport} disabled={pending || exporting || filteredEntries.length === 0}>
             <Download className="h-4 w-4" />
-            导出
+            {exporting ? '正在导出…' : '导出当前筛选'}
           </Button>
           <Button variant="outline" onClick={() => { setEditingAccount(null); setAccountDialogOpen(true) }}>
             <Settings2 className="h-4 w-4" />
@@ -704,6 +716,14 @@ export function JournalManager({
             记一笔
           </Button>
         </div>
+      </div>
+
+      <div className="flex flex-wrap gap-x-6 gap-y-2 rounded-lg border bg-card p-4 text-sm" aria-live="polite">
+        <span>当前筛选共 <strong>{filteredEntries.length}</strong> 条（正常 {totals.normal} / 作废 {totals.voided}）</span>
+        <span className="text-emerald-600">收入 {formatCny(totals.income)}</span>
+        <span className="text-destructive">支出 {formatCny(totals.expense)}</span>
+        <span>净收支 {formatCny(totals.net)}</span>
+        <span className="w-full text-xs text-muted-foreground">收支汇总排除作废记录；逐行结余包含筛选范围之前的历史流水。导出包含全部匹配记录，不受分页影响。</span>
       </div>
 
       {/* 流水表 */}
@@ -725,7 +745,7 @@ export function JournalManager({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredEntries.map((row) => (
+            {visibleEntries.map((row) => (
               <TableRow key={row.id} className={cn(row.voided_at && 'opacity-50')}>
                 <TableCell className={cn(row.voided_at && 'line-through')}>
                   {formatDate(row.entry_date)}
@@ -811,6 +831,14 @@ export function JournalManager({
             )}
           </TableBody>
         </Table>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+        <span>每页 100 条 · 第 {currentPage} / {pageCount} 页 · 共 {filteredEntries.length} 条</span>
+        <div className="flex gap-2">
+          <Button variant="outline" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>上一页</Button>
+          <Button variant="outline" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>下一页</Button>
+        </div>
       </div>
 
       {/* 导入银行流水 */}
@@ -1094,19 +1122,9 @@ export function JournalManager({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="journal-currency">币种</Label>
-              <Select
-                name="currency"
-                value={entryCurrency}
-                onValueChange={(v) => handleEntryCurrencyChange(v as CurrencyCode)}
-              >
-                <SelectTrigger id="journal-currency"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {financeCurrencies.map((code) => (
-                    <SelectItem key={code} value={code}>{code}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label htmlFor="journal-currency">账户币种</Label>
+              <Input id="journal-currency" name="currency" value={entryCurrency} readOnly />
+              <p className="text-xs text-muted-foreground">随银行账户确定，不混加不同币种的流水。</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="journal-rate">兑人民币汇率</Label>
@@ -1300,8 +1318,9 @@ export function JournalManager({
             </div>
             <div className="space-y-2">
               <Label htmlFor="account-currency">币种</Label>
+              {editingAccount && <input type="hidden" name="currency" value={editingAccount.currency} />}
               <Select
-                name="currency"
+                name={editingAccount ? undefined : 'currency'}
                 defaultValue={editingAccount?.currency ?? 'CNY'}
                 disabled={Boolean(editingAccount)}
               >
@@ -1534,7 +1553,7 @@ export function JournalManager({
           <DialogHeader>
             <DialogTitle>月度汇总</DialogTitle>
             <DialogDescription>
-              按分类或报销人 × 月份统计收支（折合人民币，排除作废），替代财务手工汇总表。
+              按当前筛选条件统计分类或报销人 × 月份收支（折合人民币，排除作废）；重置页面筛选可查看全部月份。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

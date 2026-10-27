@@ -1,105 +1,50 @@
 import { JournalManager } from '@/components/finance/journal-manager'
 import { requireFinanceView } from '@/lib/auth'
 import { chinaToday } from '@/lib/daily-order-costs-server'
+import { fetchAllJournalRows, fetchJournalData } from '@/lib/finance-journal-server'
+import { journalMonthRange } from '@/lib/finance-journal'
 import { createClient } from '@/lib/supabase/server'
 import type {
-  FinanceJournalAccount,
   FinanceJournalAccountBalance,
   FinanceJournalCategory,
-  FinanceJournalEntry,
   FinanceJournalImportRule,
   Profile,
 } from '@/types'
 
-const LIST_LIMIT = 2000
-
 export default async function FinanceJournalPage() {
   await requireFinanceView()
   const supabase = await createClient()
+  const month = journalMonthRange(chinaToday().slice(0, 7))!
 
-  const monthStart = `${chinaToday().slice(0, 7)}-01`
-  const [
-    accountsResult,
-    categoriesResult,
-    entriesResult,
-    balancesResult,
-    monthFlowsResult,
-    rulesResult,
-    historyResult,
-    membersResult,
-  ] = await Promise.all([
-      supabase.from('finance_journal_accounts').select('*').order('name'),
-      supabase
-        .from('finance_journal_categories')
-        .select('*')
-        .order('kind')
-        .order('sort_order'),
-      supabase
-        .from('finance_journal_entries')
-        .select(
-          '*, account:finance_journal_accounts(id, name, currency), category:finance_journal_categories(id, name, kind), creator:profiles!finance_journal_entries_created_by_fkey(id, chinese_name, full_name, email)',
-        )
-        .order('entry_date', { ascending: false })
-        .order('created_at', { ascending: false })
-        .limit(LIST_LIMIT),
-      supabase.from('finance_journal_account_balances').select('*'),
-      supabase
-        .from('finance_journal_entries')
-        .select('account_id, kind, amount_original')
-        .is('voided_at', null)
-        .gte('entry_date', monthStart),
-      supabase
-        .from('finance_journal_import_rules')
-        .select('*, category:finance_journal_categories(id, name, kind)')
-        .order('keyword'),
-      // 逐行结余需要全量未作废历史按时间正序累计，不受展示上限影响
-      supabase
-        .from('finance_journal_entries')
-        .select('id, account_id, entry_date, created_at, kind, amount_original, voided_at')
-        .order('entry_date')
-        .order('created_at'),
-      // 报销人/成员下拉候选（已审核成员）
-      supabase
-        .from('profiles')
-        .select('id, chinese_name, full_name, email')
-        .eq('approval_status', 'approved')
-        .order('chinese_name'),
+  let data
+  try {
+    data = await Promise.all([
+      fetchJournalData(supabase),
+      fetchAllJournalRows<FinanceJournalCategory>((from, to) => supabase
+        .from('finance_journal_categories').select('*').order('kind').order('sort_order').order('id').range(from, to)),
+      fetchAllJournalRows<FinanceJournalAccountBalance>((from, to) => supabase
+        .from('finance_journal_account_balances').select('*').order('account_id').range(from, to)),
+      fetchAllJournalRows<FinanceJournalImportRule>((from, to) => supabase
+        .from('finance_journal_import_rules').select('*, category:finance_journal_categories(id, name, kind)')
+        .order('keyword').order('id').range(from, to)),
+      fetchAllJournalRows<Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>>((from, to) => supabase
+        .from('profiles').select('id, chinese_name, full_name, email')
+        .eq('status', 'approved').order('chinese_name').order('id').range(from, to)),
     ])
+  } catch {
+    return <div role="alert" className="rounded-lg border p-6">日记账读取失败，请刷新重试；未显示不完整的余额或流水。</div>
+  }
 
-  const accounts = (accountsResult.data ?? []) as FinanceJournalAccount[]
-  const categories = (categoriesResult.data ?? []) as FinanceJournalCategory[]
-  const entries = (entriesResult.data ?? []) as FinanceJournalEntry[]
-  const balances = (balancesResult.data ?? []) as FinanceJournalAccountBalance[]
-  const rules = (rulesResult.data ?? []) as FinanceJournalImportRule[]
-
+  const [{ accounts, entries, runningBalances }, categories, balances, rules, members] = data
   const monthFlowMap = new Map<string, { income: number; expense: number }>()
-  for (const row of monthFlowsResult.data ?? []) {
+  for (const row of entries) {
+    if (row.voided_at || row.entry_date < month.from || row.entry_date > month.to) continue
     const flow = monthFlowMap.get(row.account_id) ?? { income: 0, expense: 0 }
     if (row.kind === 'income') flow.income += Number(row.amount_original)
     else flow.expense += Number(row.amount_original)
     monthFlowMap.set(row.account_id, flow)
   }
-  const monthFlows = [...monthFlowMap.entries()].map(([account_id, flow]) => ({
-    account_id,
-    income: flow.income,
-    expense: flow.expense,
-  }))
-
-  // 逐行结余：期初 + 按日期正序累计（原币口径，与余额视图同式，排除作废）
-  const runningBalances: Record<string, number> = {}
-  {
-    const accBalance = new Map<string, number>(
-      accounts.map((account) => [account.id, Number(account.initial_balance)]),
-    )
-    for (const row of historyResult.data ?? []) {
-      if (row.voided_at) continue
-      const next =
-        (accBalance.get(row.account_id) ?? 0) +
-        (row.kind === 'income' ? Number(row.amount_original) : -Number(row.amount_original))
-      accBalance.set(row.account_id, next)
-      runningBalances[row.id] = next
-    }
-  }
+  const monthFlows = [...monthFlowMap.entries()].map(([account_id, flow]) => ({ account_id, ...flow }))
 
   return (
     <div className="space-y-6">
@@ -117,9 +62,7 @@ export default async function FinanceJournalPage() {
         monthFlows={monthFlows}
         rules={rules}
         runningBalances={runningBalances}
-        members={
-          (membersResult.data ?? []) as Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>[]
-        }
+        members={members}
       />
     </div>
   )
