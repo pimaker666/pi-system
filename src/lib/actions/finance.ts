@@ -16,7 +16,15 @@ import {
   businessOrderItemUnsettleSchema,
   dailyOrderCostOverrideSchema,
   financeCostSchema,
+  financeJournalAccountSchema,
+  financeJournalCategorySchema,
+  financeJournalEntrySchema,
+  financeJournalEntryVoidSchema,
+  financeJournalImportConfirmSchema,
+  financeJournalImportPreviewSchema,
+  financeJournalImportRuleSchema,
   financeTransactionSchema,
+  type FinanceJournalImportRowInput,
 } from '@/schemas/finance'
 import type { ActionResult } from './products'
 import type { CurrencyCode } from '@/types'
@@ -26,6 +34,7 @@ function revalidateFinance() {
   revalidatePath('/finance/transactions')
   revalidatePath('/finance/costs')
   revalidatePath('/finance/performance')
+  revalidatePath('/finance/journal')
 }
 
 function normalizedRate(currency: CurrencyCode, rate: number) {
@@ -447,4 +456,405 @@ export async function deleteFinanceCost(id: string): Promise<ActionResult> {
   if (!data) return { ok: false, error: '订单成本不存在或无权删除' }
   revalidateFinance()
   return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// 财务日记账
+// ---------------------------------------------------------------------------
+
+function isForeignKeyViolation(error: { code?: string } | null) {
+  return error?.code === '23503'
+}
+
+export async function saveJournalAccount(formData: FormData): Promise<ActionResult> {
+  const profile = await requireFinanceAccess()
+  const parsed = financeJournalAccountSchema.safeParse({
+    account_id: formData.get('account_id'),
+    name: formData.get('name'),
+    currency: formData.get('currency'),
+    initial_balance: formData.get('initial_balance'),
+    is_active: formData.get('is_active') ?? 'true',
+  })
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const payload = {
+    name: parsed.data.name,
+    currency: parsed.data.currency,
+    initial_balance: parsed.data.initial_balance,
+    is_active: parsed.data.is_active,
+  }
+  if (parsed.data.account_id) {
+    const { error } = await supabase
+      .from('finance_journal_accounts')
+      .update(payload)
+      .eq('id', parsed.data.account_id)
+    if (error) {
+      return { ok: false, error: error.code === '23505' ? '账户名称已存在' : error.message }
+    }
+  } else {
+    const { error } = await supabase
+      .from('finance_journal_accounts')
+      .insert({ ...payload, created_by: profile.id })
+    if (error) {
+      return { ok: false, error: error.code === '23505' ? '账户名称已存在' : error.message }
+    }
+  }
+  revalidateFinance()
+  return { ok: true }
+}
+
+export async function deleteJournalAccount(accountId: string): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('finance_journal_accounts')
+    .delete()
+    .eq('id', accountId)
+    .select('id')
+    .maybeSingle()
+  if (error) {
+    if (isForeignKeyViolation(error)) {
+      return { ok: false, error: '该账户已有日记账分录，不能删除，可改为停用' }
+    }
+    return { ok: false, error: error.message }
+  }
+  if (!data) return { ok: false, error: '账户不存在或无权删除' }
+  revalidateFinance()
+  return { ok: true }
+}
+
+export async function saveJournalEntry(formData: FormData): Promise<ActionResult> {
+  const profile = await requireFinanceAccess()
+  const parsed = financeJournalEntrySchema.safeParse({
+    account_id: formData.get('account_id'),
+    category_id: formData.get('category_id'),
+    entry_date: formData.get('entry_date'),
+    kind: formData.get('kind'),
+    amount_original: formData.get('amount_original'),
+    currency: formData.get('currency'),
+    exchange_rate_to_cny: formData.get('exchange_rate_to_cny'),
+    summary: formData.get('summary'),
+    counterparty: formData.get('counterparty') || '',
+    reference_no: formData.get('reference_no') || '',
+    reimbursee: formData.get('reimbursee') || '',
+    shop: formData.get('shop') || '',
+    remark: formData.get('remark') || '',
+  })
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+  const entryId = formData.get('entry_id')
+  const editingId =
+    typeof entryId === 'string' && /^[0-9a-f-]{36}$/i.test(entryId) ? entryId : null
+
+  const supabase = await createClient()
+  const payload = {
+    account_id: parsed.data.account_id,
+    category_id: parsed.data.category_id,
+    entry_date: parsed.data.entry_date,
+    kind: parsed.data.kind,
+    amount_original: parsed.data.amount_original,
+    currency: parsed.data.currency,
+    exchange_rate_to_cny: normalizedRate(parsed.data.currency, parsed.data.exchange_rate_to_cny),
+    summary: parsed.data.summary,
+    counterparty: parsed.data.counterparty || null,
+    reference_no: parsed.data.reference_no || null,
+    reimbursee: parsed.data.reimbursee || null,
+    shop: parsed.data.shop || null,
+    remark: parsed.data.remark || null,
+  }
+
+  if (editingId) {
+    const { data: existing, error: loadError } = await supabase
+      .from('finance_journal_entries')
+      .select('id')
+      .eq('id', editingId)
+      .is('voided_at', null)
+      .maybeSingle()
+    if (loadError) return { ok: false, error: loadError.message }
+    if (!existing) return { ok: false, error: '分录不存在或已作废，不能编辑' }
+    const { error } = await supabase
+      .from('finance_journal_entries')
+      .update(payload)
+      .eq('id', editingId)
+    if (error) return { ok: false, error: error.message }
+  } else {
+    const { error } = await supabase
+      .from('finance_journal_entries')
+      .insert({ ...payload, created_by: profile.id })
+    if (error) return { ok: false, error: error.message }
+  }
+  revalidateFinance()
+  return { ok: true }
+}
+
+export async function voidJournalEntry(input: {
+  entry_id: string
+  void_reason: string
+}): Promise<ActionResult> {
+  const profile = await requireFinanceAccess()
+  const parsed = financeJournalEntryVoidSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('finance_journal_entries')
+    .update({
+      voided_at: new Date().toISOString(),
+      voided_by: profile.id,
+      void_reason: parsed.data.void_reason,
+    })
+    .eq('id', parsed.data.entry_id)
+    .is('voided_at', null)
+    .select('id')
+    .maybeSingle()
+  if (error) return { ok: false, error: error.message }
+  if (!data) return { ok: false, error: '分录不存在或已作废' }
+  revalidateFinance()
+  return { ok: true }
+}
+
+export async function saveJournalCategory(formData: FormData): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const parsed = financeJournalCategorySchema.safeParse({
+    category_id: formData.get('category_id'),
+    name: formData.get('name'),
+    kind: formData.get('kind'),
+    sort_order: formData.get('sort_order'),
+    is_active: formData.get('is_active') ?? 'true',
+  })
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const payload = {
+    name: parsed.data.name,
+    kind: parsed.data.kind,
+    sort_order: parsed.data.sort_order,
+    is_active: parsed.data.is_active,
+  }
+  if (parsed.data.category_id) {
+    const { error } = await supabase
+      .from('finance_journal_categories')
+      .update(payload)
+      .eq('id', parsed.data.category_id)
+    if (error) {
+      return { ok: false, error: error.code === '23505' ? '分类名称已存在' : error.message }
+    }
+  } else {
+    const { error } = await supabase.from('finance_journal_categories').insert(payload)
+    if (error) {
+      return { ok: false, error: error.code === '23505' ? '分类名称已存在' : error.message }
+    }
+  }
+  revalidateFinance()
+  return { ok: true }
+}
+
+export async function deleteJournalCategory(categoryId: string): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('finance_journal_categories')
+    .delete()
+    .eq('id', categoryId)
+    .select('id')
+    .maybeSingle()
+  if (error) {
+    if (isForeignKeyViolation(error)) {
+      return { ok: false, error: '该分类已被日记账分录使用，不能删除，可改为停用' }
+    }
+    return { ok: false, error: error.message }
+  }
+  if (!data) return { ok: false, error: '分类不存在或无权删除' }
+  revalidateFinance()
+  return { ok: true }
+}
+
+// ---------------------------------------------------------------------------
+// 日记账银行流水导入：客户端解析（招行 CSV / 中行对账单粘贴文本），
+// 服务端关键词规则建议分类 + 疑似重复检测，确认后批量入账。
+// ---------------------------------------------------------------------------
+
+export async function saveJournalImportRule(formData: FormData): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const parsed = financeJournalImportRuleSchema.safeParse({
+    rule_id: formData.get('rule_id'),
+    keyword: formData.get('keyword'),
+    category_id: formData.get('category_id'),
+    shop: formData.get('shop'),
+  })
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const payload = {
+    keyword: parsed.data.keyword,
+    category_id: parsed.data.category_id || null,
+    shop: parsed.data.shop || null,
+  }
+  if (parsed.data.rule_id) {
+    const { error } = await supabase
+      .from('finance_journal_import_rules')
+      .update(payload)
+      .eq('id', parsed.data.rule_id)
+    if (error) {
+      return { ok: false, error: error.code === '23505' ? '关键词已存在' : error.message }
+    }
+  } else {
+    const { error } = await supabase.from('finance_journal_import_rules').insert(payload)
+    if (error) {
+      return { ok: false, error: error.code === '23505' ? '关键词已存在' : error.message }
+    }
+  }
+  return { ok: true }
+}
+
+export async function deleteJournalImportRule(ruleId: string): Promise<ActionResult> {
+  await requireFinanceAccess()
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('finance_journal_import_rules')
+    .delete()
+    .eq('id', ruleId)
+    .select('id')
+    .maybeSingle()
+  if (error) return { ok: false, error: error.message }
+  if (!data) return { ok: false, error: '规则不存在或无权删除' }
+  return { ok: true }
+}
+
+export interface JournalImportPreviewRow extends FinanceJournalImportRowInput {
+  category_id: string | null
+  shop: string | null
+  reimbursee: string | null
+  duplicate: boolean
+}
+
+export async function previewJournalImport(input: unknown): Promise<
+  ActionResult & { rows?: JournalImportPreviewRow[] }
+> {
+  await requireFinanceAccess()
+  const parsed = financeJournalImportPreviewSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: Object.values(parsed.error.flatten().fieldErrors)[0]?.[0] ?? '导入数据无效' }
+  }
+  const { account_id, rows } = parsed.data
+
+  const supabase = await createClient()
+  const [{ data: rules }, { data: existing }, { data: profiles }] = await Promise.all([
+    supabase
+      .from('finance_journal_import_rules')
+      .select('keyword, category_id, shop, category:finance_journal_categories(kind)'),
+    supabase
+      .from('finance_journal_entries')
+      .select('entry_date, kind, amount_original, summary')
+      .eq('account_id', account_id)
+      .is('voided_at', null)
+      .gte('entry_date', rows.reduce((min, r) => (r.entry_date < min ? r.entry_date : min), rows[0].entry_date))
+      .lte('entry_date', rows.reduce((max, r) => (r.entry_date > max ? r.entry_date : max), rows[0].entry_date)),
+    supabase.from('profiles').select('chinese_name, full_name'),
+  ])
+  if (!rules || !existing || !profiles) return { ok: false, error: '加载匹配规则失败' }
+
+  const ruleRows = rules as unknown as Array<{
+    keyword: string
+    category_id: string | null
+    shop: string | null
+    category: { kind: string } | null
+  }>
+  const norm = (rule: { keyword: string }) => rule.keyword.toLowerCase()
+  const categoryRules = ruleRows
+    .filter((rule) => rule.category && rule.category_id)
+    .map((rule) => ({
+      keyword: norm(rule),
+      category_id: rule.category_id as string,
+      kind: rule.category!.kind as 'income' | 'expense',
+    }))
+  const shopRules = ruleRows
+    .filter((rule) => rule.shop)
+    .map((rule) => ({ keyword: norm(rule), shop: rule.shop as string }))
+
+  const names = (profiles as Array<{ chinese_name: string | null; full_name: string | null }>)
+    .flatMap((profile) => [profile.chinese_name, profile.full_name])
+    .filter((name): name is string => Boolean(name && name.trim()))
+    .sort((a, b) => b.length - a.length)
+
+  const existingKeys = new Set(
+    (existing as Array<{ entry_date: string; kind: string; amount_original: number; summary: string }>).map(
+      (entry) =>
+        `${entry.entry_date}|${entry.kind}|${Number(entry.amount_original).toFixed(4)}|${entry.summary.trim()}`,
+    ),
+  )
+
+  return {
+    ok: true,
+    rows: rows.map((row) => {
+      const summary = row.summary.toLowerCase()
+      const categoryHit = categoryRules
+        .filter((rule) => rule.kind === row.kind && summary.includes(rule.keyword))
+        .sort((a, b) => b.keyword.length - a.keyword.length)[0]
+      const shopHit = shopRules
+        .filter((rule) => summary.includes(rule.keyword))
+        .sort((a, b) => b.keyword.length - a.keyword.length)[0]
+      const reimburseeHit = names.find((name) => row.summary.includes(name))
+      return {
+        ...row,
+        category_id: categoryHit?.category_id ?? null,
+        shop: shopHit?.shop ?? null,
+        reimbursee: reimburseeHit ?? null,
+        duplicate: existingKeys.has(
+          `${row.entry_date}|${row.kind}|${row.amount_original.toFixed(4)}|${row.summary.trim()}`,
+        ),
+      }
+    }),
+  }
+}
+
+export async function importJournalEntries(input: unknown): Promise<
+  ActionResult & { inserted?: number }
+> {
+  const profile = await requireFinanceAccess()
+  const parsed = financeJournalImportConfirmSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: Object.values(parsed.error.flatten().fieldErrors)[0]?.[0] ?? '导入数据无效' }
+  }
+  const { account_id, rows } = parsed.data
+
+  const supabase = await createClient()
+  const { data: account, error: accountError } = await supabase
+    .from('finance_journal_accounts')
+    .select('id, currency')
+    .eq('id', account_id)
+    .maybeSingle()
+  if (accountError) return { ok: false, error: accountError.message }
+  if (!account) return { ok: false, error: '银行账户不存在' }
+
+  const currency = (account as { currency: CurrencyCode }).currency
+  const payload = rows.map((row) => ({
+    account_id,
+    category_id: row.category_id,
+    entry_date: row.entry_date,
+    kind: row.kind,
+    amount_original: row.amount_original,
+    currency,
+    exchange_rate_to_cny: normalizedRate(currency, parsed.data.exchange_rate_to_cny),
+    summary: row.summary,
+    counterparty: row.counterparty || null,
+    reference_no: row.reference_no || null,
+    reimbursee: row.reimbursee || null,
+    shop: row.shop || null,
+    created_by: profile.id,
+  }))
+  const { error } = await supabase.from('finance_journal_entries').insert(payload)
+  if (error) return { ok: false, error: error.message }
+  revalidateFinance()
+  return { ok: true, inserted: payload.length }
 }

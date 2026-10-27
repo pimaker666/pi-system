@@ -9,6 +9,7 @@ import {
   HandCoins,
   Landmark,
   LayoutDashboard,
+  NotebookText,
   Package,
   PackageSearch,
   ReceiptText,
@@ -17,6 +18,7 @@ import {
   ShieldCheck,
   Users,
   UsersRound,
+  Wallet,
 } from 'lucide-react'
 import type { UserRole } from '@/types'
 
@@ -47,6 +49,7 @@ export const NAV: NavItem[] = [
     match: (pathname) => pathname.startsWith('/pi') && pathname !== '/pi/create',
   },
   { href: '/weight-calc', label: '计算重量', icon: Scale },
+  { href: '/reimbursement', label: '费用报销', icon: Wallet },
   {
     href: '/finance/daily-orders',
     label: '每日订单',
@@ -71,6 +74,13 @@ export const NAV: NavItem[] = [
     href: '/finance/transactions',
     label: '收支流水',
     icon: ReceiptText,
+    allowedRoles: ['admin', 'finance'],
+    requiresFinanceView: true,
+  },
+  {
+    href: '/finance/journal',
+    label: '财务日记账',
+    icon: NotebookText,
     allowedRoles: ['admin', 'finance'],
     requiresFinanceView: true,
   },
@@ -146,6 +156,7 @@ export const NAV: NavItem[] = [
 export const NAV_GROUPS = [
   { label: null, hrefs: ['/dashboard', '/finance'] },
   { label: 'PI 与工具', hrefs: ['/pi/create', '/pi/history', '/weight-calc'] },
+  { label: '办公', hrefs: ['/reimbursement'] },
   {
     label: '订单与收款',
     hrefs: [
@@ -153,6 +164,7 @@ export const NAV_GROUPS = [
       '/finance/costs',
       '/finance/settled-orders',
       '/finance/transactions',
+      '/finance/journal',
     ],
   },
   {

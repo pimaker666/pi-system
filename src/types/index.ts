@@ -222,6 +222,108 @@ export interface FinanceTransaction {
   salesperson?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
 
+export interface FinanceJournalAccount {
+  id: string
+  name: string
+  currency: CurrencyCode
+  initial_balance: number
+  is_active: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface FinanceJournalCategory {
+  id: string
+  name: string
+  kind: FinanceTransactionType
+  sort_order: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface FinanceJournalEntry {
+  id: string
+  account_id: string
+  category_id: string
+  entry_date: string
+  kind: FinanceTransactionType
+  amount_original: number
+  currency: CurrencyCode
+  exchange_rate_to_cny: number
+  amount_cny: number
+  summary: string
+  counterparty: string | null
+  reference_no: string | null
+  reimbursee: string | null
+  shop: string | null
+  remark: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  voided_at: string | null
+  voided_by: string | null
+  void_reason: string | null
+  /** Live-joined account/category/creator via PostgREST embeds. */
+  account?: Pick<FinanceJournalAccount, 'id' | 'name' | 'currency'> | null
+  category?: Pick<FinanceJournalCategory, 'id' | 'name' | 'kind'> | null
+  creator?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
+}
+
+export interface FinanceJournalImportRule {
+  id: string
+  keyword: string
+  category_id: string | null
+  shop: string | null
+  created_at: string
+  category?: Pick<FinanceJournalCategory, 'id' | 'name' | 'kind'> | null
+}
+
+export interface FinanceJournalAccountBalance {
+  account_id: string
+  name: string
+  currency: CurrencyCode
+  initial_balance: number
+  total_income: number
+  total_expense: number
+  balance: number
+  total_income_cny: number
+  total_expense_cny: number
+}
+
+export type FinanceReimbursementStatus = 'pending' | 'approved' | 'rejected' | 'completed'
+
+export interface FinanceReimbursementRequest {
+  id: string
+  applicant_id: string
+  expense_date: string
+  project_name: string | null
+  status: FinanceReimbursementStatus
+  reject_reason: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  completed_by: string | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+  applicant?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
+  reviewer?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
+  completer?: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
+  items?: FinanceReimbursementItem[]
+}
+
+export interface FinanceReimbursementItem {
+  id: string
+  request_id: string
+  summary: string
+  unit_price: number
+  quantity: number
+  amount: number
+  receipt_path: string | null
+  sort_order: number
+}
+
 export interface FinanceOrderCost {
   id: string
   finance_order_id: string | null
