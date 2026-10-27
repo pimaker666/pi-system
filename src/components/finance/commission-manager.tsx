@@ -205,28 +205,33 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
   return (
     <div className="w-full min-w-0 leading-tight">
       <div className="flex items-center gap-1">
-        <Input
-          value={draft}
-          type="number"
-          min={0}
-          max={100}
-          step="0.0001"
-          disabled={pending}
-          placeholder={rate == null ? '—' : String(rate)}
-          title={
-            row.product_commission_rate_overridden
-              ? `当前 ${rateText}（手动设置）；留空保存则恢复发货分类默认值`
-              : `当前 ${rateText}（${sourceDetail}）`
-          }
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && !pending && !unchanged) {
-              event.preventDefault()
-              save()
+        <div className="relative min-w-0 flex-1">
+          <Input
+            value={draft}
+            type="number"
+            min={0}
+            max={100}
+            step="0.0001"
+            disabled={pending}
+            placeholder={rate == null ? '—' : String(rate)}
+            title={
+              row.product_commission_rate_overridden
+                ? `当前 ${rateText}（手动设置）；留空保存则恢复发货分类默认值`
+                : `当前 ${rateText}（${sourceDetail}）`
             }
-          }}
-          className="h-7 w-full min-w-0 px-1 text-xs"
-        />
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && !pending && !unchanged) {
+                event.preventDefault()
+                save()
+              }
+            }}
+            className="h-7 w-full min-w-0 px-1 pr-5 text-xs"
+          />
+          <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[11px] text-muted-foreground">
+            %
+          </span>
+        </div>
         <Button
           type="button"
           variant="outline"
