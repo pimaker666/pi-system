@@ -11,7 +11,7 @@ import {
   updateReimbursementRequest,
 } from '@/lib/actions/reimbursement'
 import { formatCny } from '@/lib/finance'
-import { useFileDrop, validateImageFile } from '@/lib/hooks/use-file-drop'
+import { useFileDrop, useFilePaste, validateImageFile } from '@/lib/hooks/use-file-drop'
 import { createClient } from '@/lib/supabase/client'
 import { cn, displayProfileName, formatDate } from '@/lib/utils'
 import type { FinanceReimbursementRequest, FinanceReimbursementStatus } from '@/types'
@@ -649,6 +649,14 @@ function ReceiptUploader({
     onFile: (file) => void handleFile(file),
   })
 
+  const { pasteRef } = useFilePaste({
+    disabled: disabled || uploading,
+    onFiles: (files) => {
+      const file = files[0]
+      if (file) void handleFile(file)
+    },
+  })
+
   async function handleFile(file: File) {
     const invalid = validateImageFile(file, ['image/jpeg', 'image/png'])
     if (invalid) {
@@ -686,6 +694,7 @@ function ReceiptUploader({
 
   return (
     <div
+      ref={pasteRef}
       {...dropProps}
       className={cn(
         'flex h-16 items-center justify-center rounded-md border border-dashed text-xs transition-colors',
