@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { filterNavItems, NAV_GROUPS } from '@/components/layout/nav-config'
 import { cn } from '@/lib/utils'
@@ -13,14 +13,14 @@ export type SidebarMode = 'auto' | 'expanded' | 'collapsed'
 const MODE_COOKIE = 'pi_sidebar_mode'
 
 const WIDTH_CLASS: Record<SidebarMode, string> = {
-  auto: 'w-16 md:w-[76px] xl:w-60',
-  expanded: 'w-16 md:w-60',
+  auto: 'w-16 md:w-[76px] xl:w-52',
+  expanded: 'w-16 md:w-52',
   collapsed: 'w-16 md:w-[76px]',
 }
 
 const ITEM_CLASS: Record<SidebarMode, string> = {
-  auto: 'flex-col justify-center gap-1 px-1 md:min-h-12 xl:flex-row xl:justify-start xl:gap-3 xl:px-3 xl:text-base',
-  expanded: 'flex-col justify-center gap-1 px-1 md:min-h-12 md:flex-row md:justify-start md:gap-3 md:px-3 md:text-base',
+  auto: 'flex-col justify-center gap-1 px-1 md:min-h-12 xl:flex-row xl:justify-start xl:gap-2.5 xl:px-2.5 xl:text-base',
+  expanded: 'flex-col justify-center gap-1 px-1 md:min-h-12 md:flex-row md:justify-start md:gap-2.5 md:px-2.5 md:text-base',
   collapsed: 'flex-col justify-center gap-1 px-1 md:min-h-12',
 }
 
@@ -49,8 +49,8 @@ const BADGE_CLASS: Record<SidebarMode, string> = {
 }
 
 const NAV_CLASS: Record<SidebarMode, string> = {
-  auto: 'px-2 py-4 md:py-5 xl:px-4',
-  expanded: 'px-2 py-4 md:px-4 md:py-5',
+  auto: 'px-2 py-4 md:py-5 xl:px-3',
+  expanded: 'px-2 py-4 md:px-3 md:py-5',
   collapsed: 'px-2 py-4 md:py-5',
 }
 
@@ -91,6 +91,14 @@ export function Sidebar({
     document.cookie = `${MODE_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`
   }
   const pathname = usePathname()
+  const router = useRouter()
+  // 内嵌浏览器/插件会给页面注入 target=_blank，侧边栏强制走本页跳转
+  const navigateInPlace = (event: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+    if (event.defaultPrevented || event.button !== 0) return
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+    event.preventDefault()
+    router.push(href)
+  }
   const attentionBadge = commissionAttentionCount > 99 ? '99+' : commissionAttentionCount
   const items = filterNavItems(role, canViewFinance)
   const groups = NAV_GROUPS.map((group) => ({
@@ -124,6 +132,8 @@ export function Sidebar({
                 <Link
                   key={item.href}
                   href={item.href}
+                  target="_self"
+                  onClick={(event) => navigateInPlace(event, item.href)}
                   title={item.label}
                   aria-label={item.label}
                   aria-current={active ? 'page' : undefined}
