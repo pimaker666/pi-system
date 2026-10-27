@@ -4,14 +4,19 @@ import {
   ChangeEvent,
   DragEvent,
   FormEvent,
+  useEffect,
   useMemo,
   useState,
   useTransition,
 } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Eye, Loader2, LockKeyhole, Plus, Trash2 } from 'lucide-react'
+import { AlertTriangle, Loader2, LockKeyhole, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  ImageAttachmentRow,
+  PendingImageRow,
+} from '@/components/shared/image-attachment-items'
 import { CustomerCombobox } from '@/components/customers/customer-combobox'
 import { BusinessCustomProductPicker } from '@/components/finance/business-custom-product-picker'
 import { ImagePreview } from '@/components/ui/image-preview'
@@ -36,9 +41,10 @@ import {
   addBusinessCustomProductVersion,
   bindBusinessOrderAttachment,
   createBusinessOrder,
-  getBusinessOrderAttachmentUrl,
+  getBusinessOrderAttachmentPreviews,
   listBusinessCustomProducts,
   removeBusinessOrderAttachment,
+  renameBusinessOrderAttachment,
   updateBusinessOrder,
 } from '@/lib/actions/business-orders'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
@@ -92,6 +98,8 @@ interface EditableItem {
 interface PendingAttachment {
   id: string
   file: File
+  /** 展示名，默认取文件名，上传前可修改。 */
+  name: string
 }
 
 interface BusinessOrderFormProps {
@@ -381,6 +389,21 @@ export function BusinessOrderForm({
   const [attachments, setAttachments] = useState(
     initialOrder?.business_order_attachments?.filter((item) => item.status === 'active') ?? [],
   )
+  const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const ids = attachments.map((item) => item.id)
+    if (ids.length === 0) {
+      setAttachmentPreviews({})
+      return
+    }
+    let cancelled = false
+    void getBusinessOrderAttachmentPreviews(ids).then((result) => {
+      if (!cancelled) setAttachmentPreviews(result.urls)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [attachments])
   const [customVersionPendingKey, setCustomVersionPendingKey] = useState<string | null>(null)
   const [customImageDragKey, setCustomImageDragKey] = useState<string | null>(null)
   const [amountDrafts, setAmountDrafts] = useState<Record<string, string>>({})
@@ -762,7 +785,7 @@ export function BusinessOrderForm({
     }
     setFiles((current) => [
       ...current,
-      ...selected.map((file) => ({ id: newLocalId(), file })),
+      ...selected.map((file) => ({ id: newLocalId(), file, name: file.name })),
     ])
   }
 
@@ -789,7 +812,7 @@ export function BusinessOrderForm({
       const result = await bindBusinessOrderAttachment({
         order_id: orderId,
         object_path: objectPath,
-        original_name: file.name,
+        original_name: pendingFile.name.trim() || file.name,
         mime_type: file.type,
         size_bytes: file.size,
       })
@@ -803,12 +826,16 @@ export function BusinessOrderForm({
     return failures
   }
 
-  function viewAttachment(id: string) {
-    startTransition(async () => {
-      const result = await getBusinessOrderAttachmentUrl(id)
-      if (result.url) window.open(result.url, '_blank', 'noopener,noreferrer')
-      else toast.error(result.error ?? '无法查看截图')
-    })
+  async function renameAttachment(id: string, nextName: string) {
+    const result = await renameBusinessOrderAttachment(id, nextName)
+    if (result.ok) {
+      setAttachments((current) =>
+        current.map((item) =>
+          item.id === id ? { ...item, original_name: result.attachment?.original_name ?? nextName } : item,
+        ),
+      )
+    }
+    return { ok: result.ok, error: result.error }
   }
 
   function removeAttachment(id: string) {
@@ -1687,24 +1714,22 @@ export function BusinessOrderForm({
             <div className="space-y-2">
               <div className="text-sm font-medium">待上传（{files.length}）</div>
               {files.map((pendingFile) => (
-                <div
+                <PendingImageRow
                   key={pendingFile.id}
-                  className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-                >
-                  <span className="truncate">{pendingFile.file.name}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="移除待上传截图"
-                    onClick={() =>
-                      setFiles((current) => current.filter((item) => item.id !== pendingFile.id))
-                    }
-                    disabled={pending}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
+                  file={pendingFile.file}
+                  name={pendingFile.name}
+                  disabled={pending}
+                  onRename={(nextName) =>
+                    setFiles((current) =>
+                      current.map((item) =>
+                        item.id === pendingFile.id ? { ...item, name: nextName } : item,
+                      ),
+                    )
+                  }
+                  onRemove={() =>
+                    setFiles((current) => current.filter((item) => item.id !== pendingFile.id))
+                  }
+                />
               ))}
             </div>
           )}
@@ -1713,34 +1738,18 @@ export function BusinessOrderForm({
             <div className="space-y-2">
               <div className="text-sm font-medium">已绑定截图（{attachments.length}）</div>
               {attachments.map((attachment) => (
-                <div
+                <ImageAttachmentRow
                   key={attachment.id}
-                  className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
-                >
-                  <span className="truncate">{attachment.original_name ?? attachment.object_path}</span>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="查看截图"
-                      onClick={() => viewAttachment(attachment.id)}
-                      disabled={pending}
-                    >
-                      <Eye className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="移除截图"
-                      onClick={() => removeAttachment(attachment.id)}
-                      disabled={pending || lifecycleLocked}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
+                  src={attachmentPreviews[attachment.id] ?? null}
+                  rawSrc
+                  name={attachment.original_name}
+                  uploadedAt={attachment.created_at}
+                  disabled={pending || lifecycleLocked}
+                  onRename={(nextName) => renameAttachment(attachment.id, nextName)}
+                  onRemove={() => removeAttachment(attachment.id)}
+                  removeLabel="移除截图"
+                  removeDisabled={lifecycleLocked}
+                />
               ))}
             </div>
           )}

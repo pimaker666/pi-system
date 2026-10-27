@@ -39,3 +39,16 @@ export function toServerImageSrc(url?: string | null): string {
   if (tail === null) return url ?? ''
   return SUPABASE_SERVER_URL + tail
 }
+
+/**
+ * 从公开 URL 还原存储路径（用于把 Logo 等以公开 URL 存库的图片关联到元数据表）。
+ * 例如 `/storage/v1/object/public/customer-assets/customer-logos/x.png` → `customer-logos/x.png`。
+ */
+export function storagePathFromPublicUrl(url: string, bucket: string): string | null {
+  const marker = `/object/public/${bucket}/`
+  const i = url.indexOf(marker)
+  if (i === -1) return null
+  const path = url.slice(i + marker.length).split('?')[0]
+  return path ? decodeURIComponent(path) : null
+}
+

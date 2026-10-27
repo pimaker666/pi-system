@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, Plus } from 'lucide-react'
 import { BusinessOrderActions, BusinessOrderFinancePanel } from '@/components/finance/business-order-actions'
-import { ImagePreview } from '@/components/ui/image-preview'
+import { BusinessOrderAttachmentList } from '@/components/finance/business-order-attachment-list'
 import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
 import { BusinessOrderItemAdjustments } from '@/components/finance/business-order-item-adjustments'
 import { BusinessLifecycleStatus } from '@/components/finance/business-lifecycle-status'
@@ -714,27 +714,11 @@ export default async function BusinessOrderDetailPage({
               {attachmentLinks.length === 0 && (
                 <div className="text-muted-foreground">暂无截图，可在订单编辑页补传。</div>
               )}
-              {attachmentLinks.map(({ attachment, url }, index) =>
-                url ? (
-                  <div key={attachment.id} className="flex items-center gap-3">
-                    <ImagePreview
-                      src={url}
-                      alt={attachment.original_name || `截图 ${index + 1}`}
-                      size="h-20 w-20"
-                      sizes="80px"
-                      rawSrc
-                    />
-                    <div className="min-w-0">
-                      <div className="truncate text-muted-foreground">
-                        {attachment.original_name || attachment.mime_type}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div key={attachment.id} className="text-destructive">
-                    截图 {index + 1} 链接生成失败，请稍后重试
-                  </div>
-                ),
+              {attachmentLinks.length > 0 && (
+                <BusinessOrderAttachmentList
+                  items={attachmentLinks}
+                  canRename={Boolean(canEditOrder)}
+                />
               )}
               {attachmentLinks.length > 0 && (
                 <p className="text-muted-foreground">链接 10 分钟内有效，过期后刷新页面重新获取。</p>

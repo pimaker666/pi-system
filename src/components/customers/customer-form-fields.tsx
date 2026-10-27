@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useTransition, useEffect, useRef, type ChangeEvent, type DragEvent } from 'react'
-import Image from 'next/image'
 import { toast } from 'sonner'
-import { ImageIcon, Loader2, MapPin, Sparkles, Trash2 } from 'lucide-react'
+import { ImageIcon, Loader2, MapPin, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -15,13 +14,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { ImageAttachmentTile } from '@/components/shared/image-attachment-items'
 import { createCustomer, updateCustomer } from '@/lib/actions/customers'
+import {
+  getImageAssetMeta,
+  registerImageAssetMeta,
+  renameImageAsset,
+  type ImageAssetMetaMap,
+} from '@/lib/actions/image-assets'
 import { parseCustomerText } from '@/lib/parse-customer'
 import { CountryFlag } from '@/components/shared/country-flag'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
 import { useFilePaste } from '@/lib/hooks/use-file-drop'
 import { usePostalLookup, type PostalResult } from '@/hooks/use-postal-lookup'
-import { toImageSrc } from '@/lib/supabase/image'
+import { storagePathFromPublicUrl } from '@/lib/supabase/image'
 import type { Customer, CustomerGroup } from '@/types'
 
 const NO_GROUP = '__none__'
@@ -55,6 +61,7 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
     customer?.logo_urls?.length ? customer.logo_urls : customer?.logo_url ? [customer.logo_url] : [],
   )
   const [draggingLogo, setDraggingLogo] = useState(false)
+  const [logoMeta, setLogoMeta] = useState<ImageAssetMetaMap>({})
   const { upload: uploadLogo, uploading } = useImageUpload({ bucket: 'customer-assets', folder: 'customer-logos' })
   const logoInputRef = useRef<HTMLInputElement>(null)
   const { pasteRef: logoPasteRef } = useFilePaste({
@@ -166,6 +173,24 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  // Logo 名称与上传时间存在 image_asset_meta；没登记过的历史 Logo 显示默认名与「未记录」。
+  useEffect(() => {
+    const paths = logoUrls
+      .map((url) => storagePathFromPublicUrl(url, 'customer-assets'))
+      .filter((path): path is string => Boolean(path))
+    if (paths.length === 0) {
+      setLogoMeta({})
+      return
+    }
+    let cancelled = false
+    void getImageAssetMeta({ bucket: 'customer-assets', paths }).then((result) => {
+      if (!cancelled) setLogoMeta(result.meta)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [logoUrls])
+
   function handleRecognize() {
     const parsed = parseCustomerText(pasteText)
     const keys = Object.keys(parsed) as (keyof typeof parsed)[]
@@ -216,6 +241,16 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
     try {
       const uploadedUrls: string[] = []
       for (const file of selected) uploadedUrls.push(await uploadLogo(file))
+      const metaItems = uploadedUrls
+        .map((url, index) => {
+          const path = storagePathFromPublicUrl(url, 'customer-assets')
+          const name = selected[index]?.name.trim()
+          return path && name ? { path, name } : null
+        })
+        .filter((item): item is { path: string; name: string } => item !== null)
+      if (metaItems.length > 0) {
+        await registerImageAssetMeta({ bucket: 'customer-assets', items: metaItems })
+      }
       setLogoUrls((current) => [...current, ...uploadedUrls])
       toast.success(`已上传 ${uploadedUrls.length} 张 Logo`)
     } catch {
@@ -237,6 +272,22 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
 
   function removeLogo(url: string) {
     setLogoUrls((current) => current.filter((item) => item !== url))
+  }
+
+  async function renameLogo(url: string, name: string) {
+    const path = storagePathFromPublicUrl(url, 'customer-assets')
+    if (!path) return { ok: false, error: 'Logo 地址无法识别，无法改名' }
+    const uploadedAt = logoMeta[path]?.uploadedAt ?? null
+    const result = await renameImageAsset({
+      bucket: 'customer-assets',
+      path,
+      name,
+      uploadedAt,
+    })
+    if (result.ok) {
+      setLogoMeta((current) => ({ ...current, [path]: { displayName: name, uploadedAt } }))
+    }
+    return result
   }
 
   function handleSubmit(formData: FormData) {
@@ -413,23 +464,23 @@ export function CustomerFormFields({ customer, groups, onSuccess }: CustomerForm
         </div>
         {uploading && <p className="flex items-center gap-1 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" />正在上传…</p>}
         {logoUrls.length > 0 && (
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
-            {logoUrls.map((url, index) => (
-              <div key={url} className="group relative aspect-square overflow-hidden rounded-md border bg-muted">
-                <Image src={toImageSrc(url)} alt={`客户 Logo ${index + 1}`} fill className="object-contain p-2" sizes="112px" />
-                <Button
-                  type="button"
-                  variant="destructive"
-                  size="icon"
-                  className="absolute right-1 top-1 h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
-                  onClick={() => removeLogo(url)}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {logoUrls.map((url, index) => {
+              const path = storagePathFromPublicUrl(url, 'customer-assets')
+              const meta = path ? logoMeta[path] : undefined
+              return (
+                <ImageAttachmentTile
+                  key={url}
+                  src={url}
+                  name={meta?.displayName ?? `Logo ${index + 1}`}
+                  uploadedAt={meta?.uploadedAt ?? null}
                   disabled={pending || uploading}
-                  aria-label={`删除 Logo ${index + 1}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+                  onRename={(nextName) => renameLogo(url, nextName)}
+                  onRemove={() => removeLogo(url)}
+                  removeLabel={`删除 Logo ${index + 1}`}
+                />
+              )
+            })}
           </div>
         )}
       </div>

@@ -749,6 +749,44 @@ export async function removeBusinessOrderAttachment(
   return { ok: true, attachment }
 }
 
+export async function renameBusinessOrderAttachment(
+  attachmentId: string,
+  name: string,
+): Promise<BusinessOrderAttachmentActionResult> {
+  const profile = await requireApproved()
+  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
+    return { ok: false, error: '仅业务员、业务主管、管理员或财务可以修改截图名称' }
+  }
+  const parsed = z
+    .object({
+      id: z.string().uuid('附件 ID 不合法'),
+      name: z.string().trim().min(1, '截图名称不能为空').max(255, '截图名称不能超过 255 个字符'),
+    })
+    .safeParse({ id: attachmentId, name })
+  if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('rename_business_order_attachment', {
+    p_attachment_id: parsed.data.id,
+    p_original_name: parsed.data.name,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '修改截图名称失败') }
+
+  const attachment = firstRpcRow<BusinessOrderAttachment>(data)
+  if (!attachment) return { ok: false, error: '数据库未返回订单附件信息' }
+  revalidateBusinessOrders(attachment.order_id)
+  return { ok: true, attachment }
+}
+
+/** 供客户端表单一次性取回多张截图的查看链接（服务端 Action 无法返回 Map）。 */
+export async function getBusinessOrderAttachmentPreviews(
+  attachmentIds: string[],
+): Promise<{ urls: Record<string, string>; error?: string }> {
+  await requireApproved()
+  const urlMap = await getBusinessOrderAttachmentUrls(attachmentIds)
+  return { urls: Object.fromEntries(urlMap) }
+}
+
 export async function createBusinessCustomProduct(
   rawInput: unknown,
 ): Promise<BusinessCustomProductActionResult> {

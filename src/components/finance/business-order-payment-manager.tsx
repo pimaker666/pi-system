@@ -2,8 +2,12 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, Plus, RefreshCw, WalletCards, X } from 'lucide-react'
+import { Eye, Plus, RefreshCw, WalletCards } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  ImageAttachmentBlock,
+  PendingImageRow,
+} from '@/components/shared/image-attachment-items'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -34,6 +38,11 @@ import {
   voidBusinessCustomerTransfer,
   voidBusinessOrderPaymentAllocation,
 } from '@/lib/actions/business-orders'
+import {
+  getImageAssetMeta,
+  registerImageAssetMeta,
+  renameImageAsset,
+} from '@/lib/actions/image-assets'
 import {
   BUSINESS_PAYMENT_LABELS,
   businessDateTimeLocalToIso,
@@ -114,8 +123,10 @@ interface PendingTransferUpload {
 }
 
 interface ProofItem {
+  id: string
   file: File
-  previewUrl: string
+  /** 展示名，默认取文件名，上传前可修改。 */
+  name: string
 }
 
 function newUuid() {
@@ -196,7 +207,12 @@ export function BusinessOrderPaymentManager({
   >(null)
   const [voidReason, setVoidReason] = useState('')
   const [prepaymentPickerOpen, setPrepaymentPickerOpen] = useState(false)
-  const [viewingProof, setViewingProof] = useState<{ urls: string[] } | null>(null)
+  const [viewingProof, setViewingProof] = useState<
+    | {
+        items: Array<{ path: string; url: string | null; name: string; uploadedAt: string | null }>
+      }
+    | null
+  >(null)
 
   const hasRolePermission =
     profile.role === 'admin' ||
@@ -587,29 +603,25 @@ export function BusinessOrderPaymentManager({
           toast.error(`「${file.name}」超过 20MB`)
           continue
         }
-        next.push({ file, previewUrl: URL.createObjectURL(file) })
+        next.push({ id: newUuid(), file, name: file.name })
       }
       return next
     })
   }
 
   function removeProofItem(index: number) {
-    setProofItems((current) => {
-      current[index]?.previewUrl && URL.revokeObjectURL(current[index].previewUrl)
-      return current.filter((_, itemIndex) => itemIndex !== index)
-    })
+    setProofItems((current) => current.filter((_, itemIndex) => itemIndex !== index))
   }
 
-  function clearProofItems(items: ProofItem[]) {
-    for (const item of items) URL.revokeObjectURL(item.previewUrl)
+  function clearProofItems() {
+    setProofItems([])
   }
 
   function closeForm() {
     clearPendingUpload()
-    clearProofItems(proofItems)
+    clearProofItems()
     setIdempotencyKey('')
     setUploadedProofPaths([])
-    setProofItems([])
     if (fileRef.current) fileRef.current.value = ''
     setFormOpen(false)
   }
@@ -761,6 +773,15 @@ export function BusinessOrderPaymentManager({
             })
           }
           proofPaths = paths
+          const metaItems = proofPaths
+            .map((path, index) => ({
+              path,
+              name: proofItems[index]?.name.trim() || proofItems[index]?.file.name || '',
+            }))
+            .filter((item) => item.name.length > 0)
+          if (metaItems.length > 0) {
+            await registerImageAssetMeta({ bucket: 'business-payment-proofs', items: metaItems })
+          }
         }
         const result = await recordBusinessCustomerTransfer({
           customer_id: customerId,
@@ -787,7 +808,7 @@ export function BusinessOrderPaymentManager({
               : '客户转账及分摊已登记',
         )
         clearPendingUpload()
-        clearProofItems(proofItems)
+        clearProofItems()
         setFormOpen(false)
         setIdempotencyKey('')
         setUploadedProofPaths([])
@@ -897,8 +918,43 @@ export function BusinessOrderPaymentManager({
         toast.error('凭证打开失败')
         return
       }
-      setViewingProof({ urls: signedList.map((item) => item.signedUrl as string) })
+      const metaResult = await getImageAssetMeta({
+        bucket: 'business-payment-proofs',
+        paths,
+      })
+      setViewingProof({
+        items: paths.map((path, index) => {
+          const meta = metaResult.meta[path]
+          return {
+            path,
+            url: signedList[index]?.signedUrl ?? null,
+            name: meta?.displayName ?? `收款截图 ${index + 1}`,
+            uploadedAt: meta?.uploadedAt ?? transfer.created_at ?? null,
+          }
+        }),
+      })
     })
+  }
+
+  async function handleRenameProof(path: string, name: string, uploadedAt: string | null) {
+    const result = await renameImageAsset({
+      bucket: 'business-payment-proofs',
+      path,
+      name,
+      uploadedAt,
+    })
+    if (result.ok) {
+      setViewingProof((current) =>
+        current
+          ? {
+              items: current.items.map((item) =>
+                item.path === path ? { ...item, name } : item,
+              ),
+            }
+          : current,
+      )
+    }
+    return { ok: result.ok, error: result.error }
   }
 
   const allocatedDraftTotal = buildAllocations(allocationDraft).reduce(
@@ -1205,27 +1261,22 @@ export function BusinessOrderPaymentManager({
                   )}
                 </div>
                 {proofItems.length > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="space-y-2">
                     {proofItems.map((item, index) => (
-                      <div
-                        key={item.previewUrl}
-                        className="relative h-16 w-16 overflow-hidden rounded border bg-muted"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={item.previewUrl}
-                          alt={`收款截图 ${index + 1}`}
-                          className="h-full w-full object-cover"
-                        />
-                        <button
-                          type="button"
-                          title="移除图片"
-                          onClick={() => removeProofItem(index)}
-                          className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
+                      <PendingImageRow
+                        key={item.id}
+                        file={item.file}
+                        name={item.name}
+                        disabled={pending || uploadedProofPaths.length > 0}
+                        onRename={(nextName) =>
+                          setProofItems((current) =>
+                            current.map((candidate) =>
+                              candidate.id === item.id ? { ...candidate, name: nextName } : candidate,
+                            ),
+                          )
+                        }
+                        onRemove={() => removeProofItem(index)}
+                      />
                     ))}
                   </div>
                 )}
@@ -1538,16 +1589,17 @@ export function BusinessOrderPaymentManager({
       >
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
-            <DialogTitle>收款截图（{viewingProof?.urls.length ?? 0} 张）</DialogTitle>
+            <DialogTitle>收款截图（{viewingProof?.items.length ?? 0} 张）</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            {viewingProof?.urls.map((url, index) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={url}
-                src={url}
-                alt={`收款截图 ${index + 1}`}
-                className="w-full rounded-md border"
+            {viewingProof?.items.map((item) => (
+              <ImageAttachmentBlock
+                key={item.path}
+                src={item.url}
+                name={item.name}
+                uploadedAt={item.uploadedAt}
+                disabled={pending}
+                onRename={(nextName) => handleRenameProof(item.path, nextName, item.uploadedAt)}
               />
             ))}
           </div>
