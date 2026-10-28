@@ -367,9 +367,33 @@ interface FormItem {
   receiptUrl: string | null
 }
 
+function randomHexNibble() {
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const buffer = new Uint8Array(1)
+    crypto.getRandomValues(buffer)
+    return buffer[0] % 16
+  }
+  return Math.floor(Math.random() * 16)
+}
+
+/**
+ * 局域网 http 访问属于非安全上下文，crypto.randomUUID 不可用；
+ * 凭证对象路径还要通过 Storage RLS 的 UUID 正则，回退必须仍是合法 v4 UUID。
+ */
+function newUuid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (token) => {
+    const random = randomHexNibble()
+    const value = token === 'x' ? random : (random & 0x3) | 0x8
+    return value.toString(16)
+  })
+}
+
 function emptyFormItem(): FormItem {
   return {
-    key: crypto.randomUUID(),
+    key: newUuid(),
     summary: '',
     unitPrice: '',
     quantity: '1',
@@ -667,7 +691,7 @@ function ReceiptUploader({
     try {
       const supabase = createClient()
       const extension = file.name.split('.').pop()?.toLowerCase() ?? 'png'
-      const path = `${currentUserId}/${crypto.randomUUID()}.${extension}`
+      const path = `${currentUserId}/${newUuid()}.${extension}`
       const { error: uploadError } = await supabase.storage
         .from(RECEIPT_BUCKET)
         .upload(path, file, { contentType: file.type })
