@@ -13,6 +13,8 @@ const EXTRA_TITLES: Record<string, string> = {
 }
 
 function pageTitleForPath(pathname: string): string {
+  // 侧边栏未收录的详情页：早于前缀兜底判定
+  if (pathname.startsWith('/finance/daily-orders/')) return `订单详情 - ${APP_TITLE}`
   const nav =
     // 1. 纯 href 精确命中（优先于自定义 match，避免 /users 的 match 抢走 /users/permissions）
     NAV.find((item) => !item.match && item.href === pathname) ??
