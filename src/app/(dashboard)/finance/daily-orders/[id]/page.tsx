@@ -258,6 +258,31 @@ export default async function BusinessOrderDetailPage({
   const hasDailyFields = order.total_sales_amount !== null
   const canAdjustItems = canAdjustBusinessOrderItems(order, profile)
   const hasAppendedItems = order.business_order_items.some((item) => item.origin === 'append')
+  // 产品明细表底部合计行：实收类合计与行内展示同口径（含有效分摊）。
+  const itemTotals = {
+    quantity: itemRows.reduce((sum, { item }) => sum + Number(item.quantity), 0),
+    amount: itemRows.reduce((sum, { item }) => sum + Number(item.line_amount), 0),
+    productReceived:
+      itemRows.reduce(
+        (sum, { item }) =>
+          sum + (item.product_received_amount === null ? 0 : Number(item.product_received_amount)),
+        0,
+      ) + itemAllocatedTotal,
+    shippingReceived:
+      itemRows.reduce(
+        (sum, { item }) =>
+          sum + (item.logistics_fee_amount === null ? 0 : Number(item.logistics_fee_amount)),
+        0,
+      ) + shippingAllocated,
+    salesTotal:
+      itemRows.reduce(
+        (sum, { item }) =>
+          sum + (item.sales_total_amount === null ? 0 : Number(item.sales_total_amount)),
+        0,
+      ) +
+      itemAllocatedTotal +
+      shippingAllocated,
+  }
   // 与右侧收款区的“有效已收 / 未收尾款”保持同一结算口径，避免两处金额不一致。
   const actualReceived = hasDailyFields
     ? Number(settlement.allocated_amount)
@@ -678,6 +703,29 @@ export default async function BusinessOrderDetailPage({
                     </TableRow>
                     )
                   })}
+                  <TableRow className="border-t-2 font-medium">
+                    <TableCell>合计</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatAmount(itemTotals.quantity)}</TableCell>
+                    <TableCell />
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(itemTotals.amount, order.currency)}
+                    </TableCell>
+                    {hasDailyFields && (
+                      <>
+                        <TableCell />
+                        <TableCell className="text-right tabular-nums">
+                          {formatCurrency(itemTotals.productReceived, order.currency)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatCurrency(itemTotals.shippingReceived, order.currency)}
+                        </TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {formatCurrency(itemTotals.salesTotal, order.currency)}
+                        </TableCell>
+                      </>
+                    )}
+                    {hasAppendedItems && <TableCell />}
+                  </TableRow>
                 </TableBody>
               </Table>
               {itemProductSummaries.length > 0 && (

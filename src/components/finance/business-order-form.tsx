@@ -897,6 +897,10 @@ export function BusinessOrderForm({
       toast.error('请选择业务员')
       return
     }
+    if (!initialOrder && !paymentAccount.trim()) {
+      toast.error('请选择收款账户')
+      return
+    }
     const hasInvalidItem = items.some((item) =>
       item.source_type === 'catalog'
         ? !item.product_id
@@ -1156,7 +1160,7 @@ export function BusinessOrderForm({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="payment_account">收款账户</Label>
+              <Label htmlFor="payment_account">收款账户{initialOrder ? '' : '（必填）'}</Label>
               <PaymentAccountCombobox
                 accounts={paymentAccounts}
                 value={paymentAccount}
@@ -1617,7 +1621,9 @@ export function BusinessOrderForm({
               </p>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="order-fee">订单手续费（{currency}）</Label>
+              <Label htmlFor="order-fee" className={cn(!numericValue(orderFee) && 'text-amber-700')}>
+                订单手续费（{currency}）
+              </Label>
               <Input
                 id="order-fee"
                 type="number"
@@ -1627,6 +1633,7 @@ export function BusinessOrderForm({
                 placeholder="0"
                 onChange={(event) => setOrderFee(event.target.value)}
                 disabled={pending || lifecycleLocked}
+                className={cn(!numericValue(orderFee) && 'border-amber-300 bg-amber-50')}
               />
               <p className="text-xs text-muted-foreground">仅记录利润核算扣减，不计入订单应收或实收</p>
             </div>
