@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { ImagePreview } from '@/components/ui/image-preview'
 
 const RECEIPT_BUCKET = 'finance-reimbursement-receipts'
 
@@ -361,7 +362,7 @@ export function ReimbursementManager({
 interface ReimbursementFormPayload {
   expense_date: string
   project_name: string
-  items: Array<{ summary: string; unit_price: number; quantity: number; receipt_path: string | null }>
+  items: Array<{ summary: string; unit_price: number; quantity: number; receipt_paths: string[] }>
 }
 
 interface FormItem {
@@ -369,8 +370,8 @@ interface FormItem {
   summary: string
   unitPrice: string
   quantity: string
-  receiptPath: string | null
-  receiptUrl: string | null
+  receiptPaths: string[]
+  receiptUrls: Record<string, string>
 }
 
 function randomHexNibble() {
@@ -403,8 +404,8 @@ function emptyFormItem(): FormItem {
     summary: '',
     unitPrice: '',
     quantity: '1',
-    receiptPath: null,
-    receiptUrl: null,
+    receiptPaths: [],
+    receiptUrls: {},
   }
 }
 
@@ -442,8 +443,8 @@ function ReimbursementFormDialog({
           summary: item.summary,
           unitPrice: String(item.unit_price),
           quantity: String(item.quantity),
-          receiptPath: item.receipt_path,
-          receiptUrl: null,
+          receiptPaths: item.receipt_paths ?? [],
+          receiptUrls: {},
         })),
       )
     } else {
@@ -456,9 +457,7 @@ function ReimbursementFormDialog({
   // 编辑已有报销单时，为已上传的凭证批量签发临时链接用于预览
   useEffect(() => {
     if (!open || !editing) return
-    const paths = (editing.items ?? [])
-      .filter((item) => item.receipt_path)
-      .map((item) => item.receipt_path as string)
+    const paths = (editing.items ?? []).flatMap((item) => item.receipt_paths ?? [])
     if (paths.length === 0) return
     let cancelled = false
     const supabase = createClient()
@@ -471,7 +470,16 @@ function ReimbursementFormDialog({
         for (const entry of data) {
           if (entry.path && entry.signedUrl) map[entry.path] = entry.signedUrl
         }
-        setItems((rows) => rows.map((row) => (row.receiptPath ? { ...row, receiptUrl: map[row.receiptPath as string] ?? null } : row)))
+        setItems((rows) =>
+          rows.map((row) => {
+            if (row.receiptPaths.length === 0) return row
+            const nextUrls = { ...row.receiptUrls }
+            for (const path of row.receiptPaths) {
+              if (map[path]) nextUrls[path] = map[path]
+            }
+            return { ...row, receiptUrls: nextUrls }
+          }),
+        )
       })
     return () => {
       cancelled = true
@@ -499,7 +507,7 @@ function ReimbursementFormDialog({
         summary: row.summary.trim(),
         unit_price: Number(row.unitPrice),
         quantity: Number(row.quantity),
-        receipt_path: row.receiptPath || null,
+        receipt_paths: row.receiptPaths,
       })),
     }
     void onSubmit(payload)
@@ -511,7 +519,7 @@ function ReimbursementFormDialog({
         <DialogHeader>
           <DialogTitle>{editing ? '编辑报销单' : '新建报销单'}</DialogTitle>
           <DialogDescription>
-            按行填写报销明细（摘要 / 单价 / 数量），每行可附一张凭证图片；提交后由管理员审批。
+            按行填写报销明细（摘要 / 单价 / 数量），每行可附最多 9 张凭证图片；提交后由管理员审批。
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -545,7 +553,7 @@ function ReimbursementFormDialog({
                   <TableHead className="w-28 text-right">单价（CNY）</TableHead>
                   <TableHead className="w-24 text-right">数量</TableHead>
                   <TableHead className="w-28 text-right">金额</TableHead>
-                  <TableHead className="w-40">凭证图片</TableHead>
+                  <TableHead className="w-52">凭证图片</TableHead>
                   <TableHead className="w-12" />
                 </TableRow>
               </TableHeader>
@@ -641,11 +649,11 @@ function FormItemRow({
       </TableCell>
       <TableCell>
         <ReceiptUploader
-          value={row.receiptPath}
-          previewUrl={row.receiptUrl}
+          paths={row.receiptPaths}
+          urls={row.receiptUrls}
           currentUserId={currentUserId}
           disabled={disabled}
-          onChange={(path, url) => onPatch({ receiptPath: path, receiptUrl: url })}
+          onChange={(paths, urls) => onPatch({ receiptPaths: paths, receiptUrls: urls })}
         />
       </TableCell>
       <TableCell>
@@ -657,118 +665,137 @@ function FormItemRow({
   )
 }
 
+const MAX_RECEIPTS_PER_ITEM = 9
+
 function ReceiptUploader({
-  value,
-  previewUrl,
+  paths,
+  urls,
   currentUserId,
   disabled,
   onChange,
 }: {
-  value: string | null
-  previewUrl: string | null
+  paths: string[]
+  urls: Record<string, string>
   currentUserId: string
   disabled: boolean
-  onChange: (path: string, signedUrl: string) => void
+  onChange: (paths: string[], urls: Record<string, string>) => void
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
-  const [localPreview, setLocalPreview] = useState<string | null>(null)
 
   const { dragging, dropProps } = useFileDrop({
     disabled: disabled || uploading,
-    onFile: (file) => void handleFile(file),
+    onFile: (file) => void handleFiles([file]),
   })
 
   const { pasteRef } = useFilePaste({
     disabled: disabled || uploading,
-    onFiles: (files) => {
-      const file = files[0]
-      if (file) void handleFile(file)
-    },
+    onFiles: (files) => void handleFiles(files),
   })
 
-  async function handleFile(file: File) {
-    const invalid = validateImageFile(file, ['image/jpeg', 'image/png'])
-    if (invalid) {
-      toast.error(invalid)
+  async function handleFiles(files: File[]) {
+    const room = MAX_RECEIPTS_PER_ITEM - paths.length
+    if (room <= 0) {
+      toast.error(`每行凭证最多 ${MAX_RECEIPTS_PER_ITEM} 张`)
       return
     }
+    if (files.length > room) toast.error(`超出上限，仅上传前 ${room} 张`)
+    const supabase = createClient()
     setUploading(true)
+    const nextPaths = [...paths]
+    const nextUrls = { ...urls }
+    let failed = 0
     try {
-      const supabase = createClient()
-      const extension = file.name.split('.').pop()?.toLowerCase() ?? 'png'
-      const path = `${currentUserId}/${newUuid()}.${extension}`
-      const { error: uploadError } = await supabase.storage
-        .from(RECEIPT_BUCKET)
-        .upload(path, file, { contentType: file.type })
-      if (uploadError) throw uploadError
-      const { data, error: urlError } = await supabase.storage
-        .from(RECEIPT_BUCKET)
-        .createSignedUrl(path, 60 * 60)
-      if (urlError) throw urlError
-      setLocalPreview(null)
-      onChange(path, data.signedUrl)
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : '凭证上传失败')
+      for (const file of files.slice(0, room)) {
+        const invalid = validateImageFile(file, ['image/jpeg', 'image/png'])
+        if (invalid) {
+          failed += 1
+          continue
+        }
+        const extension = file.name.split('.').pop()?.toLowerCase() ?? 'png'
+        const path = `${currentUserId}/${newUuid()}.${extension}`
+        const { error: uploadError } = await supabase.storage
+          .from(RECEIPT_BUCKET)
+          .upload(path, file, { contentType: file.type })
+        if (uploadError) {
+          failed += 1
+          continue
+        }
+        const { data, error: urlError } = await supabase.storage
+          .from(RECEIPT_BUCKET)
+          .createSignedUrl(path, 60 * 60)
+        if (urlError) {
+          failed += 1
+          continue
+        }
+        nextPaths.push(path)
+        nextUrls[path] = data.signedUrl
+      }
+      if (nextPaths.length > paths.length) onChange(nextPaths, nextUrls)
+      if (failed > 0) toast.error(`${failed} 张凭证上传失败，请重试`)
     } finally {
       setUploading(false)
     }
   }
 
-  function handleRemove() {
-    setLocalPreview(null)
-    onChange('', '')
+  function handleRemove(path: string) {
+    const nextUrls = { ...urls }
+    delete nextUrls[path]
+    onChange(
+      paths.filter((p) => p !== path),
+      nextUrls,
+    )
   }
-
-  const preview = localPreview ?? previewUrl
 
   return (
     <div
       ref={pasteRef}
       {...dropProps}
       className={cn(
-        'flex h-16 items-center justify-center rounded-md border border-dashed text-xs transition-colors',
+        'rounded-md border border-dashed p-1 text-xs transition-colors',
         dragging ? 'border-primary bg-primary/5' : 'border-input',
         disabled && 'opacity-50',
       )}
     >
-      {preview ? (
-        <div className="relative h-full w-full p-1">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={preview} alt="凭证预览" className="h-full w-full rounded object-cover" />
-          {!disabled && (
-            <button
-              type="button"
-              onClick={handleRemove}
-              className="absolute right-0 top-0 rounded-full bg-background/90 p-0.5 shadow"
-              aria-label="移除凭证"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          )}
+      {paths.length > 0 && (
+        <div className="mb-1 flex flex-wrap gap-1.5">
+          {paths.map((path) => (
+            <div key={path} className="relative">
+              <ImagePreview src={urls[path] ?? null} alt="凭证预览" size="h-11 w-11" sizes="44px" rawSrc />
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => handleRemove(path)}
+                  className="absolute -right-1 -top-1 rounded-full bg-background/90 p-0.5 shadow"
+                  aria-label="移除凭证"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
         </div>
-      ) : (
+      )}
+      {paths.length < MAX_RECEIPTS_PER_ITEM && (
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={disabled || uploading}
-          className="flex flex-col items-center gap-0.5 text-muted-foreground"
+          className="flex h-8 w-full flex-col items-center justify-center gap-0.5 text-muted-foreground"
         >
           <Upload className="h-4 w-4" />
-          {uploading ? '上传中…' : value && !preview ? '已有凭证 · 点击更换' : '点击或拖入'}
+          {uploading ? '上传中…' : paths.length > 0 ? '继续添加（点击或拖入）' : '点击或拖入'}
         </button>
       )}
       <input
         ref={inputRef}
         type="file"
         accept="image/jpeg,image/png"
+        multiple
         className="hidden"
         onChange={(event) => {
-          const file = event.target.files?.[0]
-          if (file) {
-            setLocalPreview(URL.createObjectURL(file))
-            void handleFile(file)
-          }
+          const files = Array.from(event.target.files ?? [])
+          if (files.length > 0) void handleFiles(files)
           event.target.value = ''
         }}
       />
@@ -804,9 +831,7 @@ function ReimbursementDetailDialog({
       setReceiptUrls({})
       return
     }
-    const paths = (request.items ?? [])
-      .filter((item) => item.receipt_path)
-      .map((item) => item.receipt_path as string)
+    const paths = (request.items ?? []).flatMap((item) => item.receipt_paths ?? [])
     if (paths.length === 0) return
     let cancelled = false
     const supabase = createClient()
@@ -850,7 +875,7 @@ function ReimbursementDetailDialog({
                     <TableHead className="w-24 text-right">单价</TableHead>
                     <TableHead className="w-20 text-right">数量</TableHead>
                     <TableHead className="w-24 text-right">金额</TableHead>
-                    <TableHead className="w-32">凭证</TableHead>
+                    <TableHead className="w-44">凭证</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -861,15 +886,25 @@ function ReimbursementDetailDialog({
                       <TableCell className="text-right">{Number(item.quantity)}</TableCell>
                       <TableCell className="text-right font-medium">{formatCny(Number(item.amount))}</TableCell>
                       <TableCell>
-                        {item.receipt_path && receiptUrls[item.receipt_path] ? (
-                          <a href={receiptUrls[item.receipt_path]} target="_blank" rel="noreferrer">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img
-                              src={receiptUrls[item.receipt_path]}
-                              alt="报销凭证"
-                              className="h-14 w-20 rounded border object-cover"
-                            />
-                          </a>
+                        {(item.receipt_paths ?? []).length > 0 ? (
+                          <div className="flex flex-wrap gap-1.5">
+                            {(item.receipt_paths ?? []).map((path) =>
+                              receiptUrls[path] ? (
+                                <ImagePreview
+                                  key={path}
+                                  src={receiptUrls[path]}
+                                  alt="报销凭证"
+                                  size="h-14 w-20"
+                                  sizes="80px"
+                                  rawSrc
+                                />
+                              ) : (
+                                <span key={path} className="text-xs text-muted-foreground">
+                                  凭证加载中…
+                                </span>
+                              ),
+                            )}
+                          </div>
                         ) : (
                           <span className="text-xs text-muted-foreground">无凭证</span>
                         )}

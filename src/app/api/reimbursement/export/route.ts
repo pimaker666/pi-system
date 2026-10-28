@@ -22,6 +22,8 @@ const STATUS_TEXT: Record<FinanceReimbursementRequest['status'], string> = {
 // 凭证图所在 0 基列号（F 列），与下方列宽数组保持一致
 const RECEIPT_COLUMN_INDEX = 5
 const RECEIPT_DISPLAY = { width: 190, height: 96 }
+// Excel 行高上限 409.5pt，每行纵向最多叠 5 张（每张 96px ≈ 75pt）
+const MAX_RECEIPTS_PER_ROW = 5
 
 export async function GET(request: Request) {
   const requestId = new URL(request.url).searchParams.get('request_id')
@@ -91,15 +93,17 @@ export async function GET(request: Request) {
   let receiptBytes = 0
   for (let index = 0; index < items.length; index += 1) {
     const item = items[index]
+    const receiptPaths = item.receipt_paths ?? []
+    const embedCount = Math.min(receiptPaths.length, MAX_RECEIPTS_PER_ROW)
     const row = sheet.addRow([
       item.summary,
       Number(item.unit_price),
       Number(item.quantity),
       Number(item.amount),
       '',
-      item.receipt_path ? '凭证加载中' : '',
+      receiptPaths.length > 0 ? '凭证加载中' : '',
     ])
-    row.height = RECEIPT_DISPLAY.height * 0.78 // pt ≈ px * 0.75，行高适配图片
+    row.height = Math.max(embedCount, 1) * RECEIPT_DISPLAY.height * 0.78 // pt ≈ px * 0.75，行高适配叠放图片
     row.alignment = { vertical: 'middle', wrapText: true }
     row.getCell(1).alignment = { vertical: 'middle', wrapText: true, horizontal: 'left' }
     for (const col of [2, 3, 4]) {
@@ -110,32 +114,39 @@ export async function GET(request: Request) {
       cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }
     })
 
-    if (!item.receipt_path) continue
-    const { data: blob, error: downloadError } = await supabase.storage
-      .from(RECEIPT_BUCKET)
-      .download(item.receipt_path)
-    if (downloadError || !blob) {
-      row.getCell(RECEIPT_COLUMN_INDEX + 1).value = '凭证不可用'
-      continue
+    if (receiptPaths.length === 0) continue
+    if (receiptPaths.length > MAX_RECEIPTS_PER_ROW) {
+      row.getCell(RECEIPT_COLUMN_INDEX + 1).value = `共 ${receiptPaths.length} 张，嵌入前 ${MAX_RECEIPTS_PER_ROW} 张`
     }
-    const imageBuffer = Buffer.from(await blob.arrayBuffer())
-    receiptBytes += imageBuffer.byteLength
-    if (receiptBytes > MAX_RECEIPT_BYTES) {
-      row.getCell(RECEIPT_COLUMN_INDEX + 1).value = '凭证过大未嵌入'
-      continue
+    const slot = 1 / Math.max(embedCount, 1)
+    for (let imageIndex = 0; imageIndex < embedCount; imageIndex += 1) {
+      const receiptPath = receiptPaths[imageIndex]
+      const { data: blob, error: downloadError } = await supabase.storage
+        .from(RECEIPT_BUCKET)
+        .download(receiptPath)
+      if (downloadError || !blob) {
+        row.getCell(RECEIPT_COLUMN_INDEX + 1).value = '凭证不可用'
+        continue
+      }
+      const imageBuffer = Buffer.from(await blob.arrayBuffer())
+      receiptBytes += imageBuffer.byteLength
+      if (receiptBytes > MAX_RECEIPT_BYTES) {
+        row.getCell(RECEIPT_COLUMN_INDEX + 1).value = '凭证过大未嵌入'
+        continue
+      }
+      if (!(await isRenderableExportImage(imageBuffer))) {
+        row.getCell(RECEIPT_COLUMN_INDEX + 1).value = '凭证不可用'
+        continue
+      }
+      const extension = receiptPath.toLowerCase().endsWith('.png') ? 'png' : 'jpeg'
+      row.getCell(RECEIPT_COLUMN_INDEX + 1).value = ''
+      const imageId = workbook.addImage({ base64: imageBuffer.toString('base64'), extension })
+      sheet.addImage(imageId, {
+        tl: { col: RECEIPT_COLUMN_INDEX + 0.1, row: row.number - 1 + imageIndex * slot + 0.02 },
+        ext: RECEIPT_DISPLAY,
+        editAs: 'oneCell',
+      })
     }
-    if (!(await isRenderableExportImage(imageBuffer))) {
-      row.getCell(RECEIPT_COLUMN_INDEX + 1).value = '凭证不可用'
-      continue
-    }
-    const extension = item.receipt_path.toLowerCase().endsWith('.png') ? 'png' : 'jpeg'
-    row.getCell(RECEIPT_COLUMN_INDEX + 1).value = ''
-    const imageId = workbook.addImage({ base64: imageBuffer.toString('base64'), extension })
-    sheet.addImage(imageId, {
-      tl: { col: RECEIPT_COLUMN_INDEX + 0.1, row: row.number - 1 + 0.08 },
-      ext: RECEIPT_DISPLAY,
-      editAs: 'oneCell',
-    })
   }
 
   // 合计

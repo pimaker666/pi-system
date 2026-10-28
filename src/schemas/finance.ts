@@ -168,14 +168,18 @@ export const financeReimbursementItemSchema = z.object({
   summary: z.string().trim().min(1, '请输入摘要').max(500),
   unit_price: moneyField('单价'),
   quantity: moneyField('数量'),
-  receipt_path: z
-    .string()
-    .trim()
-    .regex(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpe?g|png)$/i,
-      '凭证图片路径无效',
+  receipt_paths: z
+    .array(
+      z
+        .string()
+        .trim()
+        .regex(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(jpe?g|png)$/i,
+          '凭证图片路径无效',
+        ),
     )
-    .nullable(),
+    .max(9, '每行凭证最多 9 张')
+    .default([]),
 }).superRefine((item, ctx) => {
   if (item.unit_price * item.quantity >= 1e14) {
     ctx.addIssue({

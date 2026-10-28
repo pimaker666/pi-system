@@ -320,7 +320,7 @@ export interface FinanceReimbursementItem {
   unit_price: number
   quantity: number
   amount: number
-  receipt_path: string | null
+  receipt_paths: string[]
   sort_order: number
 }
 

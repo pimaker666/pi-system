@@ -14,9 +14,11 @@ function revalidateReimbursement() {
 }
 
 // 客户端上传后回传的凭证路径，首级目录必须是本人 uid，防止引用他人凭证图
-function assertOwnReceipts(receiptPaths: (string | null)[], applicantId: string): string | null {
-  for (const path of receiptPaths) {
-    if (path && !path.startsWith(`${applicantId}/`)) return '凭证图片归属不符，请重新上传'
+function assertOwnReceipts(receiptPaths: string[][], applicantId: string): string | null {
+  for (const paths of receiptPaths) {
+    for (const path of paths) {
+      if (!path.startsWith(`${applicantId}/`)) return '凭证图片归属不符，请重新上传'
+    }
   }
   return null
 }
@@ -37,7 +39,7 @@ export async function createReimbursementRequest(input: unknown): Promise<Action
   }
 
   const receiptCheck = assertOwnReceipts(
-    parsed.data.items.map((item) => item.receipt_path),
+    parsed.data.items.map((item) => item.receipt_paths),
     profile.id,
   )
   if (receiptCheck) return { ok: false, error: receiptCheck }
@@ -69,7 +71,7 @@ export async function updateReimbursementRequest(
   }
 
   const receiptCheck = assertOwnReceipts(
-    parsed.data.items.map((item) => item.receipt_path),
+    parsed.data.items.map((item) => item.receipt_paths),
     profile.id,
   )
   if (receiptCheck) return { ok: false, error: receiptCheck }
@@ -94,7 +96,7 @@ export async function deleteReimbursementRequest(requestId: string): Promise<Act
   // 明细随单级联删除，需先取出凭证路径用于事后清理
   const { data: oldItems } = await supabase
     .from('finance_reimbursement_items')
-    .select('receipt_path')
+    .select('receipt_paths')
     .eq('request_id', requestId)
   const { data, error } = await supabase
     .from('finance_reimbursement_requests')
@@ -106,9 +108,7 @@ export async function deleteReimbursementRequest(requestId: string): Promise<Act
   if (!data) return { ok: false, error: '报销单不存在或当前状态不可删除' }
   await removeReceiptsQuietly(
     supabase,
-    (oldItems ?? [])
-      .map((item) => item.receipt_path)
-      .filter((path): path is string => !!path),
+    (oldItems ?? []).flatMap((item) => item.receipt_paths ?? []),
   )
   revalidateReimbursement()
   return { ok: true }
