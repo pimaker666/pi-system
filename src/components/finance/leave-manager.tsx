@@ -229,60 +229,57 @@ export function LeaveManager({
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
-                      {canManage && request.status === 'pending' && (
-                        <>
-                          <Button
-                            size="sm"
-                            disabled={pending}
-                            onClick={() => openReview(request, true)}
-                          >
-                            批准
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={pending}
-                            onClick={() => openReview(request, false)}
-                          >
-                            驳回
-                          </Button>
-                        </>
-                      )}
-                      {!canManage && request.applicant_id === myProfileId && (
-                        <>
-                          {request.status === 'pending' && (
-                            <>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={pending}
-                                onClick={() => openEdit(request)}
-                              >
-                                修改
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                disabled={pending}
-                                onClick={() =>
-                                  startTransition(async () => {
-                                    const result = await withdrawLeaveRequest({
-                                      request_id: request.id,
-                                    })
-                                    if (result.ok) toast.success('已撤回')
-                                    else toast.error(result.error ?? '撤回失败')
+                      {request.status === 'pending' &&
+                        (request.applicant_id === myProfileId ? (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={pending}
+                              onClick={() => openEdit(request)}
+                            >
+                              修改
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              disabled={pending}
+                              onClick={() =>
+                                startTransition(async () => {
+                                  const result = await withdrawLeaveRequest({
+                                    request_id: request.id,
                                   })
-                                }
-                              >
-                                撤回
-                              </Button>
-                            </>
-                          )}
-                          {request.status === 'rejected' && (
-                            <span className="text-xs text-muted-foreground">可重新提交新申请</span>
-                          )}
-                        </>
-                      )}
+                                  if (result.ok) toast.success('已撤回')
+                                  else toast.error(result.error ?? '撤回失败')
+                                })
+                              }
+                            >
+                              撤回
+                            </Button>
+                          </>
+                        ) : canManage ? (
+                          <>
+                            <Button
+                              size="sm"
+                              disabled={pending}
+                              onClick={() => openReview(request, true)}
+                            >
+                              批准
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={pending}
+                              onClick={() => openReview(request, false)}
+                            >
+                              驳回
+                            </Button>
+                          </>
+                        ) : null)}
+                      {request.status === 'rejected' &&
+                        request.applicant_id === myProfileId && (
+                          <span className="text-xs text-muted-foreground">可重新提交新申请</span>
+                        )}
                     </div>
                   </TableCell>
                 </TableRow>
