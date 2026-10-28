@@ -404,6 +404,8 @@ export interface BusinessOrderProductCost {
   settled: boolean
   /** 结算归属年月（YYYY-MM）；未结算为 null。 */
   settled_period: string | null
+  /** 当前账号在成本页的个人标记（business_order_cost_marks），与台账标记独立。 */
+  marked?: boolean
 }
 
 export interface CommissionCategoryRate {
@@ -1567,4 +1569,89 @@ export interface WeightCalcLineItem {
   image_url: string | null
   weight_g: number | null
   quantity: number | null
+}
+
+// ---------------- 工资表（Payroll）----------------
+
+export interface PayrollSheet {
+  id: string
+  period_month: string
+  payout_month: string | null
+  status: 'draft' | 'published'
+  published_by: string | null
+  published_at: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PayrollItem {
+  id: string
+  sheet_id: string
+  profile_id: string
+  sort_order: number
+  attendance_days: number
+  base_salary: number
+  commission: number
+  bonus: number
+  attendance_deduction: number
+  other_deduction: number
+  social_insurance: number
+  housing_fund: number
+  tax: number
+  remark: string | null
+  confirmation: 'pending' | 'confirmed' | 'rejected'
+  confirmed_at: string | null
+  rejected_reason: string | null
+  rejected_at: string | null
+}
+
+export interface PayrollItemWithProfile extends PayrollItem {
+  profile: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>
+}
+
+// ---------------- 考勤表（Attendance）----------------
+
+export interface AttendanceSheet {
+  id: string
+  month: string
+  note: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AttendanceEntry {
+  id: string
+  sheet_id: string
+  profile_id: string
+  day: number
+  morning: string
+  afternoon: string
+}
+
+// ---------------- 请假申请（Leave Request）----------------
+
+export type LeaveType = 'personal' | 'sick' | 'vacation'
+export type LeaveDayPart = 'full' | 'morning' | 'afternoon'
+export type LeaveStatus = 'pending' | 'approved' | 'rejected'
+
+export interface LeaveRequest {
+  id: string
+  applicant_id: string
+  leave_type: LeaveType
+  start_date: string
+  end_date: string
+  day_part: LeaveDayPart
+  reason: string | null
+  status: LeaveStatus
+  reject_reason: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LeaveRequestWithProfile extends LeaveRequest {
+  applicant: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>
 }

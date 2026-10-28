@@ -2,6 +2,8 @@ import {
   BadgeDollarSign,
   BarChart3,
   Boxes,
+  CalendarCheck,
+  CalendarPlus,
   Check,
   CreditCard,
   FilePlus2,
@@ -71,11 +73,19 @@ export const NAV: NavItem[] = [
     requiresFinanceView: true,
   },
   {
-    href: '/finance/transactions',
-    label: '收支流水',
+    href: '/finance/payroll',
+    label: '工资表',
     icon: ReceiptText,
-    allowedRoles: ['admin', 'finance'],
-    requiresFinanceView: true,
+  },
+  {
+    href: '/finance/attendance',
+    label: '考勤表',
+    icon: CalendarCheck,
+  },
+  {
+    href: '/finance/leave',
+    label: '请假申请',
+    icon: CalendarPlus,
   },
   {
     href: '/finance/journal',
@@ -162,7 +172,7 @@ export const NAV_GROUPS = [
   },
   {
     label: '财务账簿',
-    hrefs: ['/finance/journal', '/finance/transactions', '/reimbursement'],
+    hrefs: ['/finance/journal', '/finance/payroll', '/finance/attendance', '/finance/leave', '/reimbursement'],
   },
   {
     label: '业绩与提成',
