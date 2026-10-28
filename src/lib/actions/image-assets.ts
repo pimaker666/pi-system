@@ -3,7 +3,15 @@
 import { z } from 'zod'
 import { requireApproved } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { IMAGE_ASSET_BUCKETS, type ImageAssetMetaMap } from '@/lib/image-assets'
+import type { ImageAssetMetaMap } from '@/lib/image-assets'
+
+// 私有常量，绝不 export：'use server' 文件只允许导出 async 函数，
+// 且打包器会把本地小模块的值导入内联进本模块，导出对象会被当作 Server Action 校验而崩整页。
+const IMAGE_ASSET_BUCKETS = [
+  'business-payment-proofs',
+  'business-shipment-screenshots',
+  'customer-assets',
+] as const
 
 const bucketSchema = z.enum(IMAGE_ASSET_BUCKETS)
 const pathSchema = z.string().trim().min(1).max(1024)
