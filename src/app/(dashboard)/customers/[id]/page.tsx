@@ -2,12 +2,10 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { CustomerDetailEditButton } from '@/components/customers/customer-detail-edit-button'
+import { CustomerOrdersTable, type CustomerOrderRow } from '@/components/customers/customer-orders-table'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { formatCountryName } from '@/lib/country-flags'
-import { formatCny } from '@/lib/finance'
-import { formatAmount } from '@/lib/utils'
 import { toImageSrc } from '@/lib/supabase/image'
 import { createClient } from '@/lib/supabase/server'
 import type { Customer, CustomerGroup } from '@/types'
@@ -20,12 +18,31 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
     supabase.from('customer_groups').select('*').order('name'),
     supabase
       .from('business_orders')
-      .select('id, order_number, external_order_number, order_date, currency, total_amount, total_cny, status')
+      .select('id, order_number, external_order_number, order_date, currency, total_amount, shipping_fee, status')
       .eq('customer_id', id)
       .is('voided_at', null)
       .order('order_date', { ascending: false }),
   ])
   if (!customer) notFound()
+
+  const orderIds = (orders ?? []).map((order) => order.id)
+  const { data: orderItems } = orderIds.length
+    ? await supabase
+        .from('business_order_items')
+        .select('id, order_id, name_snapshot, quantity, unit_price, sales_total_amount, line_amount, logistics_fee_amount, sort_order')
+        .in('order_id', orderIds)
+        .order('sort_order')
+    : { data: [] as never[] }
+  const itemsByOrder = new Map<string, typeof orderItems>()
+  for (const item of orderItems ?? []) {
+    const list = itemsByOrder.get(item.order_id) ?? []
+    list.push(item)
+    itemsByOrder.set(item.order_id, list)
+  }
+  const orderRows: CustomerOrderRow[] = (orders ?? []).map((order) => ({
+    ...order,
+    items: itemsByOrder.get(order.id) ?? [],
+  }))
 
   const customerRecord = customer as Customer
   const logoUrls = customerRecord.logo_urls.length
@@ -89,19 +106,7 @@ export default async function CustomerDetailPage({ params }: { params: Promise<{
       <Card>
         <CardHeader><CardTitle>订单明细</CardTitle></CardHeader>
         <CardContent className="p-0">
-          <Table>
-            <TableHeader><TableRow><TableHead>下单日期</TableHead><TableHead>订单号</TableHead><TableHead>平台订单号</TableHead><TableHead>状态</TableHead><TableHead className="text-right">订单金额</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {(orders ?? []).map((order) => <TableRow key={order.id}>
-                <TableCell>{order.order_date}</TableCell>
-                <TableCell><Link className="font-medium hover:underline" href={`/finance/daily-orders/${order.id}?fromCustomer=${id}`}>{order.order_number}</Link></TableCell>
-                <TableCell>{order.external_order_number || '—'}</TableCell>
-                <TableCell>{order.status}</TableCell>
-                <TableCell className="text-right tabular-nums">{order.currency === 'CNY' ? formatCny(Number(order.total_amount)) : `${order.currency} ${formatAmount(Number(order.total_amount))}`}</TableCell>
-              </TableRow>)}
-              {(orders ?? []).length === 0 && <TableRow><TableCell colSpan={5} className="py-12 text-center text-muted-foreground">暂无历史订单</TableCell></TableRow>}
-            </TableBody>
-          </Table>
+          <CustomerOrdersTable orders={orderRows} fromCustomerId={id} />
         </CardContent>
       </Card>
     </div>
