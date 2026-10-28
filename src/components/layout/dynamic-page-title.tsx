@@ -1,6 +1,5 @@
 'use client'
 
-import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { NAV } from '@/components/layout/nav-config'
 
@@ -12,19 +11,20 @@ const EXTRA_TITLES: Record<string, string> = {
   '/pending': '待审核',
 }
 
+function pageTitleForPath(pathname: string): string {
+  const nav =
+    // 1. 纯 href 精确命中（优先于自定义 match，避免 /users 的 match 抢走 /users/permissions）
+    NAV.find((item) => !item.match && item.href === pathname) ??
+    // 2. 自定义 match（PI 历史、产品库、权限管理等排除型规则）
+    NAV.find((item) => !!item.match && item.match!(pathname)) ??
+    // 3. 前缀兜底（如 /finance 之下的未知子页归入「财务总览」）
+    NAV.find((item) => !item.match && pathname.startsWith(`${item.href}/`))
+  const page = nav?.label ?? EXTRA_TITLES[pathname] ?? null
+  return page ? `${page} - ${APP_TITLE}` : APP_TITLE
+}
+
 export function DynamicPageTitle() {
   const pathname = usePathname()
-
-  useEffect(() => {
-    const nav = NAV.find((item) =>
-      item.match ? item.match(pathname) : pathname === item.href || pathname.startsWith(`${item.href}/`),
-    )
-    const page = nav?.label ?? EXTRA_TITLES[pathname] ?? null
-    document.title = page ? `${page} - ${APP_TITLE}` : APP_TITLE
-    return () => {
-      document.title = APP_TITLE
-    }
-  }, [pathname])
-
-  return null
+  // 渲染真实 <title> 元素交给 React 19 提升到 head 并去重（静态 metadata 标题会被覆盖）
+  return <title>{pageTitleForPath(pathname)}</title>
 }
