@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import localFont from 'next/font/local'
 import './globals.css'
+import { DynamicPageTitle } from '@/components/layout/dynamic-page-title'
 import { Toaster } from '@/components/ui/sonner'
 
 // Use the locally shipped Inter .ttf (see public/fonts) instead of fetching
@@ -23,6 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-CN">
       <body className={inter.className}>
         {children}
+        <DynamicPageTitle />
         <Toaster />
       </body>
     </html>
