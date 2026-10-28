@@ -183,6 +183,7 @@ export function BusinessOrderPaymentManager({
   const [receivedAt, setReceivedAt] = useState(getBusinessDateTimeLocal())
   const [notes, setNotes] = useState('')
   const [allocationDraft, setAllocationDraft] = useState<AllocationDraft>({})
+  const [showOtherAllocationOrders, setShowOtherAllocationOrders] = useState(false)
   const [correctionReason, setCorrectionReason] = useState('')
   const [idempotencyKey, setIdempotencyKey] = useState('')
   const [uploadedProofPaths, setUploadedProofPaths] = useState<string[]>([])
@@ -567,6 +568,7 @@ export function BusinessOrderPaymentManager({
     setReceivedAt(getBusinessDateTimeLocal())
     setNotes('')
     setAllocationDraft({})
+    setShowOtherAllocationOrders(false)
     setCorrectionReason('')
     setIdempotencyKey(nextIdempotencyKey)
     setUploadedProofPaths(pendingUpload?.proof_paths ?? [])
@@ -1362,29 +1364,43 @@ export function BusinessOrderPaymentManager({
                   </div>
                 </div>
               )}
-              {otherAllocationOrders.map((order) => (
-                <div key={order.id} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center">
-                  <div>
-                    <div className="font-medium">{order.order_number}</div>
-                    <div className="text-xs text-muted-foreground">未收 {formatCurrency(orderOutstandingAmount(order), currency)}</div>
+              {otherAllocationOrders.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  onClick={() => setShowOtherAllocationOrders((current) => !current)}
+                >
+                  {showOtherAllocationOrders
+                    ? '收起其他订单'
+                    : `分摊到其他订单（${otherAllocationOrders.length}）`}
+                </Button>
+              )}
+              {showOtherAllocationOrders &&
+                otherAllocationOrders.map((order) => (
+                  <div key={order.id} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[1fr_180px] sm:items-center">
+                    <div>
+                      <div className="font-medium">{order.order_number}</div>
+                      <div className="text-xs text-muted-foreground">未收 {formatCurrency(orderOutstandingAmount(order), currency)}</div>
+                    </div>
+                    <Input
+                      aria-label={`${order.order_number} 分摊金额`}
+                      type="number"
+                      min="0"
+                      max={orderOutstandingAmount(order)}
+                      step="0.0001"
+                      placeholder="分摊金额"
+                      value={allocationDraft[allocationKey(order.id, 'order')] ?? ''}
+                      onChange={(event) =>
+                        setAllocationDraft((current) => ({
+                          ...current,
+                          [allocationKey(order.id, 'order')]: event.target.value,
+                        }))
+                      }
+                    />
                   </div>
-                  <Input
-                    aria-label={`${order.order_number} 分摊金额`}
-                    type="number"
-                    min="0"
-                    max={orderOutstandingAmount(order)}
-                    step="0.0001"
-                    placeholder="分摊金额"
-                    value={allocationDraft[allocationKey(order.id, 'order')] ?? ''}
-                    onChange={(event) =>
-                      setAllocationDraft((current) => ({
-                        ...current,
-                        [allocationKey(order.id, 'order')]: event.target.value,
-                      }))
-                    }
-                  />
-                </div>
-              ))}
+                ))}
               {!isOrderScoped && availableOrders.length === 0 && <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">暂无可分摊订单，本次转账将全部计入预收款</div>}
             </div>
 
