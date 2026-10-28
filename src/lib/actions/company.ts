@@ -25,6 +25,7 @@ const companySchema = z.object({
   bank_swift: z.string().trim().max(50).optional().or(z.literal('')),
   bank_address: z.string().trim().max(500).optional().or(z.literal('')),
   default_terms: z.string().trim().max(4000).optional().or(z.literal('')),
+  pi_currency: z.enum(['USD', 'CNY']).default('USD'),
 })
 
 const companyProfileSchema = companySchema.extend({
@@ -47,6 +48,7 @@ export async function upsertCompanySettings(formData: FormData): Promise<ActionR
     bank_swift: formData.get('bank_swift') || '',
     bank_address: formData.get('bank_address') || '',
     default_terms: formData.get('default_terms') || '',
+    pi_currency: formData.get('pi_currency') || 'USD',
   })
   if (!parsed.success) {
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
@@ -68,6 +70,7 @@ export async function upsertCompanySettings(formData: FormData): Promise<ActionR
     bank_swift: parsed.data.bank_swift || null,
     bank_address: parsed.data.bank_address || null,
     default_terms: parsed.data.default_terms || null,
+    pi_currency: parsed.data.pi_currency,
     updated_at: new Date().toISOString(),
   })
   if (error) return { ok: false, error: error.message }
@@ -95,6 +98,7 @@ function parseCompanyProfile(formData: FormData) {
     bank_swift: formData.get('bank_swift') || '',
     bank_address: formData.get('bank_address') || '',
     default_terms: formData.get('default_terms') || '',
+    pi_currency: formData.get('pi_currency') || 'USD',
   })
 }
 
@@ -113,6 +117,7 @@ function profileValues(data: ReturnType<typeof companyProfileSchema.parse>) {
     bank_swift: data.bank_swift || null,
     bank_address: data.bank_address || null,
     default_terms: data.default_terms || null,
+    pi_currency: data.pi_currency,
   }
 }
 

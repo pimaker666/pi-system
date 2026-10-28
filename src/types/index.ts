@@ -1282,6 +1282,8 @@ export interface CompanySettings {
   bank_swift: string | null
   bank_address: string | null
   default_terms: string | null
+  /** 开具 PI 的币种（USD/CNY），PI 创建时快照到单据本身。 */
+  pi_currency: 'USD' | 'CNY'
   updated_at: string
 }
 
@@ -1318,6 +1320,8 @@ export interface CompanyProfile {
   bank_swift: string | null
   bank_address: string | null
   default_terms: string | null
+  /** 开具 PI 的币种（USD/CNY），PI 创建时快照到单据本身。 */
+  pi_currency: 'USD' | 'CNY'
   is_active: boolean
   created_at: string
   updated_at: string

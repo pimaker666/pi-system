@@ -26,6 +26,8 @@ interface PiCartState {
   items: PiLineItem[]
   charges: PiCharges
   currency: CurrencyCode
+  /** 账户公司设置的开具 PI 币种；空车时用它锁定 PI 币种。 */
+  preferredCurrency: CurrencyCode
   notes: string
   customer: Customer | null
   terms: string
@@ -50,6 +52,7 @@ interface PiCartState {
   /** After the replaced image was auto-saved as a new product, bind this line to it. */
   linkLineToProduct: (lineId: string, productId: string, sku: string) => void
   setCharges: (charges: Partial<PiCharges>) => void
+  setPreferredCurrency: (currency: CurrencyCode) => void
   setNotes: (notes: string) => void
   setCustomer: (customer: Customer | null) => void
   setTerms: (terms: string) => void
@@ -74,6 +77,7 @@ export const usePiCartStore = create<PiCartState>()(
       items: [],
       charges: defaultCharges,
       currency: 'USD',
+      preferredCurrency: 'USD',
       notes: '',
       customer: null,
       terms: '',
@@ -98,15 +102,15 @@ export const usePiCartStore = create<PiCartState>()(
             currency: product.currency,
             quantity: null,
           }
-          // First item locks the PI currency.
-          const currency = state.items.length === 0 ? product.currency : state.currency
+          // First item locks the PI currency to the account's configured PI currency.
+          const currency = state.items.length === 0 ? state.preferredCurrency : state.currency
           return { items: [...state.items, nextItem], currency }
         }),
 
       removeLine: (lineId) =>
         set((state) => {
           const items = state.items.filter((i) => i.line_id !== lineId)
-          const currency = items.length === 0 ? 'USD' : state.currency
+          const currency = items.length === 0 ? state.preferredCurrency : state.currency
           return { items, currency }
         }),
 
@@ -225,6 +229,8 @@ export const usePiCartStore = create<PiCartState>()(
       setCharges: (charges) =>
         set((state) => ({ charges: { ...state.charges, ...charges } })),
 
+      setPreferredCurrency: (currency) => set({ preferredCurrency: currency }),
+
       setNotes: (notes) => set({ notes }),
 
       setCustomer: (customer) => set({ customer }),
@@ -308,17 +314,17 @@ export const usePiCartStore = create<PiCartState>()(
         get().items.filter((i) => i.product_id === productId).length,
 
       reset: () =>
-        set({
+        set((state) => ({
           items: [],
           charges: defaultCharges,
-          currency: 'USD',
+          currency: state.preferredCurrency,
           notes: '',
           customer: null,
           terms: '',
           shippingMethod: '',
           showSpecification: true,
           showWeight: false,
-        }),
+        })),
     }),
     {
       name: 'pi-cart',

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useTransition } from 'react'
+import { useEffect, useMemo, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { usePiCartStore } from '@/stores/pi-cart-store'
@@ -22,7 +22,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { Customer, CustomerGroup, Product, ProductGroup, CustomerSnapshot } from '@/types'
+import type {
+  Customer,
+  CustomerGroup,
+  Product,
+  ProductGroup,
+  CustomerSnapshot,
+  CurrencyCode,
+} from '@/types'
 
 interface PiCreateClientProps {
   products: Product[]
@@ -30,6 +37,8 @@ interface PiCreateClientProps {
   groups: CustomerGroup[]
   productGroups: ProductGroup[]
   defaultTerms: string
+  /** 账户公司设置的开具 PI 币种；空车时锁定为该币种。 */
+  defaultCurrency: CurrencyCode
 }
 
 /** Preset transport method + lead time options; users may also type freely. */
@@ -61,6 +70,7 @@ export function PiCreateClient({
   customers,
   groups,
   productGroups,
+  defaultCurrency,
 }: PiCreateClientProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -76,6 +86,7 @@ export function PiCreateClient({
     showSpecification,
     showWeight,
     setCharges,
+    setPreferredCurrency,
     setNotes,
     setCustomer,
     setTerms,
@@ -84,6 +95,11 @@ export function PiCreateClient({
     setShowWeight,
     reset,
   } = usePiCartStore()
+
+  // 同步账户的公司 PI 币种设置；store 只在空车加入首个产品时按它锁定币种。
+  useEffect(() => {
+    setPreferredCurrency(defaultCurrency)
+  }, [defaultCurrency, setPreferredCurrency])
 
   const totals = useMemo(() => calcPiTotals(items, charges), [items, charges])
 

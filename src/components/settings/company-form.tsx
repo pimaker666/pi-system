@@ -13,6 +13,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
 import type { CompanySettings } from '@/types'
@@ -102,6 +109,22 @@ export function CompanyForm({ settings }: { settings: CompanySettings | null }) 
           <div className="space-y-2">
             <Label htmlFor="website">网站</Label>
             <Input id="website" name="website" defaultValue={settings?.website ?? ''} />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="pi_currency">开具 PI 币种</Label>
+            <Select name="pi_currency" defaultValue={settings?.pi_currency ?? 'USD'}>
+              <SelectTrigger id="pi_currency" className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="USD">USD（美元）</SelectItem>
+                <SelectItem value="CNY">CNY（人民币）</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              该账号生成的 PI 会使用此币种，只影响修改后生成的 PI，已生成的 PI 不变。
+            </p>
           </div>
 
           <div className="space-y-2">
