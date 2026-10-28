@@ -14,8 +14,10 @@ const inter = localFont({
   display: 'swap',
 })
 
+// 站点标题由 DynamicPageTitle 按路由动态渲染（React 19 将 <title> 提升到 head）。
+// 不在 metadata 里写死 title，否则 head 里会同时存在静态 <title> 且排在最前，
+// document.title 永远读到静态值。
 export const metadata: Metadata = {
-  title: 'PI 自动生成系统',
   description: '产品库与 Proforma Invoice 自动生成系统',
 }
 

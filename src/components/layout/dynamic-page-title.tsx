@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { usePathname } from 'next/navigation'
 import { NAV } from '@/components/layout/nav-config'
 
@@ -25,6 +26,10 @@ function pageTitleForPath(pathname: string): string {
 
 export function DynamicPageTitle() {
   const pathname = usePathname()
-  // 渲染真实 <title> 元素交给 React 19 提升到 head 并去重（静态 metadata 标题会被覆盖）
-  return <title>{pageTitleForPath(pathname)}</title>
+  const title = pageTitleForPath(pathname)
+  // 渲染真实 <title> 元素交给 React 19 提升到 head；useEffect 兜底再写一次 document.title
+  useEffect(() => {
+    document.title = title
+  }, [title])
+  return <title>{title}</title>
 }
