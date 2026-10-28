@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, useMemo, useRef, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { BarChart3, Download, FileUp, Pencil, Plus, Settings2, Tags, Trash2, Ban } from 'lucide-react'
 import { toast } from 'sonner'
@@ -116,10 +117,6 @@ export function JournalManager({
     setPage(1)
   }
 
-  // 月度汇总
-  const [summaryOpen, setSummaryOpen] = useState(false)
-  const [summaryAccount, setSummaryAccount] = useState('all')
-
   // 记一笔 / 编辑分录
   const [entryDialogOpen, setEntryDialogOpen] = useState(false)
   const [editingEntry, setEditingEntry] = useState<FinanceJournalEntry | null>(null)
@@ -191,47 +188,6 @@ export function JournalManager({
 
   const monthFlowOf = (accountId: string) =>
     monthFlows.find((flow) => flow.account_id === accountId)
-
-  // 月度汇总（行维度 × 月份矩阵，折合人民币，排除作废；维度=分类或报销人）
-  const [summaryDim, setSummaryDim] = useState<'category' | 'reimbursee'>('category')
-  const monthlySummary = useMemo(() => {
-    const scoped = filteredEntries.filter(
-      (row) => !row.voided_at && (summaryAccount === 'all' || row.account_id === summaryAccount),
-    )
-    const monthSet = new Set<string>()
-    const rowSet = new Set<string>()
-    const cellMap = new Map<string, number>()
-    const monthIncome = new Map<string, number>()
-    const monthExpense = new Map<string, number>()
-    for (const row of scoped) {
-      const month = row.entry_date.slice(0, 7)
-      const key =
-        summaryDim === 'category' ? (row.category?.name ?? '未分类') : (row.reimbursee ?? '未填写')
-      monthSet.add(month)
-      rowSet.add(key)
-      const amount = Number(row.amount_cny)
-      cellMap.set(`${key}|${month}`, (cellMap.get(`${key}|${month}`) ?? 0) + amount)
-      if (row.kind === 'income') monthIncome.set(month, (monthIncome.get(month) ?? 0) + amount)
-      else monthExpense.set(month, (monthExpense.get(month) ?? 0) + amount)
-    }
-    const months = [...monthSet].sort().reverse()
-    const cell = (key: string, month: string) => cellMap.get(`${key}|${month}`) ?? 0
-    const totalOf = (key: string) => months.reduce((sum, month) => sum + cell(key, month), 0)
-    const rows = [...rowSet].sort((a, b) => {
-      if (summaryDim === 'reimbursee') return totalOf(b) - totalOf(a)
-      const kindOf = (name: string) =>
-        scoped.find((row) => (row.category?.name ?? '未分类') === name)?.category?.kind ?? 'expense'
-      return kindOf(a) === kindOf(b) ? a.localeCompare(b, 'zh') : kindOf(a) === 'income' ? -1 : 1
-    })
-    return {
-      months,
-      rows,
-      cell,
-      totalOf,
-      incomeOf: (month: string) => monthIncome.get(month) ?? 0,
-      expenseOf: (month: string) => monthExpense.get(month) ?? 0,
-    }
-  }, [filteredEntries, summaryAccount, summaryDim])
 
   function resetEntryForm() {
     setEditingEntry(null)
@@ -691,9 +647,11 @@ export function JournalManager({
         />
         <Button variant="ghost" onClick={() => patchFilters({ ...DEFAULT_JOURNAL_FILTERS })}>重置筛选</Button>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="outline" onClick={() => { setSummaryOpen(true); setSummaryAccount('all') }}>
-            <BarChart3 className="h-4 w-4" />
-            月度汇总
+          <Button variant="outline" asChild>
+            <Link href="/finance/journal/overview">
+              <BarChart3 className="h-4 w-4" />
+              收支总览
+            </Link>
           </Button>
           <Button variant="outline" onClick={openImportDialog}>
             <FileUp className="h-4 w-4" />
@@ -1547,136 +1505,6 @@ export function JournalManager({
         </DialogContent>
       </Dialog>
 
-      {/* 月度汇总：行维度（分类/报销人）× 月份矩阵（折合人民币，排除作废） */}
-      <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
-        <DialogContent className="sm:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>月度汇总</DialogTitle>
-            <DialogDescription>
-              按当前筛选条件统计分类或报销人 × 月份收支（折合人民币，排除作废）；重置页面筛选可查看全部月份。
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="w-40">
-                <Select value={summaryDim} onValueChange={(v) => setSummaryDim(v as typeof summaryDim)}>
-                  <SelectTrigger><SelectValue placeholder="汇总维度" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="category">按分类</SelectItem>
-                    <SelectItem value="reimbursee">按报销人</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="w-56">
-                <Select value={summaryAccount} onValueChange={setSummaryAccount}>
-                  <SelectTrigger><SelectValue placeholder="账户" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">全部账户</SelectItem>
-                    {accounts.map((account) => (
-                      <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            {monthlySummary.months.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">所选范围内暂无日记账记录</p>
-            ) : (
-              <div className="max-h-96 overflow-auto rounded-md border">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="sticky left-0 bg-muted">
-                        {summaryDim === 'category' ? '分类' : '报销人'}
-                      </TableHead>
-                      {monthlySummary.months.map((month) => (
-                        <TableHead key={month} className="text-right">{month}</TableHead>
-                      ))}
-                      <TableHead className="text-right">合计</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {monthlySummary.rows.map((rowKey) => {
-                      const total = monthlySummary.totalOf(rowKey)
-                      const kind =
-                        summaryDim === 'category'
-                          ? entries.find(
-                              (row) => (row.category?.name ?? '未分类') === rowKey,
-                            )?.category?.kind
-                          : undefined
-                      return (
-                        <TableRow key={rowKey}>
-                          <TableCell className="sticky left-0 bg-card font-medium">
-                            {summaryDim === 'category' && (
-                              <>
-                                <Badge variant={kind === 'income' ? 'success' : 'secondary'}>
-                                  {FINANCE_TRANSACTION_LABELS[kind as FinanceTransactionType] ?? '—'}
-                                </Badge>{' '}
-                              </>
-                            )}
-                            {rowKey}
-                          </TableCell>
-                          {monthlySummary.months.map((month) => (
-                            <TableCell key={month} className="text-right text-sm">
-                              {monthlySummary.cell(rowKey, month) > 0
-                                ? formatCny(monthlySummary.cell(rowKey, month))
-                                : '—'}
-                            </TableCell>
-                          ))}
-                          <TableCell className="text-right text-sm font-medium">
-                            {formatCny(total)}
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                    {([
-                      { label: '收入合计', pick: monthlySummary.incomeOf, cls: 'text-emerald-600' },
-                      { label: '支出合计', pick: monthlySummary.expenseOf, cls: 'text-destructive' },
-                    ] as const).map(({ label, pick, cls }) => (
-                      <TableRow key={label} className="border-t-2 font-medium">
-                        <TableCell className="sticky left-0 bg-card">{label}</TableCell>
-                        {monthlySummary.months.map((month) => (
-                          <TableCell key={month} className={cn('text-right text-sm', cls)}>
-                            {formatCny(pick(month))}
-                          </TableCell>
-                        ))}
-                        <TableCell className={cn('text-right text-sm', cls)}>
-                          {formatCny(monthlySummary.months.reduce((sum, month) => sum + pick(month), 0))}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    <TableRow className="font-medium">
-                      <TableCell className="sticky left-0 bg-card">月度净额</TableCell>
-                      {monthlySummary.months.map((month) => (
-                        <TableCell
-                          key={month}
-                          className={cn(
-                            'text-right text-sm',
-                            monthlySummary.incomeOf(month) - monthlySummary.expenseOf(month) >= 0
-                              ? 'text-emerald-600'
-                              : 'text-destructive',
-                          )}
-                        >
-                          {formatCny(monthlySummary.incomeOf(month) - monthlySummary.expenseOf(month))}
-                        </TableCell>
-                      ))}
-                      <TableCell className="text-right text-sm">
-                        {formatCny(
-                          monthlySummary.months.reduce(
-                            (sum, month) =>
-                              sum + monthlySummary.incomeOf(month) - monthlySummary.expenseOf(month),
-                            0,
-                          ),
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

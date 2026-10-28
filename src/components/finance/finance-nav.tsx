@@ -10,6 +10,7 @@ const financeNavGroups = [
     items: [
       { href: '/finance', label: '财务总览', financeOnly: true },
       { href: '/finance/journal', label: '日记账', financeOnly: true },
+      { href: '/finance/journal/overview', label: '收支总览', financeOnly: true },
       { href: '/finance/daily-orders', label: '每日订单', financeOnly: false },
     ],
   },
