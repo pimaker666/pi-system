@@ -99,6 +99,12 @@ export function ReimbursementManager({
     [requests, statusFilter],
   )
 
+  // detailTarget 只是打开时的快照，审批/完成后的最新状态要从刷新后的 requests 里取回
+  const detailRequest = useMemo(
+    () => (detailTarget ? requests.find((request) => request.id === detailTarget.id) ?? null : null),
+    [requests, detailTarget],
+  )
+
   async function runAction(action: () => Promise<{ ok: boolean; error?: string }>, success: string) {
     setPending(true)
     try {
@@ -302,7 +308,7 @@ export function ReimbursementManager({
       />
 
       <ReimbursementDetailDialog
-        request={detailTarget}
+        request={detailRequest}
         onClose={() => setDetailTarget(null)}
         canReview={canReview}
         pending={pending}
