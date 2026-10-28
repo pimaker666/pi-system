@@ -3,22 +3,9 @@
 import { z } from 'zod'
 import { requireApproved } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { IMAGE_ASSET_BUCKETS, type ImageAssetMetaMap } from '@/lib/image-assets'
 
-/** 允许登记展示元数据的图片桶。 */
-export const IMAGE_ASSET_BUCKETS = [
-  'business-payment-proofs',
-  'business-shipment-screenshots',
-  'customer-assets',
-] as const
-
-export type ImageAssetBucket = (typeof IMAGE_ASSET_BUCKETS)[number]
-
-export interface ImageAssetMetaEntry {
-  displayName: string | null
-  uploadedAt: string | null
-}
-
-export type ImageAssetMetaMap = Record<string, ImageAssetMetaEntry>
+export type { ImageAssetMetaEntry, ImageAssetMetaMap } from '@/lib/image-assets'
 
 const bucketSchema = z.enum(IMAGE_ASSET_BUCKETS)
 const pathSchema = z.string().trim().min(1).max(1024)
