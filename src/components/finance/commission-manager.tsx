@@ -56,7 +56,7 @@ import {
 } from '@/lib/business-order-commission'
 import { formatDailyMoney, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { cn, displayProfileName } from '@/lib/utils'
-import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-commission'
+import type { BusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import type {
   BusinessOrderCommissionClearanceStatus,
   BusinessOrderCommissionRow,

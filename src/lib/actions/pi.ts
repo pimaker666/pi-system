@@ -1,11 +1,68 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { requireProfile } from '@/lib/auth'
-import { createPiSchema } from '@/schemas/pi'
+import { CURRENCIES } from '@/schemas/product'
 import { calcPiTotals, calcLineTotal } from '@/lib/calc'
+
+// 校验 schema 为本文件私有（原 @/schemas/pi 只有一个消费者，已并入）。
+const customerSnapshotSchema = z.object({
+  name: z.string().trim().min(1, '客户名称不能为空'),
+  company: z.string().trim().optional().nullable(),
+  email: z.string().trim().email('邮箱格式错误').optional().or(z.literal('')).nullable(),
+  phone: z.string().trim().optional().nullable(),
+  address: z.string().trim().optional().nullable(),
+  country: z.string().trim().optional().nullable(),
+  contact_person: z.string().trim().optional().nullable(),
+  tag_color: z
+    .string()
+    .trim()
+    .regex(/^#[0-9A-Fa-f]{6}$/, '颜色格式错误')
+    .optional()
+    .nullable()
+    .or(z.literal('')),
+})
+
+const piLineItemSchema = z.object({
+  product_id: z.string().uuid().nullable(),
+  sku: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().nullable().optional(),
+  image_url: z.string().nullable().optional(),
+  remark_image_url: z.string().nullable().optional(),
+  specification: z.string().nullable().optional(),
+  weight_g: z
+    .preprocess(
+      (v) => (v === '' || v === null || v === undefined ? null : Number(v)),
+      z.number().min(0).nullable(),
+    )
+    .optional(),
+  unit: z.string().min(1),
+  unit_price: z.coerce.number().min(0),
+  quantity: z.coerce.number().int('数量必须为整数').min(1, '数量至少为 1'),
+})
+
+const piChargesSchema = z.object({
+  tax_rate: z.coerce.number().min(0, '税率不能为负').max(100, '税率过高').default(0),
+  shipping_fee: z.coerce.number().min(0, '运费不能为负').default(0),
+  discount: z.coerce.number().min(0, '折扣不能为负').default(0),
+})
+
+const createPiSchema = z.object({
+  customer_id: z.string().uuid().optional().nullable(),
+  customer_snapshot: customerSnapshotSchema,
+  currency: z.enum(CURRENCIES),
+  items: z.array(piLineItemSchema).min(1, '至少选择一个产品'),
+  charges: piChargesSchema,
+  shipping_method: z.string().trim().max(200).optional().or(z.literal('')).nullable(),
+  show_specification: z.boolean().default(true),
+  show_weight: z.boolean().default(false),
+  notes: z.string().trim().max(2000).optional().or(z.literal('')),
+  terms: z.string().trim().max(4000).optional().or(z.literal('')),
+})
 import type { ProformaInvoiceWithItems } from '@/types'
 import type { ActionResult } from './products'
 

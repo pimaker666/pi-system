@@ -7,7 +7,7 @@ import type {
   CustomerCustomOrderCommissionRate,
   DailyOrderShippingCategory,
 } from '@/types'
-import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-commission'
+import type { BusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import { displayProfileName } from '@/lib/utils'
 import { COMMISSION_PAGE_SIZE } from '@/lib/business-order-commission'
 import {

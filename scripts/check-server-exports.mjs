@@ -14,17 +14,7 @@ const files = []
 walk(srcDir)
 
 // 存量豁免：单消费者但已在生产长期验证无碍的模块（新增请勿加入）。
-const GRANDFATHERED = new Set([
-  'lib/calc',
-  'lib/country-flags',
-  'lib/daily-order-costs-server',
-  'schemas/business-order-commission',
-  'schemas/company',
-  'schemas/daily-order-workflow',
-  'schemas/permission',
-  'schemas/pi',
-  'schemas/weight',
-])
+const GRANDFATHERED = new Set(['lib/calc', 'lib/country-flags', 'lib/daily-order-costs-server'])
 
 // ---- 全树收集本地导入，建立「解析后路径 → 运行时导入者集合」 ----
 const importRecords = [] // { file, spec, hasValue }

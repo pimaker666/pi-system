@@ -1,4 +1,13 @@
-import type { BusinessOrderCommissionFilters } from '@/schemas/business-order-commission'
+export interface BusinessOrderCommissionFilters {
+  q: string
+  dateFrom?: string
+  dateTo?: string
+  month?: string
+  shops: string[]
+  salespeople: string[]
+  shopGroups: string[]
+  page: number
+}
 
 export const BUSINESS_ORDER_COMMISSION_COLUMNS = [
   '客户', '发货分类', '产品图片', '产品名称', '产品实收金额', '产品提点', '产品提成',
