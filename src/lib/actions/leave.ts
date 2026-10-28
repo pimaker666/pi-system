@@ -221,11 +221,51 @@ export async function reviewLeaveRequest(input: {
     if (!sheetId) continue
     const monthDays = days.filter((day) => monthKeyOf(day) === monthKey)
 
+    // 找/建请假人的考勤成员行（请假人必有系统账号）
+    let memberId: string
+    const { data: existingMember } = await supabase
+      .from('attendance_members')
+      .select('id')
+      .eq('sheet_id', sheetId)
+      .eq('profile_id', request.applicant_id)
+      .maybeSingle()
+    if (existingMember) {
+      memberId = existingMember.id
+    } else {
+      const { data: applicant } = await supabase
+        .from('profiles')
+        .select('chinese_name, full_name')
+        .eq('id', request.applicant_id)
+        .single()
+      const { count } = await supabase
+        .from('attendance_members')
+        .select('id', { count: 'exact', head: true })
+        .eq('sheet_id', sheetId)
+      const { data: createdMember, error: memberError } = await supabase
+        .from('attendance_members')
+        .insert({
+          sheet_id: sheetId,
+          profile_id: request.applicant_id,
+          name:
+            applicant?.chinese_name?.trim() || applicant?.full_name?.trim() || '成员',
+          sort_order: (count ?? 0) + 1,
+        })
+        .select('id')
+        .single()
+      if (memberError || !createdMember) {
+        return {
+          ok: false,
+          error: `已批准但创建考勤成员失败：${memberError?.message ?? '未知错误'}，请手动补录考勤`,
+        }
+      }
+      memberId = createdMember.id
+    }
+
     const { data: existingEntries } = await supabase
       .from('attendance_entries')
       .select('day, morning, afternoon')
       .eq('sheet_id', sheetId)
-      .eq('profile_id', request.applicant_id)
+      .eq('member_id', memberId)
     const entryByDay = new Map((existingEntries ?? []).map((row) => [row.day, row]))
 
     const touchesMorning = request.day_part !== 'afternoon'
@@ -248,12 +288,12 @@ export async function reviewLeaveRequest(input: {
       const { error: upsertError } = await supabase.from('attendance_entries').upsert(
         {
           sheet_id: sheetId,
-          profile_id: request.applicant_id,
+          member_id: memberId,
           day: dayNumber,
           morning,
           afternoon,
         },
-        { onConflict: 'sheet_id,profile_id,day' },
+        { onConflict: 'sheet_id,member_id,day' },
       )
       if (upsertError) {
         return {

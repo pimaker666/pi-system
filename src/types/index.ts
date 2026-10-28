@@ -1581,6 +1581,7 @@ export interface PayrollSheet {
   id: string
   period_month: string
   payout_month: string | null
+  full_attendance_days: number | null
   status: 'draft' | 'published'
   published_by: string | null
   published_at: string | null
@@ -1614,6 +1615,16 @@ export interface PayrollItemWithProfile extends PayrollItem {
   profile: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>
 }
 
+export interface PayrollSalaryProfile {
+  profile_id: string
+  base_salary: number
+  social_insurance: number
+  housing_fund: number
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ---------------- 考勤表（Attendance）----------------
 
 export interface AttendanceSheet {
@@ -1625,10 +1636,21 @@ export interface AttendanceSheet {
   updated_at: string
 }
 
+export interface AttendanceMember {
+  id: string
+  sheet_id: string
+  profile_id: string | null
+  name: string
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
 export interface AttendanceEntry {
   id: string
   sheet_id: string
-  profile_id: string
+  member_id: string
+  profile_id: string | null
   day: number
   morning: string
   afternoon: string

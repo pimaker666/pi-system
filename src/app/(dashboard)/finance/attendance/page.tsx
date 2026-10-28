@@ -1,7 +1,7 @@
 import { AttendanceManager } from '@/components/finance/attendance-manager'
 import { requireApproved } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import type { AttendanceEntry, AttendanceSheet, Profile } from '@/types'
+import type { AttendanceEntry, AttendanceMember, AttendanceSheet, Profile } from '@/types'
 
 export default async function AttendancePage({
   searchParams,
@@ -22,15 +22,23 @@ export default async function AttendancePage({
   const selected = sheets.find((sheet) => sheet.month === month) ?? sheets[0] ?? null
 
   let entries: AttendanceEntry[] = []
+  let members: AttendanceMember[] = []
   if (selected) {
-    const { data: entriesData } = await supabase
-      .from('attendance_entries')
-      .select('*')
-      .eq('sheet_id', selected.id)
+    const [{ data: entriesData }, { data: membersData }] = await Promise.all([
+      supabase.from('attendance_entries').select('*').eq('sheet_id', selected.id),
+      supabase
+        .from('attendance_members')
+        .select('*')
+        .eq('sheet_id', selected.id)
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true }),
+    ])
     entries = (entriesData ?? []) as AttendanceEntry[]
+    members = (membersData ?? []) as AttendanceMember[]
   }
 
-  let profiles: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>[]
+  // 有账号成员的去重选择源（管理端「从账号添加」用）
+  let accounts: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>[] = []
   if (canManage) {
     const { data: profilesData } = await supabase
       .from('profiles')
@@ -38,19 +46,10 @@ export default async function AttendancePage({
       .eq('status', 'approved')
       .order('created_at', { ascending: true })
       .order('full_name', { ascending: true })
-    profiles = (profilesData ?? []) as Pick<
+    accounts = (profilesData ?? []) as Pick<
       Profile,
       'id' | 'chinese_name' | 'full_name' | 'email'
     >[]
-  } else {
-    profiles = [
-      {
-        id: profile.id,
-        chinese_name: profile.chinese_name,
-        full_name: profile.full_name,
-        email: profile.email,
-      },
-    ]
   }
 
   return (
@@ -59,18 +58,20 @@ export default async function AttendancePage({
         <h1 className="text-2xl font-semibold">{canManage ? '考勤表' : '我的考勤'}</h1>
         <p className="text-sm text-muted-foreground">
           {canManage
-            ? '按月份维护全员考勤，点选单元格切换符号；汇总列按考勤符号自动统计。'
+            ? '按月份维护考勤，点选单元格或用笔刷刷选符号；支持手动添加无账号人员；汇总列按考勤符号自动统计。'
             : '查看本人当月考勤记录。'}
         </p>
       </div>
       <AttendanceManager
         canManage={canManage}
         sheets={sheets}
-        profiles={profiles}
+        members={members}
+        accounts={accounts}
         entries={entries}
         selectedMonth={selected?.month ?? ''}
         selectedSheetId={selected?.id ?? ''}
         initialNote={selected?.note ?? ''}
+        currentProfileId={profile.id}
       />
     </div>
   )
