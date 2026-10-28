@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
 import { Input } from '@/components/ui/input'
 import { MultiSelectFilter } from '@/components/shared/multi-select-filter'
+import { cn } from '@/lib/utils'
 import { formatCountryName } from '@/lib/country-flags'
 import type { CustomerGroup } from '@/types'
 import type { OwnerOption } from '@/components/shared/owner-filter'
@@ -43,12 +44,16 @@ export function CustomerFilters({
   const router = useRouter()
   const searchParams = useSearchParams()
   const [keyword, setKeyword] = useState(q)
+  const [isPending, startTransition] = useTransition()
 
   function pushParams(mutate: (p: URLSearchParams) => void) {
     const params = new URLSearchParams(searchParams.toString())
     mutate(params)
     const qs = params.toString()
-    router.push(qs ? `/customers?${qs}` : '/customers')
+    // startTransition：导航期间保持当前页面可交互，配合乐观勾选与渐变提示消除卡顿感
+    startTransition(() => {
+      router.push(qs ? `/customers?${qs}` : '/customers')
+    })
   }
 
   function setParam(key: string, value: string) {
@@ -73,7 +78,7 @@ export function CustomerFilters({
   const hasFilter = Boolean(q || group.length || country.length || owner.length || amountMin || amountMax || lastOrderFrom || lastOrderTo)
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
+    <div className={cn('flex flex-wrap items-center gap-3 transition-opacity', isPending && 'opacity-50')}>
       <form onSubmit={submitSearch} className="flex gap-2">
         <Input
           value={keyword}

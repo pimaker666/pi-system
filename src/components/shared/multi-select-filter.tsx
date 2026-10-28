@@ -28,14 +28,27 @@ export function MultiSelectFilter({
   className,
 }: MultiSelectFilterProps) {
   const [open, setOpen] = React.useState(false)
-  const selectedSet = new Set(selected)
+  // 乐观选中：勾选立即本地生效（导航是服务端往返，等 URL 回传才显示勾选会显得卡顿）；
+  // 服务端渲染带新 URL 回来后丢弃本地态，以 URL 为准。
+  const [optimistic, setOptimistic] = React.useState<string[] | null>(null)
+  React.useEffect(() => {
+    setOptimistic(null)
+  }, [selected])
+  const current = optimistic ?? selected
+  const selectedSet = new Set(current)
   const matched = options.filter((option) => selectedSet.has(option.value))
+
+  function apply(next: Set<string>) {
+    const values = options.filter((option) => next.has(option.value)).map((option) => option.value)
+    setOptimistic(values)
+    onChange(values)
+  }
 
   function toggle(value: string) {
     const next = new Set(selectedSet)
     if (next.has(value)) next.delete(value)
     else next.add(value)
-    onChange(options.filter((option) => next.has(option.value)).map((option) => option.value))
+    apply(next)
   }
 
   const triggerText =
@@ -65,21 +78,21 @@ export function MultiSelectFilter({
           <button
             type="button"
             className="rounded px-2 py-1 hover:bg-muted"
-            onClick={() => onChange(options.map((option) => option.value))}
+            onClick={() => apply(new Set(options.map((option) => option.value)))}
           >
             全选
           </button>
           <button
             type="button"
             className="rounded px-2 py-1 hover:bg-muted"
-            onClick={() => onChange(options.filter((option) => !selectedSet.has(option.value)).map((option) => option.value))}
+            onClick={() => apply(new Set(options.filter((option) => !selectedSet.has(option.value)).map((option) => option.value)))}
           >
             反选
           </button>
           <button
             type="button"
             className="ml-auto rounded px-2 py-1 text-muted-foreground hover:bg-muted"
-            onClick={() => onChange([])}
+            onClick={() => apply(new Set())}
           >
             清空
           </button>

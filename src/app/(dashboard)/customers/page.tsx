@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { unstable_cache } from 'next/cache'
 import { UsersRound } from 'lucide-react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
 import { cn, displayProfileName } from '@/lib/utils'
@@ -19,6 +21,44 @@ import type { OwnerOption } from '@/components/shared/owner-filter'
 import type { CustomerCommissionTag, CustomerGroup, Profile } from '@/types'
 
 const customerSortFields: CustomerSortField[] = ['amount', 'lastOrder', 'createdAt', 'customOrderCount']
+
+const CUSTOMER_STATS_TTL_SECONDS = 30
+
+// 近一年统计 RPC 按月表全量聚合，是筛选点击重渲染的最大开销；
+// 按查看者缓存 30s（RPC 是 security invoker，结果随 RLS 可见范围变化，
+// admin/finance 全量一致共享一键，其余按用户 ID 分键），筛选点击不再重复聚合。
+async function fetchCustomerOrderStats(
+  supabase: SupabaseClient,
+  viewerId: string,
+  privileged: boolean,
+): Promise<CustomerOrderStatsMap> {
+  return unstable_cache(
+    async () => {
+      const { data: customerRows } = await supabase.from('customers').select('id').is('deleted_at', null)
+      const ids = ((customerRows ?? []) as Array<{ id: string }>).map((row) => row.id)
+      if (ids.length === 0) return {} as CustomerOrderStatsMap
+      const { data } = await supabase.rpc('get_customer_order_stats', { p_customer_ids: ids })
+      const map: CustomerOrderStatsMap = {}
+      for (const s of (data ?? []) as {
+        customer_id: string
+        last_year_amount_cny: number | string | null
+        last_year_amount_usd: number | string | null
+        last_order_date: string | null
+        custom_order_count: number | null
+      }[]) {
+        map[s.customer_id] = {
+          lastYearAmountCny: Number(s.last_year_amount_cny ?? 0),
+          lastYearAmountUsd: Number(s.last_year_amount_usd ?? 0),
+          lastOrderDate: s.last_order_date,
+          customOrderCount: Number(s.custom_order_count ?? 0),
+        }
+      }
+      return map
+    },
+    ['customer-order-stats', privileged ? 'privileged' : viewerId],
+    { revalidate: CUSTOMER_STATS_TTL_SECONDS },
+  )()
+}
 
 export default async function CustomersPage({
   searchParams,
@@ -106,26 +146,10 @@ export default async function CustomersPage({
     'id' | 'full_name' | 'email' | 'chinese_name' | 'role' | 'status'
   >[]
 
-  const statsMap: CustomerOrderStatsMap = {}
-  if (!isTrash && customers.length > 0) {
-    const { data: statsData } = await supabase.rpc('get_customer_order_stats', {
-      p_customer_ids: customers.map((c) => c.id),
-    })
-    for (const s of (statsData ?? []) as {
-      customer_id: string
-      last_year_amount_cny: number | string | null
-      last_year_amount_usd: number | string | null
-      last_order_date: string | null
-      custom_order_count: number | null
-    }[]) {
-      statsMap[s.customer_id] = {
-        lastYearAmountCny: Number(s.last_year_amount_cny ?? 0),
-        lastYearAmountUsd: Number(s.last_year_amount_usd ?? 0),
-        lastOrderDate: s.last_order_date,
-        customOrderCount: Number(s.custom_order_count ?? 0),
-      }
-    }
-  }
+  const statsMap: CustomerOrderStatsMap =
+    !isTrash && customers.length > 0 && profile
+      ? await fetchCustomerOrderStats(supabase, profile.id, isAdmin || profile.role === 'finance')
+      : {}
 
   const minAmount = Number(amountMin)
   const maxAmount = Number(amountMax)
