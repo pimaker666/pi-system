@@ -6,18 +6,11 @@ import { Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
 import { Input } from '@/components/ui/input'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { MultiSelectFilter } from '@/components/shared/multi-select-filter'
 import { formatCountryName } from '@/lib/country-flags'
 import type { CustomerGroup } from '@/types'
 import type { OwnerOption } from '@/components/shared/owner-filter'
 
-const ALL = '__all__'
 const NO_GROUP = '__none__'
 
 export function CustomerFilters({
@@ -39,9 +32,9 @@ export function CustomerFilters({
   owners?: OwnerOption[]
   isAdmin?: boolean
   q: string
-  group: string
-  country: string
-  owner: string
+  group: string[]
+  country: string[]
+  owner: string[]
   amountMin: string
   amountMax: string
   lastOrderFrom: string
@@ -60,8 +53,15 @@ export function CustomerFilters({
 
   function setParam(key: string, value: string) {
     pushParams((params) => {
-      if (!value || value === ALL) params.delete(key)
+      if (!value) params.delete(key)
       else params.set(key, value)
+    })
+  }
+
+  function setParamList(key: string, values: string[]) {
+    pushParams((params) => {
+      if (values.length === 0) params.delete(key)
+      else params.set(key, values.join(','))
     })
   }
 
@@ -70,7 +70,7 @@ export function CustomerFilters({
     setParam('q', keyword.trim())
   }
 
-  const hasFilter = Boolean(q || group || country || owner || amountMin || amountMax || lastOrderFrom || lastOrderTo)
+  const hasFilter = Boolean(q || group.length || country.length || owner.length || amountMin || amountMax || lastOrderFrom || lastOrderTo)
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -86,34 +86,24 @@ export function CustomerFilters({
         </Button>
       </form>
 
-      <Select value={group || ALL} onValueChange={(v) => setParam('group', v)}>
-        <SelectTrigger className="w-40">
-          <SelectValue placeholder="全部分组" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL}>全部分组</SelectItem>
-          <SelectItem value={NO_GROUP}>未分组</SelectItem>
-          {groups.map((g) => (
-            <SelectItem key={g.id} value={g.id}>
-              {g.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <MultiSelectFilter
+        allLabel="全部分组"
+        options={[
+          { value: NO_GROUP, label: '未分组' },
+          ...groups.map((g) => ({ value: g.id, label: g.name })),
+        ]}
+        selected={group}
+        onChange={(values) => setParamList('group', values)}
+        className="w-40"
+      />
 
-      <Select value={country || ALL} onValueChange={(v) => setParam('country', v)}>
-        <SelectTrigger className="w-40">
-          <SelectValue placeholder="全部国家" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value={ALL}>全部国家</SelectItem>
-          {countries.map((c) => (
-            <SelectItem key={c} value={c}>
-              {formatCountryName(c)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <MultiSelectFilter
+        allLabel="全部国家"
+        options={countries.map((c) => ({ value: c, label: formatCountryName(c) }))}
+        selected={country}
+        onChange={(values) => setParamList('country', values)}
+        className="w-40"
+      />
 
       <Input type="number" min="0" defaultValue={amountMin} placeholder="近一年 CNY 最低" className="w-36" onBlur={(event) => setParam('amountMin', event.target.value)} />
       <Input type="number" min="0" defaultValue={amountMax} placeholder="近一年 CNY 最高" className="w-36" onBlur={(event) => setParam('amountMax', event.target.value)} />
@@ -132,19 +122,13 @@ export function CustomerFilters({
       />
 
       {isAdmin && (
-        <Select value={owner || ALL} onValueChange={(v) => setParam('owner', v)}>
-          <SelectTrigger className="w-44">
-            <SelectValue placeholder="全部账号" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>全部账号</SelectItem>
-            {owners.map((o) => (
-              <SelectItem key={o.id} value={o.id}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <MultiSelectFilter
+          allLabel="全部账号"
+          options={owners.map((o) => ({ value: o.id, label: o.label }))}
+          selected={owner}
+          onChange={(values) => setParamList('owner', values)}
+          className="w-44"
+        />
       )}
 
       {hasFilter && (

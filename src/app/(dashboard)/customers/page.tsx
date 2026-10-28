@@ -26,6 +26,11 @@ export default async function CustomersPage({
   searchParams: Promise<{ q?: string; group?: string; country?: string; owner?: string; amountMin?: string; amountMax?: string; lastOrderFrom?: string; lastOrderTo?: string; sortBy?: string; sortDirection?: string; view?: string }>
 }) {
   const { q, group, country, owner, amountMin, amountMax, lastOrderFrom, lastOrderTo, sortBy: rawSortBy, sortDirection: rawSortDirection, view } = await searchParams
+  // 分组/国家/账号支持多选（逗号分隔），空数组 = 全部
+  const splitParam = (value: string | undefined) => value?.split(',').filter(Boolean) ?? []
+  const groupValues = splitParam(group)
+  const countryValues = splitParam(country)
+  const ownerValues = splitParam(owner)
   const sortBy = customerSortFields.includes(rawSortBy as CustomerSortField)
     ? rawSortBy as CustomerSortField
     : 'amount'
@@ -53,11 +58,18 @@ export default async function CustomersPage({
     )
   }
   if (!isTrash) {
-    if (group === '__none__') customerQuery = customerQuery.is('group_id', null)
-    else if (group) customerQuery = customerQuery.eq('group_id', group)
-    if (country) customerQuery = customerQuery.eq('country', country)
+    const noneSelected = groupValues.includes('__none__')
+    const groupIds = groupValues.filter((value) => value !== '__none__')
+    if (noneSelected && groupIds.length > 0) {
+      customerQuery = customerQuery.or(`group_id.is.null,group_id.in.(${groupIds.join(',')})`)
+    } else if (noneSelected) {
+      customerQuery = customerQuery.is('group_id', null)
+    } else if (groupIds.length > 0) {
+      customerQuery = customerQuery.in('group_id', groupIds)
+    }
+    if (countryValues.length > 0) customerQuery = customerQuery.in('country', countryValues)
   }
-  if (isAdmin && owner) customerQuery = customerQuery.eq('created_by', owner)
+  if (isAdmin && ownerValues.length > 0) customerQuery = customerQuery.in('created_by', ownerValues)
 
   const [{ data: customerData }, { data: groupData }, { data: profileData }, { data: countryData }, { data: tagData }] = await Promise.all([
     customerQuery,
@@ -217,9 +229,9 @@ export default async function CustomersPage({
             owners={owners}
             isAdmin={isAdmin}
             q={q ?? ''}
-            group={group ?? ''}
-            country={country ?? ''}
-            owner={owner ?? ''}
+            group={groupValues}
+            country={countryValues}
+            owner={ownerValues}
             amountMin={amountMin ?? ''}
             amountMax={amountMax ?? ''}
             lastOrderFrom={lastOrderFrom ?? ''}
