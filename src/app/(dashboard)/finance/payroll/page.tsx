@@ -1,7 +1,12 @@
 import { PayrollManager } from '@/components/finance/payroll-manager'
 import { requireApproved } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import type { PayrollItemWithProfile, PayrollSheet, Profile } from '@/types'
+import type {
+  PayrollItemWithProfile,
+  PayrollSalaryProfile,
+  PayrollSheet,
+  Profile,
+} from '@/types'
 
 export default async function PayrollPage({
   searchParams,
@@ -31,6 +36,7 @@ export default async function PayrollPage({
   )
 
   let profiles: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>[] = []
+  let salaryProfiles: PayrollSalaryProfile[] = []
   if (canManage) {
     const { data: profilesData } = await supabase
       .from('profiles')
@@ -42,6 +48,8 @@ export default async function PayrollPage({
       Profile,
       'id' | 'chinese_name' | 'full_name' | 'email'
     >[]
+    const { data: salaryData } = await supabase.from('payroll_salary_profiles').select('*')
+    salaryProfiles = (salaryData ?? []) as PayrollSalaryProfile[]
   }
 
   const selectedMonth =
@@ -65,6 +73,7 @@ export default async function PayrollPage({
         sheets={sheets}
         items={items}
         profiles={profiles}
+        salaryProfiles={salaryProfiles}
         selectedMonth={selectedMonth}
       />
     </div>

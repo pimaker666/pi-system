@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -39,17 +39,25 @@ import {
   publishPayrollSheet,
   rejectOwnPayrollItem,
   removePayrollItem,
+  savePayrollSalaryProfile,
   updatePayrollItems,
   updatePayrollSheetMeta,
 } from '@/lib/actions/payroll'
 import {
+  calcAttendanceDeduction,
   calcPayroll,
+  countWeekdays,
   PAYROLL_CONFIRMATION_LABELS,
   PAYROLL_SHEET_STATUS_LABELS,
 } from '@/lib/payroll'
 import { formatCny } from '@/lib/finance'
 import { displayProfileName, formatAmount, formatDate } from '@/lib/utils'
-import type { PayrollItemWithProfile, PayrollSheet, Profile } from '@/types'
+import type {
+  PayrollItemWithProfile,
+  PayrollSalaryProfile,
+  PayrollSheet,
+  Profile,
+} from '@/types'
 
 interface RowDraft {
   attendance_days: string
@@ -76,17 +84,22 @@ const DRAFT_FIELDS: (keyof Omit<RowDraft, 'remark'>)[] = [
   'tax',
 ]
 
+// 填空前置 0 一律留空展示（不填视为 0），金额/天数只有非 0 才回显。
+function draftValue(value: number | string) {
+  return Number(value) === 0 ? '' : String(Number(value))
+}
+
 function buildDraft(item: PayrollItemWithProfile): RowDraft {
   return {
-    attendance_days: String(Number(item.attendance_days)),
-    base_salary: String(Number(item.base_salary)),
-    commission: String(Number(item.commission)),
-    bonus: String(Number(item.bonus)),
-    attendance_deduction: String(Number(item.attendance_deduction)),
-    other_deduction: String(Number(item.other_deduction)),
-    social_insurance: String(Number(item.social_insurance)),
-    housing_fund: String(Number(item.housing_fund)),
-    tax: String(Number(item.tax)),
+    attendance_days: draftValue(item.attendance_days),
+    base_salary: draftValue(item.base_salary),
+    commission: draftValue(item.commission),
+    bonus: draftValue(item.bonus),
+    attendance_deduction: draftValue(item.attendance_deduction),
+    other_deduction: draftValue(item.other_deduction),
+    social_insurance: draftValue(item.social_insurance),
+    housing_fund: draftValue(item.housing_fund),
+    tax: draftValue(item.tax),
     remark: item.remark ?? '',
   }
 }
@@ -116,6 +129,7 @@ export function PayrollManager({
   sheets,
   items,
   profiles,
+  salaryProfiles,
   selectedMonth,
 }: {
   canManage: boolean
@@ -123,10 +137,17 @@ export function PayrollManager({
   sheets: PayrollSheet[]
   items: PayrollItemWithProfile[]
   profiles: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>[]
+  salaryProfiles: PayrollSalaryProfile[]
   selectedMonth: string
 }) {
   const [currentMonth, setCurrentMonth] = useState(selectedMonth)
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({})
+  const [deductionTouched, setDeductionTouched] = useState<Record<string, boolean>>({})
+  const [fullDaysOverride, setFullDaysOverride] = useState<number | null>(null)
+  const [salaryOpen, setSalaryOpen] = useState(false)
+  const [salaryDrafts, setSalaryDrafts] = useState<
+    Record<string, { base_salary: string; social_insurance: string; housing_fund: string }>
+  >({})
   const [pending, startTransition] = useTransition()
   const [createOpen, setCreateOpen] = useState(false)
   const [createPeriod, setCreatePeriod] = useState('')
@@ -142,24 +163,116 @@ export function PayrollManager({
     () => items.filter((item) => item.sheet_id === sheet?.id),
     [items, sheet?.id],
   )
+  const effectiveFullDays =
+    fullDaysOverride ?? sheet?.full_attendance_days ?? countWeekdays(currentMonth.slice(0, 7))
+
+  const deductionTouchedRef = useRef<Record<string, boolean>>({})
+  deductionTouchedRef.current = deductionTouched
 
   useEffect(() => {
     const next: Record<string, RowDraft> = {}
-    for (const item of items) next[item.id] = buildDraft(item)
+    const fullDays = fullDaysOverride ?? sheet?.full_attendance_days ?? null
+    for (const item of items) {
+      const draft = buildDraft(item)
+      // 未手动改过的扣款行始终按公式回算：满勤天数调整后服务端旧值不会把客户端联动值盖掉。
+      if (!deductionTouchedRef.current[item.id]) {
+        const days =
+          fullDays ?? countWeekdays(
+            (sheets.find((entry) => entry.id === item.sheet_id)?.period_month ?? currentMonth).slice(0, 7),
+          )
+        draft.attendance_deduction = draftValue(
+          calcAttendanceDeduction(Number(draft.base_salary || 0), days, Number(draft.attendance_days || 0)),
+        )
+      }
+      next[item.id] = draft
+    }
     setDrafts(next)
+    setFullDaysOverride(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items])
+  }, [items, sheet?.id, sheet?.full_attendance_days])
 
   const dirtyIds = sheetItems
     .filter((item) => drafts[item.id] && isDirty(item, drafts[item.id]))
     .map((item) => item.id)
 
   function patchDraft(itemId: string, field: keyof RowDraft, value: string) {
+    if (field === 'attendance_deduction') {
+      setDeductionTouched((current) => ({ ...current, [itemId]: true }))
+    }
     setDrafts((current) => {
       const draft = current[itemId]
       if (!draft) return current
-      return { ...current, [itemId]: { ...draft, [field]: value } }
+      const next = { ...draft, [field]: value }
+      // 底薪/出勤变化时，考勤扣款按公式联动（手动改过的扣款不再覆盖）。
+      if (
+        (field === 'base_salary' || field === 'attendance_days') &&
+        !deductionTouched[itemId]
+      ) {
+        next.attendance_deduction = draftValue(
+          calcAttendanceDeduction(
+            Number(next.base_salary || 0),
+            effectiveFullDays,
+            Number(next.attendance_days || 0),
+          ),
+        )
+      }
+      return { ...current, [itemId]: next }
     })
+  }
+
+  function recomputeDeductions(fullDays: number | null) {
+    setDrafts((current) => {
+      const next = { ...current }
+      for (const item of sheetItems) {
+        const draft = next[item.id]
+        if (!draft || deductionTouched[item.id]) continue
+        next[item.id] = {
+          ...draft,
+          attendance_deduction: draftValue(
+            calcAttendanceDeduction(
+              Number(draft.base_salary || 0),
+              fullDays,
+              Number(draft.attendance_days || 0),
+            ),
+          ),
+        }
+      }
+      return next
+    })
+  }
+
+  function handleFullDaysChange(value: string) {
+    if (!sheet) return
+    const days = value === '' ? null : Number(value)
+    if (days !== null && (!Number.isInteger(days) || days < 1 || days > 31)) return
+    startTransition(async () => {
+      const result = await updatePayrollSheetMeta({
+        sheet_id: sheet.id,
+        payout_month: sheet.payout_month,
+        full_attendance_days: days,
+      })
+      if (result.ok) {
+        setFullDaysOverride(days)
+        recomputeDeductions(days)
+        toast.success('已保存')
+      } else {
+        toast.error(result.error ?? '保存失败')
+      }
+    })
+  }
+
+  function openSalaryDialog() {
+    const next: Record<string, { base_salary: string; social_insurance: string; housing_fund: string }> = {}
+    for (const profile of profiles) {
+      const salary = salaryProfiles.find((row) => row.profile_id === profile.id)
+      next[profile.id] = {
+        base_salary: salary ? String(Number(salary.base_salary)) : '',
+        social_insurance: salary ? String(Number(salary.social_insurance)) : '',
+        housing_fund: salary ? String(Number(salary.housing_fund)) : '',
+      }
+    }
+    setSalaryDrafts(next)
+    setSalaryOpen(true)
   }
 
   function runAction(action: () => Promise<{ ok: boolean; error?: string }>) {
@@ -429,16 +542,23 @@ export function PayrollManager({
             ))}
           </SelectContent>
         </Select>
-        <Button
-          variant="outline"
-          onClick={() => {
-            setCreatePeriod('')
-            setCreatePayout('')
-            setCreateOpen(true)
-          }}
-        >
-          新建工资表
-        </Button>
+        {canManage && (
+          <>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCreatePeriod('')
+                setCreatePayout('')
+                setCreateOpen(true)
+              }}
+            >
+              新建工资表
+            </Button>
+            <Button variant="outline" onClick={openSalaryDialog}>
+              薪资档案
+            </Button>
+          </>
+        )}
         {sheet && (
           <>
             <Badge variant={sheet.status === 'published' ? 'default' : 'secondary'}>
@@ -480,23 +600,42 @@ export function PayrollManager({
 
       {sheet && (
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          <Label htmlFor="payout_month" className="text-muted-foreground">
-            发放月份
-          </Label>
-          <Input
-            id="payout_month"
-            type="month"
-            className="w-40"
-            value={toMonthInputValue(sheet.payout_month)}
-            onChange={(event) =>
-              runAction(() =>
-                updatePayrollSheetMeta({
-                  sheet_id: sheet.id,
-                  payout_month: fromMonthInputValue(event.target.value),
-                }),
-              )
-            }
-          />
+          {canManage && (
+            <>
+              <Label htmlFor="payout_month" className="text-muted-foreground">
+                发放月份
+              </Label>
+              <Input
+                id="payout_month"
+                type="month"
+                className="w-40"
+                value={toMonthInputValue(sheet.payout_month)}
+                onChange={(event) =>
+                  runAction(() =>
+                    updatePayrollSheetMeta({
+                      sheet_id: sheet.id,
+                      payout_month: fromMonthInputValue(event.target.value),
+                    }),
+                  )
+                }
+              />
+              <Label htmlFor="full_attendance_days" className="text-muted-foreground">
+                满勤天数
+              </Label>
+              <Input
+                id="full_attendance_days"
+                type="number"
+                min={1}
+                max={31}
+                className="h-8 w-20 text-right"
+                value={effectiveFullDays}
+                onChange={(event) => handleFullDaysChange(event.target.value)}
+              />
+              <span className="text-xs text-muted-foreground">
+                默认当月工作日数；考勤扣款=底薪÷满勤天数×缺勤天数，手动改过的行不联动。
+              </span>
+            </>
+          )}
           {sheet.status === 'published' && sheet.published_at && (
             <span className="text-xs text-muted-foreground">
               推送于 {formatDate(sheet.published_at, true)}
@@ -508,7 +647,9 @@ export function PayrollManager({
       {!sheet ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            还没有工资表，点击右上角「新建工资表」开始核算。
+            {canManage
+              ? '还没有工资表，点击右上角「新建工资表」开始核算。'
+              : '暂无工资表。'}
           </CardContent>
         </Card>
       ) : (
@@ -729,7 +870,8 @@ export function PayrollManager({
           <DialogHeader>
             <DialogTitle>新建工资表</DialogTitle>
             <DialogDescription>
-              按所属月份创建，创建后自动带入全部在职员工，财务逐项填写工资金额。
+              按所属月份创建，自动带入全部在职员工，并按薪资档案（底薪/社保/公积金）、考勤表出勤天数、
+              员工已确认结清提成自动填入；满勤天数默认当月工作日数，所有金额仍可逐项手动修改。
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -758,6 +900,97 @@ export function PayrollManager({
             </Button>
             <Button disabled={pending || !createPeriod} onClick={handleCreate}>
               创建
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={salaryOpen} onOpenChange={setSalaryOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>薪资档案</DialogTitle>
+            <DialogDescription>
+              维护每人的底薪、社保代扣、公积金代扣；新建工资表或补入员工时自动带入，工资表内改动不回写档案。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>员工姓名</TableHead>
+                  <TableHead className="text-right">底薪</TableHead>
+                  <TableHead className="text-right">社保代扣</TableHead>
+                  <TableHead className="text-right">公积金代扣</TableHead>
+                  <TableHead className="w-20" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {profiles.map((profile) => {
+                  const draft = salaryDrafts[profile.id]
+                  if (!draft) return null
+                  const salary = salaryProfiles.find((row) => row.profile_id === profile.id)
+                  const dirty =
+                    !salary ||
+                    draft.base_salary !== String(Number(salary.base_salary)) ||
+                    draft.social_insurance !== String(Number(salary.social_insurance)) ||
+                    draft.housing_fund !== String(Number(salary.housing_fund))
+                  const patch = (field: keyof typeof draft, value: string) =>
+                    setSalaryDrafts((current) => ({
+                      ...current,
+                      [profile.id]: { ...draft, [field]: value },
+                    }))
+                  return (
+                    <TableRow key={profile.id}>
+                      <TableCell className="whitespace-nowrap font-medium">
+                        {displayProfileName(profile)}
+                      </TableCell>
+                      {(
+                        [
+                          ['base_salary', '底薪'],
+                          ['social_insurance', '社保代扣'],
+                          ['housing_fund', '公积金代扣'],
+                        ] as const
+                      ).map(([field, label]) => (
+                        <TableCell key={field} className="p-1">
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            aria-label={`${displayProfileName(profile)}${label}`}
+                            className="h-8 w-24 text-right"
+                            value={draft[field]}
+                            onChange={(event) => patch(field, event.target.value)}
+                          />
+                        </TableCell>
+                      ))}
+                      <TableCell className="p-1">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={pending || !dirty}
+                          onClick={() =>
+                            runAction(() =>
+                              savePayrollSalaryProfile({
+                                profile_id: profile.id,
+                                base_salary: Number(draft.base_salary || 0),
+                                social_insurance: Number(draft.social_insurance || 0),
+                                housing_fund: Number(draft.housing_fund || 0),
+                              }),
+                            )
+                          }
+                        >
+                          保存
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSalaryOpen(false)}>
+              关闭
             </Button>
           </DialogFooter>
         </DialogContent>

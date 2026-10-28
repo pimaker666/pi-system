@@ -18,6 +18,9 @@ import {
 
 const COMMISSION_ORDER_LIMIT = 1000
 
+// 提成只需发货/退货的净发货量，按白名单取字段，避免把截图路径等大字段整行拉回。
+const COMMISSION_ORDER_SELECT = `*, business_order_items(*), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), customer:customers!customer_id(tag_color), business_order_shipments(id, voided_at, business_order_shipment_items(order_item_id, quantity)), business_order_returns(id, voided_at, business_order_return_items(order_item_id, quantity)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`
+
 interface ItemCommissionRow {
   business_order_item_id: string
   commission_rate: number
@@ -52,10 +55,7 @@ function buildOrdersQuery(
 
   let query = supabase
     .from('business_orders')
-    .select(
-      // 提成只需发货/退货的净发货量，按白名单取字段，避免把截图路径等大字段整行拉回。
-      `*, ${itemsEmbed}, salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), customer:customers!customer_id(tag_color), business_order_shipments(id, voided_at, business_order_shipment_items(order_item_id, quantity)), business_order_returns(id, voided_at, business_order_return_items(order_item_id, quantity)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`,
-    )
+    .select(`*, ${itemsEmbed}, ${COMMISSION_ORDER_SELECT.slice(COMMISSION_ORDER_SELECT.indexOf('salesperson:'))}`)
     .is('voided_at', null)
     .order('order_date', { ascending: false })
     .order('created_at', { ascending: false })
@@ -409,89 +409,100 @@ function round4(value: number) {
   return Math.round(value * 10000) / 10000
 }
 
-export async function fetchBusinessOrderCommissions(
-  supabase: SupabaseClient,
-  filters: BusinessOrderCommissionFilters,
-  page = 1,
-  pageSize = COMMISSION_PAGE_SIZE,
-  scope: 'pending' | 'settled' = 'pending',
-  includeAllRows = false,
-): Promise<{
-  rows: BusinessOrderCommissionRow[]
-  /** 仅在 includeAllRows 时返回：该筛选下的全部行（供汇总一次取全，避免二次重复查询）。 */
-  allRows?: BusinessOrderCommissionRow[]
-  totalCount: number
+interface CommissionBuildContext {
   categoryRates: CommissionCategoryRate[]
   customerTags: CustomerCommissionTag[]
   customOrderRates: CustomerCustomOrderCommissionRate[]
   defaultFreightCommissionRate: number
-}> {
-  // 第一波：订单主查询与小配置表并行。佣金/结清/财务标签只按命中订单与明细行的 id
-  // 分批取数，不再整表翻页进内存。
-  const [allOrders, categoryRates, customerTags, customOrderRates, defaultFreightCommissionRate] =
-    await Promise.all([
-      fetchMatchingOrders(supabase, filters),
-      fetchAllCategoryRates(supabase),
-      fetchAllCustomerCommissionTags(supabase),
-      fetchAllCustomerCustomOrderCommissionRates(supabase),
-      fetchDefaultFreightCommissionRate(supabase),
-    ])
+  itemRateMap: Map<string, number>
+  orderFreightMap: Map<string, OrderCommissionRow>
+  tagMap: Map<string, CustomerCommissionTag>
+  clearanceMap: Map<string, ClearanceRow>
+  financialLabelMap: Map<string, ProductFinancialLabelRow>
+  customOrderCounts: Map<string, number>
+  customerTagColors: Map<string, string | null>
+}
 
-  const orderIds = allOrders.map((order) => order.id)
-  const itemIds = allOrders.flatMap((order) =>
+type MergedCommissionItems = ReturnType<typeof filterMergedItemsByCategoryCompletion>
+
+/**
+ * 拉取构建提成行所需的全部配置与按 id 分批的关联数据。
+ * 佣金/结清/财务标签只按命中订单与明细行的 id 分批取数，不整表翻页进内存。
+ */
+async function loadCommissionContext(
+  supabase: SupabaseClient,
+  orders: BusinessDailyLedgerOrder[],
+): Promise<CommissionBuildContext> {
+  const orderIds = orders.map((order) => order.id)
+  const itemIds = orders.flatMap((order) =>
     (order.business_order_items ?? []).map((item) => item.id),
   )
   const productIds = [
     ...new Set(
-      allOrders
+      orders
         .flatMap((order) => order.business_order_items ?? [])
         .map((item) => item.product_id)
         .filter((id): id is string => typeof id === 'string' && id.length > 0),
     ),
   ]
 
-  const [itemCommissions, orderCommissions, clearances, financialLabels] = await Promise.all([
-    fetchItemCommissionsFor(supabase, itemIds),
-    fetchOrderCommissionsFor(supabase, orderIds),
-    fetchCommissionClearancesFor(supabase, itemIds),
-    fetchProductFinancialLabelsFor(supabase, productIds),
-  ])
-
-  const categoryRateMap = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
-  const itemRateMap = new Map(itemCommissions.map((row) => [row.business_order_item_id, row.commission_rate]))
-  const orderFreightMap = new Map(orderCommissions.map((row) => [row.business_order_id, row]))
-  const tagMap = new Map(customerTags.map((tag) => [tag.tag_color.toLowerCase(), tag]))
-  const clearanceMap = new Map(clearances.map((row) => [row.business_order_item_id, row]))
-  const financialLabelMap = new Map(financialLabels.map((row) => [row.product_id, row]))
-
-  const eligibleOrders = allOrders
-    .map((order) => ({
-      order,
-      items: filterMergedItemsByCategoryCompletion(order),
-    }))
-    .filter((entry) => !entry.order.voided_at && entry.items.length > 0)
-  const scopedOrders = eligibleOrders.filter(({ items }) => {
-    const settled = items.every((item) =>
-      item.item_ids.every((id) => clearanceMap.get(id)?.status === 'confirmed'),
-    )
-    return scope === 'settled' ? settled : !settled
-  })
-  const offset = (page - 1) * pageSize
-  const pagedOrders = scopedOrders.slice(offset, offset + pageSize)
-  const buildOrders = includeAllRows ? scopedOrders : pagedOrders
+  const [categoryRates, customerTags, customOrderRates, defaultFreightCommissionRate, itemCommissions, orderCommissions, clearances, financialLabels] =
+    await Promise.all([
+      fetchAllCategoryRates(supabase),
+      fetchAllCustomerCommissionTags(supabase),
+      fetchAllCustomerCustomOrderCommissionRates(supabase),
+      fetchDefaultFreightCommissionRate(supabase),
+      fetchItemCommissionsFor(supabase, itemIds),
+      fetchOrderCommissionsFor(supabase, orderIds),
+      fetchCommissionClearancesFor(supabase, itemIds),
+      fetchProductFinancialLabelsFor(supabase, productIds),
+    ])
 
   const customerIds = [
     ...new Set(
-      buildOrders
-        .map(({ order }) => order.customer_id)
+      orders
+        .map((order) => order.customer_id)
         .filter((id): id is string => typeof id === 'string' && id.length > 0),
     ),
   ]
   const [customOrderCounts, customerTagColors] = await Promise.all([
     fetchCustomOrderCounts(supabase, customerIds),
-    fetchCustomerTagColors(supabase, buildOrders.map(({ order }) => order.id)),
+    fetchCustomerTagColors(supabase, orderIds),
   ])
 
+  return {
+    categoryRates,
+    customerTags,
+    customOrderRates,
+    defaultFreightCommissionRate,
+    itemRateMap: new Map(itemCommissions.map((row) => [row.business_order_item_id, row.commission_rate])),
+    orderFreightMap: new Map(orderCommissions.map((row) => [row.business_order_id, row])),
+    tagMap: new Map(customerTags.map((tag) => [tag.tag_color.toLowerCase(), tag])),
+    clearanceMap: new Map(clearances.map((row) => [row.business_order_item_id, row])),
+    financialLabelMap: new Map(financialLabels.map((row) => [row.product_id, row])),
+    customOrderCounts,
+    customerTagColors,
+  }
+}
+
+/** 订单 → 提成明细行；行内金额口径与提成页/汇总页展示完全一致。 */
+function buildCommissionRows(
+  buildOrders: { order: BusinessDailyLedgerOrder; items: MergedCommissionItems }[],
+  ctx: CommissionBuildContext,
+): BusinessOrderCommissionRow[] {
+  const {
+    categoryRates,
+    customOrderRates,
+    defaultFreightCommissionRate,
+    itemRateMap,
+    orderFreightMap,
+    tagMap,
+    clearanceMap,
+    financialLabelMap,
+    customOrderCounts,
+    customerTagColors,
+  } = ctx
+  const categoryRateMap = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
   const builtRows: BusinessOrderCommissionRow[] = []
 
   for (const { order, items: mergedItems } of buildOrders) {
@@ -617,13 +628,134 @@ export async function fetchBusinessOrderCommissions(
     })
   }
 
+  return builtRows
+}
+
+export async function fetchBusinessOrderCommissions(
+  supabase: SupabaseClient,
+  filters: BusinessOrderCommissionFilters,
+  page = 1,
+  pageSize = COMMISSION_PAGE_SIZE,
+  scope: 'pending' | 'settled' = 'pending',
+  includeAllRows = false,
+): Promise<{
+  rows: BusinessOrderCommissionRow[]
+  /** 仅在 includeAllRows 时返回：该筛选下的全部行（供汇总一次取全，避免二次重复查询）。 */
+  allRows?: BusinessOrderCommissionRow[]
+  totalCount: number
+  categoryRates: CommissionCategoryRate[]
+  customerTags: CustomerCommissionTag[]
+  customOrderRates: CustomerCustomOrderCommissionRate[]
+  defaultFreightCommissionRate: number
+}> {
+  // 第一波：订单主查询先行；结清记录覆盖全部命中订单用于待结/已结范围判定。
+  const allOrders = await fetchMatchingOrders(supabase, filters)
+  const allItemIds = allOrders.flatMap((order) =>
+    (order.business_order_items ?? []).map((item) => item.id),
+  )
+  const allClearances = await fetchCommissionClearancesFor(supabase, allItemIds)
+  const clearanceMap = new Map(allClearances.map((row) => [row.business_order_item_id, row]))
+
+  const eligibleOrders = allOrders
+    .map((order) => ({
+      order,
+      items: filterMergedItemsByCategoryCompletion(order),
+    }))
+    .filter((entry) => !entry.order.voided_at && entry.items.length > 0)
+  const scopedOrders = eligibleOrders.filter(({ items }) => {
+    const settled = items.every((item) =>
+      item.item_ids.every((id) => clearanceMap.get(id)?.status === 'confirmed'),
+    )
+    return scope === 'settled' ? settled : !settled
+  })
+  const offset = (page - 1) * pageSize
+  const pagedOrders = scopedOrders.slice(offset, offset + pageSize)
+  const buildOrders = includeAllRows ? scopedOrders : pagedOrders
+
+  const ctx = await loadCommissionContext(
+    supabase,
+    buildOrders.map(({ order }) => order),
+  )
+  const builtRows = buildCommissionRows(buildOrders, ctx)
+
   return {
     rows: includeAllRows ? builtRows.slice(offset, offset + pageSize) : builtRows,
     allRows: includeAllRows ? builtRows : undefined,
     totalCount: scopedOrders.length,
-    categoryRates,
-    customerTags,
-    customOrderRates,
-    defaultFreightCommissionRate,
+    categoryRates: ctx.categoryRates,
+    customerTags: ctx.customerTags,
+    customOrderRates: ctx.customOrderRates,
+    defaultFreightCommissionRate: ctx.defaultFreightCommissionRate,
   }
+}
+
+/**
+ * 按业务员汇总某月「已确认结清」的提成总额（CNY），供工资表自动匹配提成。
+ * 金额口径与已结清提成总览一致：产品提成按结清行折算，运费提成只计订单首行；
+ * 美元订单缺结清汇率时跳过（与汇总页「未计入」提示同口径）。
+ */
+export async function fetchConfirmedCommissionBySalesperson(
+  supabase: SupabaseClient,
+  month: string,
+): Promise<Map<string, number>> {
+  const period = `${month}-01`
+  const { data: clearances, error: clearanceError } = await supabase
+    .from('finance_business_order_item_commission_clearances')
+    .select('business_order_item_id')
+    .eq('status', 'confirmed')
+    .eq('period', period)
+  if (clearanceError) {
+    throw new Error(`提成结清记录读取失败：${clearanceError.message}`)
+  }
+  const itemIds = [...new Set((clearances ?? []).map((row) => row.business_order_item_id as string))]
+  if (itemIds.length === 0) return new Map()
+
+  const orderIds = new Set<string>()
+  for (const chunk of chunkIds(itemIds)) {
+    const { data, error } = await supabase
+      .from('business_order_items')
+      .select('order_id')
+      .in('id', chunk)
+    if (error) throw new Error(`提成订单明细读取失败：${error.message}`)
+    for (const row of (data ?? []) as Array<{ order_id: string }>) {
+      orderIds.add(row.order_id)
+    }
+  }
+  if (orderIds.size === 0) return new Map()
+
+  const orders: BusinessDailyLedgerOrder[] = []
+  for (const chunk of chunkIds([...orderIds])) {
+    const { data, error } = await supabase
+      .from('business_orders')
+      .select(COMMISSION_ORDER_SELECT)
+      .in('id', chunk)
+      .is('voided_at', null)
+    if (error) throw new Error(`提成订单读取失败：${error.message}`)
+    orders.push(...((data ?? []) as unknown as BusinessDailyLedgerOrder[]))
+  }
+
+  const ctx = await loadCommissionContext(supabase, orders)
+  const eligibleOrders = orders
+    .map((order) => ({ order, items: filterMergedItemsByCategoryCompletion(order) }))
+    .filter((entry) => entry.items.length > 0)
+  const rows = buildCommissionRows(eligibleOrders, ctx)
+
+  const salespersonByOrderId = new Map(
+    orders.map((order) => [order.id, order.salesperson?.id ?? null]),
+  )
+  const totals = new Map<string, number>()
+  for (const row of rows) {
+    if (row.clearance_status !== 'confirmed' || row.clearance_period !== month) continue
+    const rate = row.currency === 'USD' ? row.settlement_exchange_rate_to_cny : 1
+    if (rate == null) continue
+    const salespersonId = salespersonByOrderId.get(row.order_id)
+    if (!salespersonId) continue
+    let amount = row.product_commission_amount * rate
+    if (row.is_order_lead_row) {
+      amount += round4((row.freight_received_amount * rate - row.freight_cost) * row.freight_commission_rate / 100)
+    }
+    totals.set(salespersonId, (totals.get(salespersonId) ?? 0) + amount)
+  }
+  // 与结清提成总览同口径：明细先裸加总，最后按人一次四舍五入，避免逐行累加漂移
+  return new Map([...totals].map(([id, total]) => [id, round4(total)]))
 }
