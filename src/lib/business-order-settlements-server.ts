@@ -79,45 +79,30 @@ export function parseSettledOrderFilters(
   return { period, q }
 }
 
-/** 已结算年月列表（YYYY-MM，降序），供筛选下拉使用。 */
-export async function fetchSettledPeriods(supabase: SupabaseClient): Promise<string[]> {
-  const periods = new Set<string>()
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
-      .from('finance_business_order_item_settlements')
-      .select('period, item:business_order_items!inner(order:business_orders!inner(voided_at))')
-      .order('period', { ascending: false })
-      .range(from, from + PAGE_SIZE - 1)
-    if (error) throw new Error(`结算年月读取失败：${error.message}`)
-    const page = (data ?? []) as unknown as Array<{
-      period: string
-      item: { order: { voided_at: string | null } | null } | null
-    }>
-    for (const row of page) {
-      if (!row.item?.order?.voided_at) periods.add(String(row.period).slice(0, 7))
-    }
-    if (page.length < PAGE_SIZE) break
-  }
-  return [...periods].sort((a, b) => (a < b ? 1 : -1))
+export interface SettledOrdersResult {
+  periods: string[]
+  rows: SettledOrderRow[]
 }
 
-export async function fetchSettledOrderRows(
+/**
+ * 已结算订单归档：对 finance_business_order_item_settlements 单次分页扫描，
+ * 年月下拉与行列表在同一份数据上派生，避免同表双拉。期间与关键字筛选在内存执行。
+ */
+export async function fetchSettledOrders(
   supabase: SupabaseClient,
   filters: SettledOrderFilters,
-): Promise<SettledOrderRow[]> {
+): Promise<SettledOrdersResult> {
   const rows: SettledOrderRow[] = []
+  const periods = new Set<string>()
   const keyword = filters.q.toLocaleLowerCase()
 
   for (let from = 0; ; from += PAGE_SIZE) {
-    let query = supabase
+    const { data, error } = await supabase
       .from('finance_business_order_item_settlements')
       .select(SELECT)
       .order('period', { ascending: false })
       .order('settled_at', { ascending: false })
       .range(from, from + PAGE_SIZE - 1)
-    if (filters.period) query = query.eq('period', `${filters.period}-01`)
-
-    const { data, error } = await query
     if (error) throw new Error(`已结算订单读取失败：${error.message}`)
     const page = (data ?? []) as unknown as SettlementQueryRow[]
 
@@ -126,10 +111,15 @@ export async function fetchSettledOrderRows(
       const order = item?.order
       if (!item || !order || order.voided_at) continue
 
+      const period = String(record.period).slice(0, 7)
+      periods.add(period)
+
       const unitCost = record.unit_cost == null ? null : Number(record.unit_cost)
       const quantity = Number(record.quantity)
       const productName = item.name_snapshot ?? '—'
       const productSku = item.sku_snapshot ?? ''
+
+      if (filters.period && period !== filters.period) continue
 
       if (keyword) {
         const haystack = [
@@ -163,7 +153,7 @@ export async function fetchSettledOrderRows(
         quantity,
         unit_cost: unitCost,
         total_cost: unitCost == null ? null : Math.round(unitCost * quantity * 10000) / 10000,
-        period: String(record.period).slice(0, 7),
+        period,
         settled_by_name: record.settled_by_profile
           ? displayProfileName(record.settled_by_profile)
           : null,
@@ -174,5 +164,8 @@ export async function fetchSettledOrderRows(
     if (page.length < PAGE_SIZE) break
   }
 
-  return rows
+  return {
+    periods: [...periods].sort((a, b) => (a < b ? 1 : -1)),
+    rows,
+  }
 }

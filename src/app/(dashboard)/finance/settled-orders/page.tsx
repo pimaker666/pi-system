@@ -1,8 +1,7 @@
 import { SettledOrderTable } from '@/components/finance/settled-order-table'
 import { requireFinanceView } from '@/lib/auth'
 import {
-  fetchSettledOrderRows,
-  fetchSettledPeriods,
+  fetchSettledOrders,
   parseSettledOrderFilters,
 } from '@/lib/business-order-settlements-server'
 import { createClient } from '@/lib/supabase/server'
@@ -16,10 +15,7 @@ export default async function FinanceSettledOrdersPage({
   const filters = parseSettledOrderFilters(await searchParams)
   const supabase = await createClient()
 
-  const [periods, rows] = await Promise.all([
-    fetchSettledPeriods(supabase),
-    fetchSettledOrderRows(supabase, filters),
-  ])
+  const { periods, rows } = await fetchSettledOrders(supabase, filters)
 
   return (
     <div className="space-y-6">

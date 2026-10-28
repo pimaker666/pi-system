@@ -224,41 +224,48 @@ async function fetchCustomOrderCounts(
   return counts
 }
 
-async function fetchAllItemCommissions(supabase: SupabaseClient) {
+// Kong 网关 URI 上限约 8k，in() 一批按 100 个 UUID 切分。
+const ID_CHUNK = 100
+
+function chunkIds(ids: string[]): string[][] {
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
+    chunks.push(ids.slice(i, i + ID_CHUNK))
+  }
+  return chunks
+}
+
+/** 只取当前筛选命中的明细行提点覆盖；历史全表不再整表翻页进内存。 */
+async function fetchItemCommissionsFor(supabase: SupabaseClient, itemIds: string[]) {
   const rows: ItemCommissionRow[] = []
-  const PAGE_SIZE = 1000
-  for (let from = 0; ; from += PAGE_SIZE) {
+  for (const chunk of chunkIds(itemIds)) {
     const { data, error } = await supabase
       .from('finance_business_order_item_commissions')
       .select('business_order_item_id, commission_rate')
-      .order('business_order_item_id')
-      .range(from, from + PAGE_SIZE - 1)
+      .in('business_order_item_id', chunk)
     if (error) throw new Error(`产品提点覆盖读取失败：${error.message}`)
-    const page = (data ?? []) as Array<{ business_order_item_id: string; commission_rate: number | string }>
-    for (const row of page) {
+    for (const row of (data ?? []) as Array<{ business_order_item_id: string; commission_rate: number | string }>) {
       rows.push({ business_order_item_id: row.business_order_item_id, commission_rate: Number(row.commission_rate) })
     }
-    if (page.length < PAGE_SIZE) return rows
   }
+  return rows
 }
 
-async function fetchAllOrderCommissions(supabase: SupabaseClient) {
+/** 只取当前筛选命中的订单运费提成；历史全表不再整表翻页进内存。 */
+async function fetchOrderCommissionsFor(supabase: SupabaseClient, orderIds: string[]) {
   const rows: OrderCommissionRow[] = []
-  const PAGE_SIZE = 1000
-  for (let from = 0; ; from += PAGE_SIZE) {
+  for (const chunk of chunkIds(orderIds)) {
     const { data, error } = await supabase
       .from('finance_business_order_commissions')
       .select('business_order_id, freight_cost, freight_commission_rate, settlement_exchange_rate_to_cny')
-      .order('business_order_id')
-      .range(from, from + PAGE_SIZE - 1)
+      .in('business_order_id', chunk)
     if (error) throw new Error(`订单运费提成读取失败：${error.message}`)
-    const page = (data ?? []) as Array<{
+    for (const row of (data ?? []) as Array<{
       business_order_id: string
       freight_cost: number | string
       freight_commission_rate: number | string
       settlement_exchange_rate_to_cny: number | string | null
-    }>
-    for (const row of page) {
+    }>) {
       rows.push({
         business_order_id: row.business_order_id,
         freight_cost: Number(row.freight_cost),
@@ -268,8 +275,8 @@ async function fetchAllOrderCommissions(supabase: SupabaseClient) {
           : Number(row.settlement_exchange_rate_to_cny),
       })
     }
-    if (page.length < PAGE_SIZE) return rows
   }
+  return rows
 }
 
 interface ClearanceRow {
@@ -278,30 +285,31 @@ interface ClearanceRow {
   period: string
 }
 
-async function fetchAllCommissionClearances(supabase: SupabaseClient): Promise<ClearanceRow[]> {
+/** 只取当前筛选命中明细行的结清记录；历史全表不再整表翻页进内存。 */
+async function fetchCommissionClearancesFor(
+  supabase: SupabaseClient,
+  itemIds: string[],
+): Promise<ClearanceRow[]> {
   const rows: ClearanceRow[] = []
-  const PAGE_SIZE = 1000
-  for (let from = 0; ; from += PAGE_SIZE) {
+  for (const chunk of chunkIds(itemIds)) {
     const { data, error } = await supabase
       .from('finance_business_order_item_commission_clearances')
       .select('business_order_item_id, status, period')
-      .order('business_order_item_id')
-      .range(from, from + PAGE_SIZE - 1)
+      .in('business_order_item_id', chunk)
     if (error) throw new Error(`提成结清记录读取失败：${error.message}`)
-    const page = (data ?? []) as Array<{
+    for (const row of (data ?? []) as Array<{
       business_order_item_id: string
       status: import('@/types').CommissionClearanceStatus
       period: string
-    }>
-    for (const row of page) {
+    }>) {
       rows.push({
         business_order_item_id: row.business_order_item_id,
         status: row.status,
         period: row.period.slice(0, 7),
       })
     }
-    if (page.length < PAGE_SIZE) return rows
   }
+  return rows
 }
 
 interface ProductFinancialLabelRow {
@@ -310,23 +318,21 @@ interface ProductFinancialLabelRow {
   product_name: string | null
 }
 
-/** 产品财务标签；销售账号受 RLS 读到空表，行展示自然回落下单快照。 */
-async function fetchAllProductFinancialLabels(
+/** 产品财务标签，只取当前筛选命中产品；销售账号受 RLS 读到空表，行展示自然回落下单快照。 */
+async function fetchProductFinancialLabelsFor(
   supabase: SupabaseClient,
+  productIds: string[],
 ): Promise<ProductFinancialLabelRow[]> {
   const rows: ProductFinancialLabelRow[] = []
-  const PAGE_SIZE = 1000
-  for (let from = 0; ; from += PAGE_SIZE) {
+  for (const chunk of chunkIds(productIds)) {
     const { data, error } = await supabase
       .from('product_financials')
       .select('product_id, financial_number, product_name')
-      .order('product_id')
-      .range(from, from + PAGE_SIZE - 1)
+      .in('product_id', chunk)
     if (error) throw new Error(`产品财务资料读取失败：${error.message}`)
-    const page = (data ?? []) as ProductFinancialLabelRow[]
-    rows.push(...page)
-    if (page.length < PAGE_SIZE) return rows
+    rows.push(...((data ?? []) as ProductFinancialLabelRow[]))
   }
+  return rows
 }
 
 export async function fetchBusinessOrderCommissionClearanceDetails(
@@ -420,16 +426,35 @@ export async function fetchBusinessOrderCommissions(
   customOrderRates: CustomerCustomOrderCommissionRate[]
   defaultFreightCommissionRate: number
 }> {
-  const [allOrders, categoryRates, itemCommissions, orderCommissions, customerTags, customOrderRates, clearances, defaultFreightCommissionRate, financialLabels] = await Promise.all([
-    fetchMatchingOrders(supabase, filters),
-    fetchAllCategoryRates(supabase),
-    fetchAllItemCommissions(supabase),
-    fetchAllOrderCommissions(supabase),
-    fetchAllCustomerCommissionTags(supabase),
-    fetchAllCustomerCustomOrderCommissionRates(supabase),
-    fetchAllCommissionClearances(supabase),
-    fetchDefaultFreightCommissionRate(supabase),
-    fetchAllProductFinancialLabels(supabase),
+  // 第一波：订单主查询与小配置表并行。佣金/结清/财务标签只按命中订单与明细行的 id
+  // 分批取数，不再整表翻页进内存。
+  const [allOrders, categoryRates, customerTags, customOrderRates, defaultFreightCommissionRate] =
+    await Promise.all([
+      fetchMatchingOrders(supabase, filters),
+      fetchAllCategoryRates(supabase),
+      fetchAllCustomerCommissionTags(supabase),
+      fetchAllCustomerCustomOrderCommissionRates(supabase),
+      fetchDefaultFreightCommissionRate(supabase),
+    ])
+
+  const orderIds = allOrders.map((order) => order.id)
+  const itemIds = allOrders.flatMap((order) =>
+    (order.business_order_items ?? []).map((item) => item.id),
+  )
+  const productIds = [
+    ...new Set(
+      allOrders
+        .flatMap((order) => order.business_order_items ?? [])
+        .map((item) => item.product_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  ]
+
+  const [itemCommissions, orderCommissions, clearances, financialLabels] = await Promise.all([
+    fetchItemCommissionsFor(supabase, itemIds),
+    fetchOrderCommissionsFor(supabase, orderIds),
+    fetchCommissionClearancesFor(supabase, itemIds),
+    fetchProductFinancialLabelsFor(supabase, productIds),
   ])
 
   const categoryRateMap = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
