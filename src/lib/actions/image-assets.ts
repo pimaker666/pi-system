@@ -5,8 +5,6 @@ import { requireApproved } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { IMAGE_ASSET_BUCKETS, type ImageAssetMetaMap } from '@/lib/image-assets'
 
-export type { ImageAssetMetaEntry, ImageAssetMetaMap } from '@/lib/image-assets'
-
 const bucketSchema = z.enum(IMAGE_ASSET_BUCKETS)
 const pathSchema = z.string().trim().min(1).max(1024)
 const nameSchema = z.string().trim().min(1).max(255)

@@ -20,8 +20,8 @@ import {
   getImageAssetMeta,
   registerImageAssetMeta,
   renameImageAsset,
-  type ImageAssetMetaMap,
 } from '@/lib/actions/image-assets'
+import type { ImageAssetMetaMap } from '@/lib/image-assets'
 import { parseCustomerText } from '@/lib/parse-customer'
 import { CountryFlag } from '@/components/shared/country-flag'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
