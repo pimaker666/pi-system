@@ -12,8 +12,7 @@ import { displayProfileName } from '@/lib/utils'
 import { COMMISSION_PAGE_SIZE } from '@/lib/business-order-commission'
 import {
   businessOrderAllocationBreakdown,
-  isMergedBusinessDailyItemPaidAndShipped,
-  mergeBusinessDailyItems,
+  filterMergedItemsByCategoryCompletion,
   type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
 
@@ -443,7 +442,7 @@ export async function fetchBusinessOrderCommissions(
   const eligibleOrders = allOrders
     .map((order) => ({
       order,
-      items: mergeBusinessDailyItems(order).filter(isMergedBusinessDailyItemPaidAndShipped),
+      items: filterMergedItemsByCategoryCompletion(order),
     }))
     .filter((entry) => !entry.order.voided_at && entry.items.length > 0)
   const scopedOrders = eligibleOrders.filter(({ items }) => {

@@ -6,9 +6,8 @@ import { COST_PAGE_SIZE } from '@/lib/business-order-cost'
 import {
   activeBusinessOrderAttachments,
   businessDailyOrderTotals,
+  filterMergedItemsByCategoryCompletion,
   formatMergedBusinessDailyShippingProgress,
-  isMergedBusinessDailyItemPaidAndShipped,
-  mergeBusinessDailyItems,
   type BusinessDailyLedgerOrder,
   type MergedBusinessDailyItem,
 } from '@/lib/business-daily-orders'
@@ -198,16 +197,16 @@ function isMergedRowSettled(item: MergedBusinessDailyItem, settledIds: Set<strin
   return item.item_ids.length > 0 && item.item_ids.every((id) => settledIds.has(id))
 }
 
-/** 成本页逐合并行判断实收与发货，不受同单其他产品状态影响。 */
+/** 成本页推送口径：同一发货分类下所有合并行都收齐且发完，该分类的行才入选
+ * （整单单分类时即整单全收款全发货）；再排除已结算行与页面上按发货分类的筛选。 */
 function eligibleCostRows(
   order: BusinessDailyLedgerOrder,
   settledIds: Set<string>,
   categories: readonly DailyOrderShippingCategory[],
 ): MergedBusinessDailyItem[] {
   const allowed = categories.length > 0 ? new Set(categories) : null
-  return mergeBusinessDailyItems(order).filter(
+  return filterMergedItemsByCategoryCompletion(order).filter(
     (item) =>
-      isMergedBusinessDailyItemPaidAndShipped(item) &&
       !isMergedRowSettled(item, settledIds) &&
       (allowed === null ||
         (item.daily_shipping_category !== null && allowed.has(item.daily_shipping_category))),
@@ -260,6 +259,14 @@ export async function fetchBusinessOrderProductCosts(
   const totalCount = eligibleOrders.length
   const offset = (page - 1) * effectiveLimit
   const pagedOrders = eligibleOrders.slice(offset, offset + effectiveLimit)
+
+  // 成本页个人标记（business_order_cost_marks，RLS 只返回本人行），淡粉色高亮用。
+  const pagedOrderIds = pagedOrders.map((entry) => entry.order.id)
+  const { data: markRows } = await supabase
+    .from('business_order_cost_marks')
+    .select('order_id')
+    .in('order_id', pagedOrderIds.length > 0 ? pagedOrderIds : ['00000000-0000-0000-0000-000000000000'])
+  const markedOrderIds = new Set((markRows ?? []).map((row) => row.order_id))
 
   const financials = new Map(financialRows.map((row) => [row.product_id, row]))
   const overrides = new Map(overrideRows.map((row) => [row.business_order_item_id, Number(row.cost)]))
@@ -348,6 +355,7 @@ export async function fetchBusinessOrderProductCosts(
         fully_shipped: true,
         settled: false,
         settled_period: null,
+        marked: markedOrderIds.has(order.id),
       })
     }
   }

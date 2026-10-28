@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useMemo, useRef, useState, useTransition } from 'react'
-import { Download, Eye, Save, CheckCircle2 } from 'lucide-react'
+import { Download, Eye, Save, CheckCircle2, Bookmark, BookmarkX } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -26,7 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { getBusinessOrderAttachmentUrl } from '@/lib/actions/business-orders'
+import { getBusinessOrderAttachmentUrl, setBusinessOrderCostMarks } from '@/lib/actions/business-orders'
 import {
   settleBusinessOrderItems,
   updateBusinessOrderItemCostOverride,
@@ -195,7 +195,10 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [settlePending, startSettleTransition] = useTransition()
+  const [markPending, startMarkTransition] = useTransition()
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
+  // 成本页标记先本地生效，失败时清空覆盖层回到服务端真值，避免每次点击都等刷新。
+  const [markOverrides, setMarkOverrides] = useState<Record<string, boolean>>({})
   const [dialogOpen, setDialogOpen] = useState(false)
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
   const tableRef = useRef<HTMLTableElement>(null)
@@ -225,10 +228,22 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
 
   const headCn = (index: number, extra?: string) =>
     cn('sticky top-0 bg-background', extra, pinnedCol === index ? 'left-0 z-30' : 'z-20')
-  const cellCn = (index: number, extra?: string) =>
-    cn(extra, pinnedCol === index && 'sticky left-0 z-10 bg-background')
-  const mergedCn = (index: number, extra?: string) =>
-    cn('align-top', pinnedCol === index ? 'sticky left-0 z-10 bg-background' : 'bg-muted/20', extra)
+  const cellCn = (index: number, extra?: string, marked = false) =>
+    cn(
+      extra,
+      pinnedCol === index &&
+        cn('sticky left-0 z-10', marked ? 'bg-pink-50' : 'bg-background'),
+    )
+  const mergedCn = (index: number, extra?: string, marked = false) =>
+    cn(
+      'align-top',
+      pinnedCol === index
+        ? cn('sticky left-0 z-10', marked ? 'bg-pink-50' : 'bg-background')
+        : marked
+          ? 'bg-pink-50'
+          : 'bg-muted/20',
+      extra,
+    )
 
   const groups = useMemo(() => {
     const map = new Map<string, BusinessOrderProductCost[]>()
@@ -248,6 +263,12 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
     }
     return set
   }, [rows])
+  // 成本页个人标记（business_order_cost_marks），与每日订单台账标记完全独立。
+  const serverMarkedIds = useMemo(
+    () => new Set(rows.filter((row) => row.marked).map((row) => row.order_id)),
+    [rows],
+  )
+  const isOrderMarked = (orderId: string) => markOverrides[orderId] ?? serverMarkedIds.has(orderId)
   const settleableOrderIds = useMemo(
     () => orderIds.filter((id) => !ordersMissingCost.has(id)),
     [orderIds, ordersMissingCost],
@@ -260,10 +281,6 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
     settleableOrderIds.length > 0 && settleableOrderIds.every((id) => selectedOrders.has(id))
 
   function toggleOrder(orderId: string, checked: boolean) {
-    if (checked && ordersMissingCost.has(orderId)) {
-      toast.error('该订单存在未填写成本的产品行，不能结算')
-      return
-    }
     setSelectedOrders((previous) => {
       const next = new Set(previous)
       if (checked) next.add(orderId)
@@ -274,6 +291,29 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
 
   function toggleSelectAll(checked: boolean) {
     setSelectedOrders(checked ? new Set(settleableOrderIds) : new Set())
+  }
+
+  function setOrdersMarked(marked: boolean) {
+    const targets = orderIds.filter((id) => selectedOrders.has(id))
+    if (targets.length === 0) {
+      toast.error('请先勾选订单')
+      return
+    }
+    setMarkOverrides((previous) => {
+      const next = { ...previous }
+      for (const id of targets) next[id] = marked
+      return next
+    })
+    startMarkTransition(async () => {
+      const result = await setBusinessOrderCostMarks(targets, marked)
+      if (!result.ok) {
+        setMarkOverrides({})
+        toast.error(result.error ?? '标记保存失败')
+        return
+      }
+      toast.success(marked ? `已标记 ${targets.length} 个订单` : `已取消标记 ${targets.length} 个订单`)
+      router.refresh()
+    })
   }
 
   function confirmSettle() {
@@ -343,7 +383,26 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
           <CheckCircle2 className="mr-1.5 h-4 w-4" />
           已结算
         </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={selectedCount === 0 || markPending}
+          onClick={() => setOrdersMarked(true)}
+        >
+          <Bookmark className="mr-1.5 h-4 w-4" />
+          标记所选
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={selectedCount === 0 || markPending}
+          onClick={() => setOrdersMarked(false)}
+        >
+          <BookmarkX className="mr-1.5 h-4 w-4" />
+          取消标记所选
+        </Button>
         <span className="text-xs text-muted-foreground">
+          标记仅自己可见，与每日订单的标记互不影响；结算时仍需所有产品行已填成本。
           结算后所选订单的产品行将移入“已结算订单”，不再显示在此页。
         </span>
         <label className="ml-auto flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -437,31 +496,26 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
               const rowSpan = group.length
               return group.map((row, rowIndex) => {
                 const isFirstRow = rowIndex === 0
+                const marked = isOrderMarked(row.order_id)
                 const displayOrderNumber = row.external_order_number || row.order_number
                 const difference = Math.round((row.order_total_amount - row.order_sales_total_amount) * 10000) / 10000
 
                 return (
                   <TableRow
                     key={row.item_id}
-                    className={isFirstRow && groupIndex > 0 ? 'border-t-2' : undefined}
+                    className={cn(isFirstRow && groupIndex > 0 && 'border-t-2', marked && 'bg-pink-50')}
                   >
                     {isFirstRow && (
-                      <TableCell rowSpan={rowSpan} className={cellCn(0, 'align-top')}>
+                      <TableCell rowSpan={rowSpan} className={cellCn(0, 'align-top', marked)}>
                         <input
                           type="checkbox"
                           aria-label={`选择订单 ${row.order_number}`}
                           checked={selectedOrders.has(row.order_id)}
-                          disabled={ordersMissingCost.has(row.order_id)}
-                          title={
-                            ordersMissingCost.has(row.order_id)
-                              ? '存在未填写成本的产品行，不能结算'
-                              : undefined
-                          }
                           onChange={(event) => toggleOrder(row.order_id, event.target.checked)}
                         />
                       </TableCell>
                     )}
-                    <TableCell className={cellCn(1)}>
+                    <TableCell className={cellCn(1, undefined, marked)}>
                       <div className="font-medium">
                         {groupIndex + 1}
                         {rowSpan > 1 && (
@@ -472,19 +526,19 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
 
                     {isFirstRow && (
                       <>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(2)}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(2, undefined, marked)}>
                           {row.order_date}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(3)}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(3, undefined, marked)}>
                           <div>{row.shop_name ?? '—'}</div>
                           {row.shop_group_name && (
                             <div className="text-xs text-muted-foreground">{row.shop_group_name}</div>
                           )}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(4)}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(4, undefined, marked)}>
                           {row.salesperson_name}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(5, 'font-medium')}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(5, 'font-medium', marked)}>
                           <Link href={`/finance/daily-orders/${row.order_id}`} className="hover:underline">
                             {displayOrderNumber}
                           </Link>
@@ -526,27 +580,27 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                       </>
                     )}
 
-                    <TableCell className={cellCn(9)}>
+                    <TableCell className={cellCn(9, undefined, marked)}>
                       {row.shipping_category ? SHIPPING_LABELS[row.shipping_category] : '—'}
                     </TableCell>
-                    <TableCell className={cellCn(10)}>
+                    <TableCell className={cellCn(10, undefined, marked)}>
                       <ImagePreview src={row.image_url} alt={row.product_name} />
                     </TableCell>
-                    <TableCell className={cellCn(11)}>
+                    <TableCell className={cellCn(11, undefined, marked)}>
                       <div>{row.product_name}</div>
                       {row.product_sku && (
                         <div className="text-xs text-muted-foreground">{row.product_sku}</div>
                       )}
                     </TableCell>
-                    <TableCell className={cellCn(12, 'text-right tabular-nums')}>{quantityText(row.quantity)}</TableCell>
-                    <TableCell className={cellCn(13)}>
+                    <TableCell className={cellCn(12, 'text-right tabular-nums', marked)}>{quantityText(row.quantity)}</TableCell>
+                    <TableCell className={cellCn(13, undefined, marked)}>
                       <CostEditor row={row} />
                     </TableCell>
-                    <TableCell className={cellCn(14, 'tabular-nums')}>{formatCostValue(row.total_cost)}</TableCell>
-                    <TableCell className={cellCn(15, 'whitespace-nowrap tabular-nums')}>{row.shipping_progress}</TableCell>
-                    <TableCell className={cellCn(16)}>{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
-                    <TableCell className={cellCn(17)}>{formatDailyMoney(row.product_received_amount, row.currency)}</TableCell>
-                    <TableCell className={cellCn(18)}>
+                    <TableCell className={cellCn(14, 'tabular-nums', marked)}>{formatCostValue(row.total_cost)}</TableCell>
+                    <TableCell className={cellCn(15, 'whitespace-nowrap tabular-nums', marked)}>{row.shipping_progress}</TableCell>
+                    <TableCell className={cellCn(16, undefined, marked)}>{formatDailyMoney(row.unit_price, row.currency)}</TableCell>
+                    <TableCell className={cellCn(17, undefined, marked)}>{formatDailyMoney(row.product_received_amount, row.currency)}</TableCell>
+                    <TableCell className={cellCn(18, undefined, marked)}>
                       {row.logistics_fee_amount !== null
                         ? formatDailyMoney(row.logistics_fee_amount, row.currency)
                         : '—'}
@@ -554,22 +608,22 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
 
                     {isFirstRow && (
                       <>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(19, 'font-medium')}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(19, 'font-medium', marked)}>
                           {formatDailyMoney(row.order_total_amount, row.currency)}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(20, 'font-medium')}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(20, 'font-medium', marked)}>
                           {formatDailyMoney(row.outstanding_amount, row.currency)}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(21)}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(21, undefined, marked)}>
                           {row.payment_category ? PAYMENT_LABELS[row.payment_category] : '—'}
                         </TableCell>
                         <TableCell
                           rowSpan={rowSpan}
-                          className={mergedCn(22, 'max-w-64 whitespace-normal')}
+                          className={mergedCn(22, 'max-w-64 whitespace-normal', marked)}
                         >
                           {row.sales_notes || '—'}
                         </TableCell>
-                        <TableCell rowSpan={rowSpan} className={mergedCn(23)}>
+                        <TableCell rowSpan={rowSpan} className={mergedCn(23, undefined, marked)}>
                           {row.attachments.length === 0
                             ? '—'
                             : row.attachments.map((attachment, attachmentIndex) => (

@@ -226,6 +226,26 @@ export function isMergedBusinessDailyItemPaidAndShipped(item: MergedBusinessDail
   return isMergedBusinessDailyItemFullyPaid(item) && item.net_shipped >= item.quantity
 }
 
+/**
+ * 成本/提成推送口径：按订单内发货分类分组判定。整个订单只有一个发货分类时
+ * 等价于「整单全部收齐且发完才推送」；多分类订单里，同一分类下所有合并行都
+ * 收齐且发完，该分类的行才推送（未完结分类的行留在原处继续收款发货）。
+ */
+export function filterMergedItemsByCategoryCompletion(
+  order: BusinessDailyLedgerOrder,
+): MergedBusinessDailyItem[] {
+  const items = mergeBusinessDailyItems(order)
+  const groups = new Map<DailyOrderShippingCategory | null, MergedBusinessDailyItem[]>()
+  for (const item of items) {
+    const list = groups.get(item.daily_shipping_category)
+    if (list) list.push(item)
+    else groups.set(item.daily_shipping_category, [item])
+  }
+  return [...groups.values()]
+    .filter((group) => group.every(isMergedBusinessDailyItemPaidAndShipped))
+    .flat()
+}
+
 function mergedBusinessDailyItemKey(item: BusinessOrderItem): string {
   return `${itemProductKey(item)}|${item.daily_shipping_category ?? ''}|${Number(item.unit_price)}`
 }

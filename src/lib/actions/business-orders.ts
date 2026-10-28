@@ -1290,6 +1290,42 @@ export async function setBusinessOrderMarks(
   return { ok: true }
 }
 
+/**
+ * 个人标记/取消标记成本页订单。独立于台账标记（business_order_marks），
+ * 存 business_order_cost_marks，两个页面的标记互不影响。
+ */
+export async function setBusinessOrderCostMarks(
+  orderIds: string[],
+  marked: boolean,
+): Promise<ActionResult> {
+  const profile = await requireApproved()
+  const validIds = [...new Set(orderIds.filter((id) => z.string().uuid().safeParse(id).success))]
+  if (validIds.length === 0) return { ok: false, error: '请选择有效订单' }
+  if (validIds.length > 500) return { ok: false, error: '一次最多标记 500 个订单' }
+
+  const supabase = await createClient()
+  if (marked) {
+    const { error } = await supabase
+      .from('business_order_cost_marks')
+      .upsert(
+        validIds.map((orderId) => ({ order_id: orderId, user_id: profile.id })),
+        { onConflict: 'order_id,user_id', ignoreDuplicates: true },
+      )
+    if (error) return { ok: false, error: businessOrderError(error.message, '标记订单失败') }
+  } else {
+    const { error } = await supabase
+      .from('business_order_cost_marks')
+      .delete()
+      .eq('user_id', profile.id)
+      .in('order_id', validIds)
+      .select('order_id')
+    if (error) return { ok: false, error: businessOrderError(error.message, '取消标记失败') }
+  }
+
+  revalidatePath('/finance/costs')
+  return { ok: true }
+}
+
 export async function voidBusinessOrderShipment(
   shipmentId: string,
   reason: string,
