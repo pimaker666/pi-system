@@ -22,6 +22,10 @@ ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
     NEXT_PUBLIC_SITE_URL=$NEXT_PUBLIC_SITE_URL \
     NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
+# 产物级门禁：校验 Server Reference 注册项/同模块导出项全部为 async 函数。
+# 值导入内联污染在源文件层看不出（静态扫描已放行），只有产物能定罪；
+# 此处失败即 docker build 失败，坏镜像到不了生产。
+RUN node scripts/check-server-action-refs.mjs
 
 ##########  3) 运行层：极简镜像，只带 standalone 产物  ##########
 FROM node:22-slim AS runner

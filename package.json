@@ -6,6 +6,7 @@
     "dev": "next dev",
     "prebuild": "node scripts/check-server-exports.mjs",
     "build": "next build",
+    "postbuild": "node scripts/check-server-action-refs.mjs",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
