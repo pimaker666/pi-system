@@ -256,7 +256,7 @@ export function CustomerTable({
   function sortableHeader(label: string, field: CustomerSortField, align = 'left') {
     const Icon = sortBy === field ? (sortDirection === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
     return (
-      <TableHead className={`whitespace-nowrap ${align === 'right' ? 'text-right' : ''}`}>
+      <TableHead className={`sticky top-0 z-20 bg-background whitespace-nowrap shadow-sm ${align === 'right' ? 'text-right' : ''}`}>
         <Button
           type="button"
           variant="ghost"
@@ -325,12 +325,12 @@ export function CustomerTable({
         </div>
       )}
 
-      <Card>
+      <Card className="min-w-[1480px]">
         <CardContent className="p-0">
-          <Table>
+          <Table containerClassName="overflow-visible">
             <TableHeader>
-              <TableRow>
-                <TableHead className="w-10">
+              <TableRow className="bg-background hover:bg-background">
+                <TableHead className="sticky top-0 z-20 w-10 bg-background shadow-sm">
                   <input
                     type="checkbox"
                     className="h-4 w-4"
@@ -342,17 +342,17 @@ export function CustomerTable({
                     aria-label="全选"
                   />
                 </TableHead>
-                <TableHead>客户</TableHead>
-                <TableHead>公司</TableHead>
-                <TableHead>国家</TableHead>
-                <TableHead className="w-40 min-w-40 whitespace-nowrap text-center">分组</TableHead>
-                <TableHead className="w-40 whitespace-nowrap text-center">联系方式</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-background shadow-sm">客户</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-background shadow-sm">公司</TableHead>
+                <TableHead className="sticky top-0 z-20 bg-background shadow-sm">国家</TableHead>
+                <TableHead className="sticky top-0 z-20 w-40 min-w-40 whitespace-nowrap bg-background text-center shadow-sm">分组</TableHead>
+                <TableHead className="sticky top-0 z-20 w-40 whitespace-nowrap bg-background text-center shadow-sm">联系方式</TableHead>
                 {sortableHeader('近一年下单金额', 'amount', 'right')}
                 {sortableHeader('上次下单时间', 'lastOrder')}
                 {sortableHeader('新建客户时间', 'createdAt')}
                 {sortableHeader('定制订单数', 'customOrderCount', 'right')}
-                {isAdmin && <TableHead className="whitespace-nowrap">归属账号</TableHead>}
-                <TableHead className="text-right">操作</TableHead>
+                {isAdmin && <TableHead className="sticky top-0 z-20 whitespace-nowrap bg-background shadow-sm">归属账号</TableHead>}
+                <TableHead className="sticky top-0 z-20 bg-background text-right shadow-sm">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
