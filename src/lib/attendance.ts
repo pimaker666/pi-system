@@ -1,5 +1,5 @@
 // 考勤符号口径与汇总规则，对齐公司考勤表模板：
-// 天数字段按“当日上午/下午出现过该符号即计 1 天”，次数字段按格子出现次数累计。
+// 天数字段按上/下午各计 0.5 天（同一天同一符号最多计 1 天），次数字段按格子出现次数累计。
 
 export const ATTENDANCE_SYMBOLS = [
   { symbol: '√', label: '出勤', kind: 'day' },
@@ -30,12 +30,11 @@ export interface AttendanceSummary {
 export function summarizeAttendance(
   entries: { day: number; morning: string; afternoon: string }[],
 ): AttendanceSummary {
-  const daySymbols = new Set<string>()
   const counts: Record<string, number> = {}
   for (const { symbol } of ATTENDANCE_SYMBOLS) counts[symbol] = 0
 
   for (const entry of entries) {
-    daySymbols.clear()
+    const halfDays: Record<string, number> = {}
     for (const value of [entry.morning, entry.afternoon]) {
       if (!value) continue
       if (!isAttendanceSymbol(value)) continue
@@ -43,10 +42,12 @@ export function summarizeAttendance(
       if (kind === 'times') {
         counts[value] += 1
       } else {
-        daySymbols.add(value)
+        halfDays[value] = (halfDays[value] ?? 0) + 0.5
       }
     }
-    for (const symbol of daySymbols) counts[symbol] += 1
+    for (const [symbol, amount] of Object.entries(halfDays)) {
+      counts[symbol] += Math.min(amount, 1)
+    }
   }
   return { counts }
 }

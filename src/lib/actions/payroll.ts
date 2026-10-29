@@ -134,17 +134,23 @@ async function loadPayrollAutofill(
   if (attendanceSheetIds.length > 0) {
     const { data: presentEntries, error: entryError } = await supabase
       .from('attendance_entries')
-      .select('profile_id, day')
+      .select('profile_id, day, morning, afternoon')
       .in('sheet_id', attendanceSheetIds)
       .or('morning.eq.√,afternoon.eq.√')
     if (entryError) throw new Error(`考勤记录读取失败：${entryError.message}`)
-    const seen = new Set<string>()
-    for (const row of (presentEntries ?? []) as Array<{ profile_id: string | null; day: number }>) {
+    // 与考勤表汇总同口径：√ 按上/下午各 0.5 天累计，半日出勤不凑整
+    for (const row of (presentEntries ?? []) as Array<{
+      profile_id: string | null
+      morning: string
+      afternoon: string
+    }>) {
       if (!row.profile_id) continue
-      const key = `${row.profile_id}:${row.day}`
-      if (seen.has(key)) continue
-      seen.add(key)
-      attendanceDaysByProfile.set(row.profile_id, (attendanceDaysByProfile.get(row.profile_id) ?? 0) + 1)
+      const halves = Number(row.morning === '√') + Number(row.afternoon === '√')
+      if (halves === 0) continue
+      attendanceDaysByProfile.set(
+        row.profile_id,
+        (attendanceDaysByProfile.get(row.profile_id) ?? 0) + halves * 0.5,
+      )
     }
   }
 

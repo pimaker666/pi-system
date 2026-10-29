@@ -39,7 +39,6 @@ import {
   deleteAttendanceSheet,
   removeAttendanceMember,
   updateAttendanceSheetNote,
-  upsertAttendanceEntry,
 } from '@/lib/actions/attendance'
 import { exportAttendanceSheet } from '@/lib/attendance-export'
 import { ATTENDANCE_SYMBOLS, summarizeAttendance } from '@/lib/attendance'
@@ -64,6 +63,13 @@ function daysInMonth(month: string) {
 
 function entryKey(memberId: string, day: number) {
   return `${memberId}:${day}`
+}
+
+const EMPTY_CELL = { morning: '', afternoon: '' }
+
+interface CellPos {
+  row: number
+  day: number
 }
 
 export function AttendanceManager({
@@ -100,16 +106,20 @@ export function AttendanceManager({
   const [addAccountId, setAddAccountId] = useState('')
   const [manualName, setManualName] = useState('')
   const [exporting, setExporting] = useState(false)
-  // 笔刷：null = 点选模式；'' = 清除；其余为符号
-  const [brush, setBrush] = useState<string | null>(null)
-  const paintingRef = useRef(false)
-  const paintedKeysRef = useRef<Set<string>>(new Set())
-  const gridRef = useRef(grid)
-  gridRef.current = grid
+  // 编辑态：只有进入编辑后才能改格子和备注，点保存才落库
+  const [editing, setEditing] = useState(false)
+  // 框选范围：row 为「成员序号 × 2 + 上午/下午」，用于矩形批量填充
+  const [selection, setSelection] = useState<{ anchor: CellPos; focus: CellPos } | null>(null)
+  const selectingRef = useRef(false)
 
   useEffect(() => {
     setCurrentMonth(selectedMonth)
   }, [selectedMonth])
+
+  useEffect(() => {
+    setEditing(false)
+    setSelection(null)
+  }, [selectedMonth, selectedSheetId])
 
   useEffect(() => {
     const next: Record<string, { morning: string; afternoon: string }> = {}
@@ -123,37 +133,18 @@ export function AttendanceManager({
     setNote(initialNote)
   }, [entries, initialNote])
 
-  // 刷选期间松开鼠标：统一批量保存
+  // 框选松开鼠标即结束，选中区域保留供点击符号批量填充
   useEffect(() => {
-    function endPainting() {
-      if (!paintingRef.current) return
-      paintingRef.current = false
-      const keys = [...paintedKeysRef.current]
-      paintedKeysRef.current = new Set()
-      if (keys.length === 0) return
-      const current = gridRef.current
-      const items = keys.map((key) => {
-        const [memberId, dayStr] = key.split(':')
-        const cell = current[key] ?? { morning: '', afternoon: '' }
-        return {
-          member_id: memberId,
-          day: Number(dayStr),
-          morning: cell.morning,
-          afternoon: cell.afternoon,
-        }
-      })
-      startTransition(async () => {
-        const result = await batchUpsertAttendanceEntries({ sheet_id: selectedSheetId, items })
-        if (!result.ok) toast.error(result.error ?? '批量保存失败')
-      })
+    function endSelecting() {
+      selectingRef.current = false
     }
-    window.addEventListener('mouseup', endPainting)
-    window.addEventListener('pointercancel', endPainting)
+    window.addEventListener('mouseup', endSelecting)
+    window.addEventListener('pointercancel', endSelecting)
     return () => {
-      window.removeEventListener('mouseup', endPainting)
-      window.removeEventListener('pointercancel', endPainting)
+      window.removeEventListener('mouseup', endSelecting)
+      window.removeEventListener('pointercancel', endSelecting)
     }
-  }, [selectedSheetId])
+  }, [])
 
   const sheet = sheets.find((entry) => entry.month === currentMonth) ?? null
   const visibleMembers = useMemo(
@@ -181,9 +172,105 @@ export function AttendanceManager({
     [accounts, members],
   )
 
+  // 已落库的基线，用于统计改动量和放弃修改时还原
+  const baseCells = useMemo(() => {
+    const map: Record<string, { morning: string; afternoon: string }> = {}
+    for (const entry of entries) {
+      map[entryKey(entry.member_id, entry.day)] = {
+        morning: entry.morning,
+        afternoon: entry.afternoon,
+      }
+    }
+    return map
+  }, [entries])
+
+  const selectionBounds = useMemo(() => {
+    if (!selection) return null
+    return {
+      rowStart: Math.min(selection.anchor.row, selection.focus.row),
+      rowEnd: Math.max(selection.anchor.row, selection.focus.row),
+      dayStart: Math.min(selection.anchor.day, selection.focus.day),
+      dayEnd: Math.max(selection.anchor.day, selection.focus.day),
+    }
+  }, [selection])
+
+  const selectedCount = selectionBounds
+    ? (selectionBounds.rowEnd - selectionBounds.rowStart + 1) *
+      (selectionBounds.dayEnd - selectionBounds.dayStart + 1)
+    : 0
+
+  function collectChanges() {
+    const items: { member_id: string; day: number; morning: string; afternoon: string }[] = []
+    for (const member of visibleMembers) {
+      for (const day of dayNumbers) {
+        const key = entryKey(member.id, day)
+        const cell = grid[key] ?? EMPTY_CELL
+        const base = baseCells[key] ?? EMPTY_CELL
+        if (cell.morning === base.morning && cell.afternoon === base.afternoon) continue
+        items.push({ member_id: member.id, day, morning: cell.morning, afternoon: cell.afternoon })
+      }
+    }
+    return items
+  }
+
+  function hasUnsavedChanges() {
+    if (note.trim() !== (initialNote ?? '').trim()) return true
+    return collectChanges().length > 0
+  }
+
   function selectMonth(month: string) {
+    if (editing && hasUnsavedChanges() && !window.confirm('有未保存的考勤修改，切换月份会丢弃，确定继续？')) {
+      return
+    }
+    setEditing(false)
+    setSelection(null)
     setCurrentMonth(month)
     router.push(`/finance/attendance?month=${month}`)
+  }
+
+  function handleStartEdit() {
+    setEditing(true)
+    setSelection(null)
+  }
+
+  function handleCancelEdit() {
+    if (hasUnsavedChanges() && !window.confirm('放弃未保存的修改？')) return
+    setGrid(baseCells)
+    setNote(initialNote)
+    setEditing(false)
+    setSelection(null)
+  }
+
+  function handleSave() {
+    if (!sheet) return
+    const items = collectChanges()
+    const noteChanged = note.trim() !== (initialNote ?? '').trim()
+    if (items.length === 0 && !noteChanged) {
+      setEditing(false)
+      setSelection(null)
+      toast('没有需要保存的修改')
+      return
+    }
+    const sheetId = sheet.id
+    startTransition(async () => {
+      if (items.length > 0) {
+        const result = await batchUpsertAttendanceEntries({ sheet_id: sheetId, items })
+        if (!result.ok) {
+          toast.error(result.error ?? '保存失败')
+          return
+        }
+      }
+      if (noteChanged) {
+        const result = await updateAttendanceSheetNote({ sheet_id: sheetId, note: note.trim() })
+        if (!result.ok) {
+          toast.error(result.error ?? '备注保存失败')
+          return
+        }
+      }
+      toast.success('考勤已保存')
+      setEditing(false)
+      setSelection(null)
+    })
   }
 
   function handleCreate() {
@@ -279,39 +366,35 @@ export function AttendanceManager({
     }
   }
 
-  function handleCellChange(
-    memberId: string,
-    day: number,
-    half: 'morning' | 'afternoon',
-    value: string,
-  ) {
-    const key = entryKey(memberId, day)
-    const cell = grid[key] ?? { morning: '', afternoon: '' }
-    const next = { ...cell, [half]: value }
-    setGrid((current) => ({ ...current, [key]: next }))
-    if (!canManage || !sheet) return
-    const { morning, afternoon } = next
-    startTransition(async () => {
-      const result = await upsertAttendanceEntry({
-        sheet_id: sheet.id,
-        member_id: memberId,
-        day,
-        morning,
-        afternoon,
-      })
-      if (!result.ok) toast.error(result.error ?? '保存失败')
-    })
+  function startSelection(row: number, day: number) {
+    selectingRef.current = true
+    setSelection({ anchor: { row, day }, focus: { row, day } })
   }
 
-  function applyBrush(memberId: string, day: number, half: 'morning' | 'afternoon') {
-    // 仅在按住拖动期间上色，纯悬停不生效
-    if (brush === null || !sheet || !paintingRef.current) return
-    const key = entryKey(memberId, day)
-    const cell = gridRef.current[key] ?? { morning: '', afternoon: '' }
-    if ((cell[half] ?? '') === brush) return
-    const next = { ...cell, [half]: brush }
-    setGrid((current) => ({ ...current, [key]: next }))
-    paintedKeysRef.current.add(key)
+  function moveSelection(row: number, day: number) {
+    if (!selectingRef.current) return
+    setSelection((current) => (current ? { ...current, focus: { row, day } } : current))
+  }
+
+  function applySymbol(value: string) {
+    if (!selectionBounds) {
+      toast.error('请先在表格中框选要填充的单元格')
+      return
+    }
+    const { rowStart, rowEnd, dayStart, dayEnd } = selectionBounds
+    setGrid((current) => {
+      const next = { ...current }
+      for (let row = rowStart; row <= rowEnd; row += 1) {
+        const member = visibleMembers[Math.floor(row / 2)]
+        if (!member) continue
+        const half = row % 2 === 0 ? 'morning' : 'afternoon'
+        for (let day = dayStart; day <= dayEnd; day += 1) {
+          const key = entryKey(member.id, day)
+          next[key] = { ...(next[key] ?? EMPTY_CELL), [half]: value }
+        }
+      }
+      return next
+    })
   }
 
   const daySymbols = ATTENDANCE_SYMBOLS.filter(({ kind }) => kind === 'day')
@@ -334,29 +417,47 @@ export function AttendanceManager({
         </Select>
         {canManage && (
           <>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setCreateMonth('')
-                setCreateNote('')
-                setCreateOpen(true)
-              }}
-            >
-              新建考勤表
-            </Button>
+            {!editing && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCreateMonth('')
+                  setCreateNote('')
+                  setCreateOpen(true)
+                }}
+              >
+                新建考勤表
+              </Button>
+            )}
             {sheet && (
               <>
-                <Button variant="outline" onClick={() => setMemberOpen(true)}>
-                  <Users className="mr-1.5 h-4 w-4" />
-                  人员（{members.length}）
-                </Button>
-                <Button variant="outline" disabled={exporting} onClick={handleExport}>
-                  <Download className="mr-1.5 h-4 w-4" />
-                  {exporting ? '导出中…' : '导出本月'}
-                </Button>
-                <Button variant="destructive" disabled={pending} onClick={() => setDeleteOpen(true)}>
-                  删除本月
-                </Button>
+                {editing ? (
+                  <>
+                    <Button disabled={pending} onClick={handleSave}>
+                      {pending ? '保存中…' : '保存'}
+                    </Button>
+                    <Button variant="outline" disabled={pending} onClick={handleCancelEdit}>
+                      取消
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button variant="outline" onClick={handleStartEdit}>
+                      编辑
+                    </Button>
+                    <Button variant="outline" onClick={() => setMemberOpen(true)}>
+                      <Users className="mr-1.5 h-4 w-4" />
+                      人员（{members.length}）
+                    </Button>
+                    <Button variant="outline" disabled={exporting} onClick={handleExport}>
+                      <Download className="mr-1.5 h-4 w-4" />
+                      {exporting ? '导出中…' : '导出本月'}
+                    </Button>
+                    <Button variant="destructive" disabled={pending} onClick={() => setDeleteOpen(true)}>
+                      删除本月
+                    </Button>
+                  </>
+                )}
               </>
             )}
           </>
@@ -364,23 +465,16 @@ export function AttendanceManager({
         {!canManage && sheet && <Badge variant="secondary">{monthLabel(sheet.month)}</Badge>}
       </div>
 
-      {canManage && sheet && (
+      {canManage && sheet && editing && (
         <div className="flex flex-wrap items-center gap-1.5 text-sm">
-          <span className="text-muted-foreground">批量：</span>
-          <Button
-            size="sm"
-            variant={brush === null ? 'default' : 'outline'}
-            onClick={() => setBrush(null)}
-          >
-            点选
-          </Button>
+          <span className="text-muted-foreground">填充：</span>
           {CELL_OPTIONS.map((option) => (
             <Button
               key={option.value || 'clear'}
               size="sm"
-              variant={brush === option.value ? 'default' : 'outline'}
+              variant="outline"
               className="px-2"
-              onClick={() => setBrush(option.value)}
+              onClick={() => applySymbol(option.value)}
             >
               {option.value === '' ? (
                 <>
@@ -392,8 +486,15 @@ export function AttendanceManager({
               )}
             </Button>
           ))}
-          {brush !== null && (
-            <span className="text-xs text-muted-foreground">在表格上按住拖动，即可连续填充该符号。</span>
+          <span className="text-xs text-muted-foreground">
+            {selectedCount > 0
+              ? `已选 ${selectedCount} 格，点击符号批量填充`
+              : '在表格中按住拖动框选单元格，再点击上方符号批量填充'}
+          </span>
+          {selection && (
+            <Button size="sm" variant="ghost" onClick={() => setSelection(null)}>
+              取消选择
+            </Button>
           )}
         </div>
       )}
@@ -411,24 +512,17 @@ export function AttendanceManager({
               <Label htmlFor="attendance_note" className="text-muted-foreground">
                 备注
               </Label>
-              <Input
-                id="attendance_note"
-                className="max-w-md"
-                maxLength={500}
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                onBlur={() => {
-                  if (note.trim() === (initialNote ?? '')) return
-                  startTransition(async () => {
-                    const result = await updateAttendanceSheetNote({
-                      sheet_id: sheet.id,
-                      note: note.trim(),
-                    })
-                    if (result.ok) toast.success('备注已保存')
-                    else toast.error(result.error ?? '保存失败')
-                  })
-                }}
-              />
+              {editing ? (
+                <Input
+                  id="attendance_note"
+                  className="max-w-md"
+                  maxLength={500}
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                />
+              ) : (
+                <span className="text-muted-foreground">{note.trim() || '—'}</span>
+              )}
             </div>
           )}
           {visibleMembers.length === 0 ? (
@@ -485,22 +579,20 @@ export function AttendanceManager({
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {visibleMembers.map((member) => {
+                  {visibleMembers.map((member, memberIndex) => {
                     const summary = summaries[member.id]
                     return (
                       <MemberRows
                         key={member.id}
                         member={member}
+                        memberIndex={memberIndex}
                         dayNumbers={dayNumbers}
                         grid={grid}
-                        canManage={canManage}
-                        brushActive={brush !== null}
+                        editable={canManage && editing}
+                        selectionBounds={selectionBounds}
                         summary={summary}
-                        onChange={handleCellChange}
-                        onBrush={applyBrush}
-                        onStartPaint={() => {
-                          paintingRef.current = true
-                        }}
+                        onSelectStart={startSelection}
+                        onSelectMove={moveSelection}
                       />
                     )
                   })}
@@ -515,6 +607,7 @@ export function AttendanceManager({
               </span>
             ))}
             <span>· 未标记</span>
+            <span>天数字段按上/下午各计 0.5 天</span>
           </div>
           {!canManage && (
             <p className="text-xs text-muted-foreground">考勤由财务维护，如有疑问请联系财务核对。</p>
@@ -527,7 +620,7 @@ export function AttendanceManager({
           <DialogHeader>
             <DialogTitle>新建考勤表</DialogTitle>
             <DialogDescription>
-              按月份创建，创建后在「人员」中添加成员，再逐项点选或用笔刷维护考勤。
+              按月份创建，创建后在「人员」中添加成员，进入编辑后框选单元格批量填写考勤。
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -703,100 +796,97 @@ export function AttendanceManager({
 
 function MemberRows({
   member,
+  memberIndex,
   dayNumbers,
   grid,
-  canManage,
-  brushActive,
+  editable,
+  selectionBounds,
   summary,
-  onChange,
-  onBrush,
-  onStartPaint,
+  onSelectStart,
+  onSelectMove,
 }: {
   member: Pick<AttendanceMember, 'id' | 'name' | 'profile_id'>
+  memberIndex: number
   dayNumbers: number[]
   grid: Record<string, { morning: string; afternoon: string }>
-  canManage: boolean
-  brushActive: boolean
+  editable: boolean
+  selectionBounds: {
+    rowStart: number
+    rowEnd: number
+    dayStart: number
+    dayEnd: number
+  } | null
   summary: ReturnType<typeof summarizeAttendance>
-  onChange: (memberId: string, day: number, half: 'morning' | 'afternoon', value: string) => void
-  onBrush: (memberId: string, day: number, half: 'morning' | 'afternoon') => void
-  onStartPaint: () => void
+  onSelectStart: (row: number, day: number) => void
+  onSelectMove: (row: number, day: number) => void
 }) {
   return (
     <>
-      {(['morning', 'afternoon'] as const).map((half, halfIndex) => (
-        <TableRow key={`${member.id}-${half}`}>
-          {halfIndex === 0 && (
-            <TableCell
-              rowSpan={2}
-              className="sticky left-0 z-10 w-16 whitespace-nowrap bg-background px-1 text-sm font-medium"
-            >
-              <span className="block truncate" title={member.name}>
-                {member.name}
-              </span>
+      {(['morning', 'afternoon'] as const).map((half, halfIndex) => {
+        const row = memberIndex * 2 + halfIndex
+        return (
+          <TableRow key={`${member.id}-${half}`}>
+            {halfIndex === 0 && (
+              <TableCell
+                rowSpan={2}
+                className="sticky left-0 z-10 w-16 whitespace-nowrap bg-background px-1 text-sm font-medium"
+              >
+                <span className="block truncate" title={member.name}>
+                  {member.name}
+                </span>
+              </TableCell>
+            )}
+            <TableCell className="sticky left-16 z-10 w-9 bg-background px-0.5 text-center text-[10px] text-muted-foreground">
+              {half === 'morning' ? '上午' : '下午'}
             </TableCell>
-          )}
-          <TableCell className="sticky left-16 z-10 w-9 bg-background px-0.5 text-center text-[10px] text-muted-foreground">
-            {half === 'morning' ? '上午' : '下午'}
-          </TableCell>
-          {dayNumbers.map((day) => {
-            const cell = grid[entryKey(member.id, day)]
-            const value = cell?.[half] ?? ''
-            if (!canManage) {
-              return (
-                <TableCell key={day} className="w-8 px-0.5 text-center text-xs">
-                  {value || <span className="text-muted-foreground">·</span>}
-                </TableCell>
-              )
-            }
-            if (brushActive) {
+            {dayNumbers.map((day) => {
+              const cell = grid[entryKey(member.id, day)]
+              const value = cell?.[half] ?? ''
+              if (!editable) {
+                return (
+                  <TableCell key={day} className="w-8 px-0.5 text-center text-xs">
+                    {value || <span className="text-muted-foreground">·</span>}
+                  </TableCell>
+                )
+              }
+              const selected = selectionBounds
+                ? row >= selectionBounds.rowStart &&
+                  row <= selectionBounds.rowEnd &&
+                  day >= selectionBounds.dayStart &&
+                  day <= selectionBounds.dayEnd
+                : false
               return (
                 <TableCell key={day} className="w-8 p-0">
                   <div
                     aria-label={`${member.name} ${day}日${half === 'morning' ? '上午' : '下午'}`}
-                    className="flex h-7 w-full cursor-crosshair select-none items-center justify-center text-xs hover:bg-accent"
+                    className={`flex h-7 w-full cursor-cell select-none items-center justify-center text-xs hover:bg-accent ${
+                      selected ? 'bg-primary/15' : ''
+                    }`}
                     onMouseDown={(event) => {
                       event.preventDefault()
-                      onStartPaint()
-                      onBrush(member.id, day, half)
+                      onSelectStart(row, day)
                     }}
-                    onMouseEnter={() => onBrush(member.id, day, half)}
+                    onMouseEnter={() => onSelectMove(row, day)}
                   >
                     {value || <span className="text-muted-foreground/40">·</span>}
                   </div>
                 </TableCell>
               )
-            }
-            return (
-              <TableCell key={day} className="w-8 p-0">
-                <select
-                  aria-label={`${member.name} ${day}日${half === 'morning' ? '上午' : '下午'}`}
-                  className="h-7 w-full cursor-pointer appearance-none bg-transparent text-center text-xs outline-none hover:bg-accent focus:bg-accent"
-                  value={value}
-                  onChange={(event) => onChange(member.id, day, half, event.target.value)}
+            })}
+            {halfIndex === 0 &&
+              ATTENDANCE_SYMBOLS.map(({ symbol, kind }) => (
+                <TableCell
+                  key={symbol}
+                  rowSpan={2}
+                  className="w-9 px-0.5 text-center text-sm font-medium"
                 >
-                  {CELL_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </TableCell>
-            )
-          })}
-          {halfIndex === 0 &&
-            ATTENDANCE_SYMBOLS.map(({ symbol, kind }) => (
-              <TableCell
-                key={symbol}
-                rowSpan={2}
-                className="w-9 px-0.5 text-center text-sm font-medium"
-              >
-                {summary.counts[symbol] ?? 0}
-                {kind === 'times' && <span className="text-[9px] font-normal"> 次</span>}
-              </TableCell>
-            ))}
-        </TableRow>
-      ))}
+                  {summary.counts[symbol] ?? 0}
+                  {kind === 'times' && <span className="text-[9px] font-normal"> 次</span>}
+                </TableCell>
+              ))}
+          </TableRow>
+        )
+      })}
     </>
   )
 }
