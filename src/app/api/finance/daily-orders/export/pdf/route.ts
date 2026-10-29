@@ -74,7 +74,9 @@ async function buildPdfResponse(filters: ReturnType<typeof parseDailyOrderFilter
       downloadedImageBytes += imageBuffer.byteLength
       if (downloadedImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
         return NextResponse.json(
-          { error: '实际下载的截图总大小超过 50MB，请缩小筛选范围' },
+          {
+            error: `实际下载的截图总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
+          },
           { status: 413 },
         )
       }

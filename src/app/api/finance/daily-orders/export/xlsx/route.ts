@@ -30,6 +30,8 @@ export const dynamic = 'force-dynamic'
 const EXPORT_COLUMNS = [...DAILY_ORDER_COLUMNS.filter((name) => name !== '截图'), '截图']
 /** 截图列的 0 基列号，用于 addImage 定位。 */
 const SCREENSHOT_COLUMN_INDEX = EXPORT_COLUMNS.indexOf('截图')
+/** 「订单总金额」是订单级字段，同一订单的多行产品合并成一个单元格。 */
+const ORDER_TOTAL_COLUMN = EXPORT_COLUMNS.indexOf('订单总金额') + 1
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -77,6 +79,8 @@ async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilte
   })
 
   let downloadedImageBytes = 0
+  /** 同一订单的产品行连续排列，记下起止行用于纵向合并。 */
+  const orderGroups: Array<{ orderId: string; firstRow: number; lastRow: number }> = []
   for (const exportRow of rows) {
     const attachments = exportRow.attachments
     const row = sheet.addRow([
@@ -109,6 +113,15 @@ async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilte
       cell.border = { bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } } }
     })
 
+    const lastGroup = orderGroups[orderGroups.length - 1]
+    if (lastGroup && lastGroup.orderId === exportRow.orderId) lastGroup.lastRow = row.number
+    else
+      orderGroups.push({
+        orderId: exportRow.orderId,
+        firstRow: row.number,
+        lastRow: row.number,
+      })
+
     // attachments 只挂在订单第一行，截图贴在该行向右横向排开。
     for (let shotIndex = 0; shotIndex < attachments.length; shotIndex += 1) {
       const attachment = attachments[shotIndex]
@@ -125,7 +138,9 @@ async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilte
       downloadedImageBytes += imageBuffer.byteLength
       if (downloadedImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
         return NextResponse.json(
-          { error: '实际下载的截图总大小超过 50MB，请缩小筛选范围' },
+          {
+            error: `实际下载的截图总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
+          },
           { status: 413 },
         )
       }
@@ -140,6 +155,15 @@ async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilte
         ext: { width: 180, height: 90 },
         editAs: 'oneCell',
       })
+    }
+  }
+
+  // 订单总金额纵向合并：ExcelJS 合并会丢弃从属单元格样式，所以合并后要给区间底部补回分隔线。
+  for (const group of orderGroups) {
+    if (group.lastRow <= group.firstRow) continue
+    sheet.mergeCells(group.firstRow, ORDER_TOTAL_COLUMN, group.lastRow, ORDER_TOTAL_COLUMN)
+    sheet.getCell(group.lastRow, ORDER_TOTAL_COLUMN).border = {
+      bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
     }
   }
 

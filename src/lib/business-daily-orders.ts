@@ -477,9 +477,9 @@ export interface BusinessDailyExportRow {
   commissionClearanceStatus: string
 }
 
-/** 单次导出的截图数量与体积上限，旧台账的 100 张在数据增长后不够用。 */
-export const BUSINESS_DAILY_EXPORT_MAX_IMAGES = 500
-export const BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES = 200 * 1024 * 1024
+/** 单次导出的截图数量与体积上限：每日订单与订单成本两个导出共用。 */
+export const BUSINESS_DAILY_EXPORT_MAX_IMAGES = 1000
+export const BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES = 400 * 1024 * 1024
 /** 每张订单最多导出的截图数量，与建单时的 10 张上限一致。 */
 export const BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER = 10
 
