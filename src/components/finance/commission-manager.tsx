@@ -53,6 +53,7 @@ import {
   BUSINESS_ORDER_COMMISSION_COLUMNS,
   COMMISSION_PAGE_SIZE,
   businessOrderCommissionFilterQuery,
+  formatCommissionAmount,
 } from '@/lib/business-order-commission'
 import { formatDailyMoney, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { cn, displayProfileName } from '@/lib/utils'
@@ -116,7 +117,7 @@ function formatCommissionMoney(
 ) {
   const rate = settlementExchangeRate(row, pageRate)
   if (rate == null) return '请填写汇率'
-  return formatDailyMoney(round4(value * rate), 'CNY')
+  return formatCommissionAmount(value * rate)
 }
 
 function clearanceLabel(status: BusinessOrderCommissionClearanceStatus | null) {
@@ -311,16 +312,16 @@ function FreightEditor({
     return (
       <>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
-          {freightReceived == null ? '请填写汇率' : formatDailyMoney(freightReceived, 'CNY')}
+          {freightReceived == null ? '请填写汇率' : formatCommissionAmount(freightReceived)}
         </TableCell>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} w-20 min-w-20 tabular-nums`}>
-          {formatDailyMoney(row.freight_cost, 'CNY')}
+          {formatCommissionAmount(row.freight_cost)}
         </TableCell>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
-          {profit == null ? '请填写汇率' : formatDailyMoney(profit, 'CNY')}
+          {profit == null ? '请填写汇率' : formatCommissionAmount(profit)}
         </TableCell>
         <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} bg-amber-50 font-semibold text-amber-950 tabular-nums`}>
-          {commission == null ? '请填写汇率' : formatDailyMoney(commission, 'CNY')}
+          {commission == null ? '请填写汇率' : formatCommissionAmount(commission)}
         </TableCell>
       </>
     )
@@ -329,7 +330,7 @@ function FreightEditor({
   return (
     <>
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
-        {freightReceived == null ? '请填写汇率' : formatDailyMoney(freightReceived, 'CNY')}
+        {freightReceived == null ? '请填写汇率' : formatCommissionAmount(freightReceived)}
       </TableCell>
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} w-20 min-w-20`}>
         <div className="w-20">
@@ -347,11 +348,11 @@ function FreightEditor({
         </div>
       </TableCell>
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} tabular-nums`}>
-        {profit == null ? '请填写汇率' : formatDailyMoney(profit, 'CNY')}
+        {profit == null ? '请填写汇率' : formatCommissionAmount(profit)}
       </TableCell>
       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} bg-amber-50 font-semibold text-amber-950 tabular-nums`}>
         <div className="flex min-w-28 items-center gap-1">
-          {commission == null ? '请填写汇率' : formatDailyMoney(commission, 'CNY')}
+          {commission == null ? '请填写汇率' : formatCommissionAmount(commission)}
           <Button
             type="button"
             variant="outline"

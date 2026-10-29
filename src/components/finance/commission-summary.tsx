@@ -1,4 +1,4 @@
-import { formatDailyMoney } from '@/lib/daily-orders'
+import { formatCommissionAmount } from '@/lib/business-order-commission'
 import type { BusinessOrderCommissionRow } from '@/types'
 
 interface CommissionSummaryTotal {
@@ -76,10 +76,10 @@ export function CommissionSummary({
                 <tr key={`${total.salespersonName}-${total.period}`} className="border-b last:border-0">
                   {showSalesperson && <td className="px-3 py-2">{total.salespersonName}</td>}
                   <td className="px-3 py-2 tabular-nums">{total.period}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatDailyMoney(total.productAmount, 'CNY')}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatDailyMoney(total.freightAmount, 'CNY')}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatCommissionAmount(total.productAmount)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatCommissionAmount(total.freightAmount)}</td>
                   <td className="px-3 py-2 text-right font-medium tabular-nums">
-                    {formatDailyMoney(total.productAmount + total.freightAmount, 'CNY')}
+                    {formatCommissionAmount(total.productAmount + total.freightAmount)}
                     {total.missingRateCount > 0 && (
                       <span className="ml-2 text-xs font-normal text-amber-600">{total.missingRateCount} 行美元订单未计入</span>
                     )}

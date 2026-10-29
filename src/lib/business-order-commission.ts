@@ -59,3 +59,15 @@ export function formatCommissionRate(value: number | null) {
   if (value === null || !Number.isFinite(value)) return '—'
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 4 }).format(value)
 }
+
+const commissionAmountFormat = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+})
+
+// 提成板块（明细表、月度总览）金额统一保留 2 位小数，四舍五入。
+export function formatCommissionAmount(value: number | null | undefined) {
+  const amount = Number(value)
+  if (value == null || !Number.isFinite(amount)) return '—'
+  return `CNY ${commissionAmountFormat.format(amount)}`
+}
