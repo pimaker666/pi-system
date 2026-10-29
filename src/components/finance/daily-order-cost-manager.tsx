@@ -201,6 +201,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   const [markOverrides, setMarkOverrides] = useState<Record<string, boolean>>({})
   const [dialogOpen, setDialogOpen] = useState(false)
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
+  const [exportPending, setExportPending] = useState(false)
   const tableRef = useRef<HTMLTableElement>(null)
   const [pinnedCol, setPinnedCol] = useState<number | null>(null)
   const query = businessOrderCostFilterQuery(filters)
@@ -352,6 +353,52 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
     })
   }
 
+  // 导出走 POST：ids 放请求体，勾选几百单时 URL 拼不下（Kong ~8k / Node 16k）。
+  async function downloadExport() {
+    if (exportPending) return
+    setExportPending(true)
+    try {
+      const ids = [...selectedOrders]
+      const response = await fetch('/api/finance/costs/export/xlsx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ filterQuery: query, ids }),
+      })
+      if (!response.ok) {
+        let message = `导出失败（${response.status}）`
+        try {
+          const data = (await response.json()) as { error?: string }
+          if (data?.error) message = data.error
+        } catch {
+          // 错误体不是 JSON 时保留默认提示
+        }
+        toast.error(message)
+        return
+      }
+      const blob = await response.blob()
+      const match = response.headers
+        .get('Content-Disposition')
+        ?.match(/filename\*=UTF-8''([^;]+)/i)
+      const date = new Date().toISOString().slice(0, 10)
+      const fileName = match
+        ? decodeURIComponent(match[1])
+        : ids.length > 0
+          ? `勾选订单成本表_${date}.xlsx`
+          : `全部订单成本表_${date}.xlsx`
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = fileName
+      link.click()
+      URL.revokeObjectURL(url)
+      toast.success(ids.length > 0 ? `已导出勾选的 ${ids.length} 个订单` : '已导出全部订单')
+    } catch {
+      toast.error('导出失败，请稍后重试')
+    } finally {
+      setExportPending(false)
+    }
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -364,11 +411,13 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
         </div>
         <div className="flex flex-wrap gap-2">
           <BusinessOrderCostImporter />
-          <Button asChild variant="outline">
-            <a download href={`/api/finance/costs/export/xlsx${query ? `?${query}` : ''}`}>
-              <Download className="h-4 w-4" />
-              导出成本表
-            </a>
+          <Button type="button" variant="outline" disabled={exportPending} onClick={downloadExport}>
+            <Download className="h-4 w-4" />
+            {exportPending
+              ? '导出中…'
+              : selectedOrders.size > 0
+                ? `导出勾选的 ${selectedOrders.size} 单`
+                : '导出成本表'}
           </Button>
         </div>
       </div>

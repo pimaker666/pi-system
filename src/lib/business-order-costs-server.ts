@@ -53,6 +53,7 @@ function buildBaseQuery(
   offset: number,
   limit: number,
   productSearch: boolean,
+  ids?: readonly string[],
 ) {
   const keyword = normalizeKeyword(filters.q)
   const needInner = productSearch
@@ -80,6 +81,7 @@ function buildBaseQuery(
 
   if (dateFrom) query = query.gte('order_date', dateFrom)
   if (dateTo) query = query.lte('order_date', dateTo)
+  if (ids && ids.length > 0) query = query.in('id', ids)
   if (filters.shops.length > 0) query = query.in('shop_id', filters.shops)
   if (filters.salespeople.length > 0) query = query.in('salesperson_id', filters.salespeople)
   if (filters.shopGroups.length > 0) query = query.in('shop_group_id', filters.shopGroups)
@@ -116,8 +118,27 @@ async function fetchMatchingOrders(
   filters: BusinessOrderCostFilters,
   offset: number,
   limit: number,
+  ids?: readonly string[],
 ): Promise<BusinessDailyLedgerOrder[]> {
   const keyword = normalizeKeyword(filters.q)
+
+  if (ids && ids.length > 0) {
+    // Kong 网关 URI 上限约 8k：.in('id', ids) 一批最多 100 个订单，超出拆分后按同一排序合并。
+    const merged = new Map<string, BusinessDailyLedgerOrder>()
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100)
+      const queries = [buildBaseQuery(supabase, filters, 0, limit, false, chunk)]
+      if (keyword) queries.push(buildBaseQuery(supabase, filters, 0, limit, true, chunk))
+      const results = await Promise.all(queries)
+      for (const result of results) {
+        if (result.error) throw new Error(`订单成本订单读取失败：${result.error.message}`)
+        for (const order of (result.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
+          merged.set(order.id, order)
+        }
+      }
+    }
+    return [...merged.values()].sort(compareOrders).slice(0, limit)
+  }
 
   if (!keyword) {
     const { data, error } = await buildBaseQuery(supabase, filters, offset, limit, false)
@@ -231,10 +252,11 @@ export async function fetchBusinessOrderProductCosts(
   filters: BusinessOrderCostFilters,
   page = 1,
   pageSize = COST_PAGE_SIZE,
+  options: { ids?: readonly string[] } = {},
 ): Promise<{ rows: BusinessOrderProductCost[]; totalCount: number }> {
   const effectiveLimit = Math.min(pageSize, BUSINESS_DAILY_EXPORT_LIMIT)
   const [allOrders, financialRows, overrideRows, settledIds] = await Promise.all([
-    fetchMatchingOrders(supabase, filters, 0, 1000),
+    fetchMatchingOrders(supabase, filters, 0, 1000, options.ids),
     fetchAllProductFinancials(supabase),
     fetchAllCostOverrides(supabase),
     fetchAllSettledItemIds(supabase),
@@ -261,12 +283,19 @@ export async function fetchBusinessOrderProductCosts(
   const pagedOrders = eligibleOrders.slice(offset, offset + effectiveLimit)
 
   // 成本页个人标记（business_order_cost_marks，RLS 只返回本人行），淡粉色高亮用。
+  // 导出可达数百单，同样按 100 个一批拆分，避免撞 Kong 的 URI 上限。
   const pagedOrderIds = pagedOrders.map((entry) => entry.order.id)
-  const { data: markRows } = await supabase
-    .from('business_order_cost_marks')
-    .select('order_id')
-    .in('order_id', pagedOrderIds.length > 0 ? pagedOrderIds : ['00000000-0000-0000-0000-000000000000'])
-  const markedOrderIds = new Set((markRows ?? []).map((row) => row.order_id))
+  const markChunks = await Promise.all(
+    Array.from({ length: Math.ceil(pagedOrderIds.length / 100) }, (_, index) =>
+      supabase
+        .from('business_order_cost_marks')
+        .select('order_id')
+        .in('order_id', pagedOrderIds.slice(index * 100, index * 100 + 100)),
+    ),
+  )
+  const markedOrderIds = new Set(
+    markChunks.flatMap((chunk) => (chunk.data ?? []).map((row) => row.order_id)),
+  )
 
   const financials = new Map(financialRows.map((row) => [row.product_id, row]))
   const overrides = new Map(overrideRows.map((row) => [row.business_order_item_id, Number(row.cost)]))

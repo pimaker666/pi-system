@@ -97,13 +97,23 @@ async function fetchAllBusinessReferences(supabase: Awaited<ReturnType<typeof cr
   }
 }
 
-export async function GET(request: NextRequest) {
-  await requireFinanceAccess()
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+function parseIds(values: string[]): string[] {
+  return values
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter((value) => UUID_RE.test(value))
+}
+
+async function buildCostsXlsx(
+  filters: ReturnType<typeof parseBusinessOrderCostFilters>,
+  ids?: string[],
+) {
   const supabase = await createClient()
-  const filters = parseBusinessOrderCostFilters(searchParamsToRecord(request.nextUrl.searchParams))
 
   const [dailyResult, costs, legacyOrders, businessOrders] = await Promise.all([
-    fetchBusinessOrderProductCosts(supabase, filters, 1, BUSINESS_DAILY_EXPORT_LIMIT),
+    fetchBusinessOrderProductCosts(supabase, filters, 1, BUSINESS_DAILY_EXPORT_LIMIT, { ids }),
     fetchAllFinanceCosts(supabase),
     fetchAllLegacyReferences(supabase),
     fetchAllBusinessReferences(supabase),
@@ -153,7 +163,9 @@ export async function GET(request: NextRequest) {
   }
   if (declaredImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
     return NextResponse.json(
-      { error: '筛选结果的截图总大小超过 50MB，请缩小筛选范围' },
+      {
+        error: `筛选结果的截图总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
+      },
       { status: 413 },
     )
   }
@@ -243,7 +255,9 @@ export async function GET(request: NextRequest) {
       downloadedImageBytes += imageBuffer.byteLength
       if (downloadedImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
         return NextResponse.json(
-          { error: '实际下载的截图总大小超过 50MB，请缩小筛选范围' },
+          {
+            error: `实际下载的截图总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
+          },
           { status: 413 },
         )
       }
@@ -303,14 +317,38 @@ export async function GET(request: NextRequest) {
   const buffer = await workbook.xlsx.writeBuffer()
   const body = new Uint8Array(buffer as ArrayBuffer)
   const date = chinaToday()
-  const fileName = `全部订单成本表_${date}.xlsx`
+  const selectedOnly = (ids?.length ?? 0) > 0
+  const fileName = selectedOnly ? `勾选订单成本表_${date}.xlsx` : `全部订单成本表_${date}.xlsx`
+  const asciiName = selectedOnly ? `selected-order-costs-${date}.xlsx` : `all-order-costs-${date}.xlsx`
   return new NextResponse(body, {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="all-order-costs-${date}.xlsx"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+      'Content-Disposition': `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`,
       'Content-Length': String(body.byteLength),
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
     },
   })
+}
+
+export async function GET(request: NextRequest) {
+  await requireFinanceAccess()
+  const filters = parseBusinessOrderCostFilters(searchParamsToRecord(request.nextUrl.searchParams))
+  return buildCostsXlsx(filters)
+}
+
+// 勾选导出走 POST：ids 放请求体，避免几百个 UUID 拼进 URL 被 Kong 拒绝。
+export async function POST(request: Request) {
+  await requireFinanceAccess()
+  const body = (await request.json().catch(() => null)) as
+    | { filterQuery?: string; ids?: string[] }
+    | null
+  if (!body || typeof body.filterQuery !== 'string') {
+    return NextResponse.json({ error: '请求格式错误' }, { status: 400 })
+  }
+  const filters = parseBusinessOrderCostFilters(
+    Object.fromEntries(new URLSearchParams(body.filterQuery).entries()),
+  )
+  const ids = parseIds(Array.isArray(body.ids) ? body.ids : [])
+  return buildCostsXlsx(filters, ids.length > 0 ? ids : undefined)
 }

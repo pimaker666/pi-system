@@ -477,9 +477,9 @@ export interface BusinessDailyExportRow {
   commissionClearanceStatus: string
 }
 
-/** 单次导出的截图数量与体积上限，沿用旧台账的阈值。 */
-export const BUSINESS_DAILY_EXPORT_MAX_IMAGES = 100
-export const BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES = 50 * 1024 * 1024
+/** 单次导出的截图数量与体积上限，旧台账的 100 张在数据增长后不够用。 */
+export const BUSINESS_DAILY_EXPORT_MAX_IMAGES = 500
+export const BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES = 200 * 1024 * 1024
 /** 每张订单最多导出的截图数量，与建单时的 10 张上限一致。 */
 export const BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER = 10
 
@@ -492,7 +492,7 @@ export function businessDailyExportLimitError(orders: BusinessDailyLedgerOrder[]
     return `筛选结果包含 ${attachments.length} 张截图，单次最多导出 ${BUSINESS_DAILY_EXPORT_MAX_IMAGES} 张，请缩小筛选范围`
   }
   if (totalBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
-    return '筛选结果的截图总大小超过 50MB，请缩小筛选范围'
+    return `筛选结果的截图总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`
   }
   return null
 }
