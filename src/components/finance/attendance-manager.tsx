@@ -67,9 +67,14 @@ function entryKey(memberId: string, day: number) {
 
 const EMPTY_CELL = { morning: '', afternoon: '' }
 
-// 拖拽框选时向上寻找真正滚动的容器（页面里纵向滚动在 layout 的 main 上）
+// 表格内滚动时表头吸顶；corner 版给同时也左吸的两列，层级高于普通表头
+const STICKY_HEAD = 'sticky top-0 z-20 bg-background shadow-[inset_0_-1px_0_hsl(var(--border))]'
+const STICKY_HEAD_CORNER =
+  'sticky top-0 z-30 bg-background shadow-[inset_0_-1px_0_hsl(var(--border))]'
+
+// 拖拽框选时向上寻找真正滚动的容器（含自身：表格外层容器限高后自己就是纵向滚动区）
 function findVerticalScroller(element: HTMLElement | null): HTMLElement | null {
-  let node = element?.parentElement ?? null
+  let node: HTMLElement | null = element
   while (node && node !== document.body) {
     const style = window.getComputedStyle(node)
     if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1) return node
@@ -134,6 +139,7 @@ export function AttendanceManager({
   useEffect(() => {
     setEditing(false)
     setSelection(null)
+    if (tableWrapRef.current) tableWrapRef.current.scrollTop = 0
   }, [selectedMonth, selectedSheetId])
 
   useEffect(() => {
@@ -176,8 +182,11 @@ export function AttendanceManager({
         scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight,
         window.innerHeight,
       )
+      // 表头吸顶后会盖住容器顶部，向上滚动的触发区要落在表头下沿之下，否则指针永远压不到数据行
+      const headBottom = wrap?.querySelector('thead')?.getBoundingClientRect().bottom ?? top
+      const scrollTopEdge = Math.max(top, headBottom)
       let dy = 0
-      if (pointer.y < top + EDGE) dy = -speedFor(top + EDGE - pointer.y)
+      if (pointer.y < scrollTopEdge + EDGE) dy = -speedFor(scrollTopEdge + EDGE - pointer.y)
       else if (pointer.y > bottom - EDGE) dy = speedFor(pointer.y - (bottom - EDGE))
 
       let dx = 0
@@ -625,14 +634,16 @@ export function AttendanceManager({
               </CardContent>
             </Card>
           ) : (
-            <div ref={tableWrapRef} className="overflow-x-auto rounded-md border">
-              <Table>
+            <div ref={tableWrapRef} className="max-h-[70vh] overflow-auto rounded-md border">
+              <Table containerClassName="overflow-visible">
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="sticky left-0 z-10 w-16 bg-background px-1">
+                    <TableHead className={`${STICKY_HEAD_CORNER} left-0 w-16 px-1`}>
                       姓名
                     </TableHead>
-                    <TableHead className="sticky left-16 z-10 w-9 bg-background px-0.5 text-center text-[10px]">
+                    <TableHead
+                      className={`${STICKY_HEAD_CORNER} left-16 w-9 px-0.5 text-center text-[10px]`}
+                    >
                       上/下午
                     </TableHead>
                     {dayNumbers.map((day) => {
@@ -648,7 +659,9 @@ export function AttendanceManager({
                       return (
                         <TableHead
                           key={day}
-                          className={`w-8 px-0.5 text-center ${isWeekend ? 'text-muted-foreground' : ''}`}
+                          className={`${STICKY_HEAD} w-8 px-0.5 text-center ${
+                            isWeekend ? 'text-muted-foreground' : ''
+                          }`}
                         >
                           <div className="text-[9px] leading-tight">{weekday}</div>
                           <div className="text-[11px] leading-tight">{day}</div>
@@ -656,13 +669,19 @@ export function AttendanceManager({
                       )
                     })}
                     {daySymbols.map(({ symbol, label }) => (
-                      <TableHead key={symbol} className="w-9 px-0.5 text-center text-[11px]">
+                      <TableHead
+                        key={symbol}
+                        className={`${STICKY_HEAD} w-9 px-0.5 text-center text-[11px]`}
+                      >
                         {symbol}
                         <div className="text-[9px] font-normal">{label}</div>
                       </TableHead>
                     ))}
                     {timeSymbols.map(({ symbol, label }) => (
-                      <TableHead key={symbol} className="w-9 px-0.5 text-center text-[11px]">
+                      <TableHead
+                        key={symbol}
+                        className={`${STICKY_HEAD} w-9 px-0.5 text-center text-[11px]`}
+                      >
                         {symbol}
                         <div className="text-[9px] font-normal">{label}</div>
                       </TableHead>
