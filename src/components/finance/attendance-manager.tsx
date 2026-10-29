@@ -67,6 +67,17 @@ function entryKey(memberId: string, day: number) {
 
 const EMPTY_CELL = { morning: '', afternoon: '' }
 
+// 拖拽框选时向上寻找真正滚动的容器（页面里纵向滚动在 layout 的 main 上）
+function findVerticalScroller(element: HTMLElement | null): HTMLElement | null {
+  let node = element?.parentElement ?? null
+  while (node && node !== document.body) {
+    const style = window.getComputedStyle(node)
+    if (/(auto|scroll)/.test(style.overflowY) && node.scrollHeight > node.clientHeight + 1) return node
+    node = node.parentElement
+  }
+  return null
+}
+
 interface CellPos {
   row: number
   day: number
@@ -111,6 +122,10 @@ export function AttendanceManager({
   // 框选范围：row 为「成员序号 × 2 + 上午/下午」，用于矩形批量填充
   const [selection, setSelection] = useState<{ anchor: CellPos; focus: CellPos } | null>(null)
   const selectingRef = useRef(false)
+  const tableWrapRef = useRef<HTMLDivElement | null>(null)
+  const scrollerRef = useRef<HTMLElement | null>(null)
+  const pointerRef = useRef<{ x: number; y: number } | null>(null)
+  const frameRef = useRef<number | null>(null)
 
   useEffect(() => {
     setCurrentMonth(selectedMonth)
@@ -133,16 +148,96 @@ export function AttendanceManager({
     setNote(initialNote)
   }, [entries, initialNote])
 
-  // 框选松开鼠标即结束，选中区域保留供点击符号批量填充
+  // 框选：拖动时按指针位置更新焦点；指针靠近边缘自动滚动，支持跨屏选择
   useEffect(() => {
+    function updateFocusFromPoint(x: number, y: number) {
+      const element = document.elementFromPoint(x, y)
+      const cell = element?.closest<HTMLElement>('[data-att-cell]')
+      if (!cell) return
+      const row = Number(cell.dataset.attRow)
+      const day = Number(cell.dataset.attDay)
+      if (Number.isNaN(row) || Number.isNaN(day)) return
+      setSelection((current) => (current ? { ...current, focus: { row, day } } : current))
+    }
+
+    function step() {
+      frameRef.current = null
+      const pointer = pointerRef.current
+      if (!selectingRef.current || !pointer) return
+      const EDGE = 56
+      const MAX_STEP = 18
+      const speedFor = (overshoot: number) =>
+        Math.min(MAX_STEP, Math.max(1, Math.ceil((overshoot / EDGE) * MAX_STEP)))
+
+      const scroller = scrollerRef.current
+      const wrap = tableWrapRef.current
+      const top = scroller ? scroller.getBoundingClientRect().top : 0
+      const bottom = Math.min(
+        scroller ? scroller.getBoundingClientRect().bottom : window.innerHeight,
+        window.innerHeight,
+      )
+      let dy = 0
+      if (pointer.y < top + EDGE) dy = -speedFor(top + EDGE - pointer.y)
+      else if (pointer.y > bottom - EDGE) dy = speedFor(pointer.y - (bottom - EDGE))
+
+      let dx = 0
+      if (wrap) {
+        const rect = wrap.getBoundingClientRect()
+        if (pointer.x < rect.left + EDGE) dx = -speedFor(rect.left + EDGE - pointer.x)
+        else if (pointer.x > rect.right - EDGE) dx = speedFor(pointer.x - (rect.right - EDGE))
+      }
+
+      let moved = false
+      if (dy !== 0) {
+        if (scroller) {
+          const before = scroller.scrollTop
+          scroller.scrollTop += dy
+          moved = scroller.scrollTop !== before
+        } else {
+          const before = window.scrollY
+          window.scrollBy(0, dy)
+          moved = window.scrollY !== before
+        }
+      }
+      if (dx !== 0 && wrap) {
+        const before = wrap.scrollLeft
+        wrap.scrollLeft += dx
+        moved = moved || wrap.scrollLeft !== before
+      }
+      if (!moved) return
+      updateFocusFromPoint(pointer.x, pointer.y)
+      frameRef.current = requestAnimationFrame(step)
+    }
+
+    function handlePointerMove(event: PointerEvent) {
+      if (!selectingRef.current) return
+      // 在窗口外松开时收不到 mouseup，用按键状态兜底结束框选
+      if (event.buttons === 0) {
+        endSelecting()
+        return
+      }
+      pointerRef.current = { x: event.clientX, y: event.clientY }
+      updateFocusFromPoint(event.clientX, event.clientY)
+      if (frameRef.current === null) frameRef.current = requestAnimationFrame(step)
+    }
+
     function endSelecting() {
       selectingRef.current = false
+      pointerRef.current = null
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current)
+        frameRef.current = null
+      }
     }
+
+    window.addEventListener('pointermove', handlePointerMove)
     window.addEventListener('mouseup', endSelecting)
     window.addEventListener('pointercancel', endSelecting)
     return () => {
+      window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('mouseup', endSelecting)
       window.removeEventListener('pointercancel', endSelecting)
+      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
     }
   }, [])
 
@@ -368,12 +463,8 @@ export function AttendanceManager({
 
   function startSelection(row: number, day: number) {
     selectingRef.current = true
+    scrollerRef.current = findVerticalScroller(tableWrapRef.current)
     setSelection({ anchor: { row, day }, focus: { row, day } })
-  }
-
-  function moveSelection(row: number, day: number) {
-    if (!selectingRef.current) return
-    setSelection((current) => (current ? { ...current, focus: { row, day } } : current))
   }
 
   function applySymbol(value: string) {
@@ -534,7 +625,7 @@ export function AttendanceManager({
               </CardContent>
             </Card>
           ) : (
-            <div className="overflow-x-auto rounded-md border">
+            <div ref={tableWrapRef} className="overflow-x-auto rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -592,7 +683,6 @@ export function AttendanceManager({
                         selectionBounds={selectionBounds}
                         summary={summary}
                         onSelectStart={startSelection}
-                        onSelectMove={moveSelection}
                       />
                     )
                   })}
@@ -803,7 +893,6 @@ function MemberRows({
   selectionBounds,
   summary,
   onSelectStart,
-  onSelectMove,
 }: {
   member: Pick<AttendanceMember, 'id' | 'name' | 'profile_id'>
   memberIndex: number
@@ -818,7 +907,6 @@ function MemberRows({
   } | null
   summary: ReturnType<typeof summarizeAttendance>
   onSelectStart: (row: number, day: number) => void
-  onSelectMove: (row: number, day: number) => void
 }) {
   return (
     <>
@@ -859,6 +947,9 @@ function MemberRows({
                 <TableCell key={day} className="w-8 p-0">
                   <div
                     aria-label={`${member.name} ${day}日${half === 'morning' ? '上午' : '下午'}`}
+                    data-att-cell=""
+                    data-att-row={row}
+                    data-att-day={day}
                     className={`flex h-7 w-full cursor-cell select-none items-center justify-center text-xs hover:bg-accent ${
                       selected ? 'bg-primary/15' : ''
                     }`}
@@ -866,7 +957,6 @@ function MemberRows({
                       event.preventDefault()
                       onSelectStart(row, day)
                     }}
-                    onMouseEnter={() => onSelectMove(row, day)}
                   >
                     {value || <span className="text-muted-foreground/40">·</span>}
                   </div>
