@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Check, ChevronsUpDown, Download } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
@@ -22,7 +23,7 @@ import {
 import { SHIPPING_LABELS } from '@/lib/daily-orders'
 import { formatCny } from '@/lib/finance'
 import type { BusinessOrderProfitRow } from '@/lib/actions/business-order-profit'
-import { cn, formatCurrency, formatAmount } from '@/lib/utils'
+import { cn, formatCurrency } from '@/lib/utils'
 import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
 import type {
   BusinessPerformanceDimension,
@@ -99,6 +100,25 @@ const DIMENSION_OPTIONS: { value: BusinessPerformanceDimension; label: string }[
 
 function formatUsd(amount: number) {
   return formatCurrency(amount, 'USD')
+}
+
+// 业绩页两个汇总板块统一整数展示（四舍五入，不保留小数）。
+const wholeNumberFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+
+function roundWhole(value: number) {
+  return Number.isFinite(value) ? Math.round(value) : 0
+}
+
+function formatCnyWhole(value: number) {
+  return Number.isFinite(value) ? `¥${wholeNumberFormat.format(Math.round(value))}` : '—'
+}
+
+function formatUsdWhole(value: number) {
+  return Number.isFinite(value) ? `$${wholeNumberFormat.format(Math.round(value))}` : '—'
+}
+
+function formatQuantityWhole(value: number) {
+  return Number.isFinite(value) ? wholeNumberFormat.format(Math.round(value)) : '—'
 }
 
 function multiDimensionValue(
@@ -228,13 +248,13 @@ function ProductPerformanceTable({ rows }: { rows: BusinessPerformanceProductRow
                   <div className="font-medium">{row.product_name}</div>
                   {row.product_sku && <div className="text-xs text-muted-foreground">{row.product_sku}</div>}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{formatAmount(row.sales_quantity)}</TableCell>
-                <TableCell className="text-right tabular-nums">{formatCny(cnySalesAmount)}</TableCell>
-                {hasUnsettled && <TableCell className="text-right tabular-nums">{formatUsd(row.sales_amount_usd)}</TableCell>}
-                <TableCell className="text-right tabular-nums">{formatCny(cnyAverage)}</TableCell>
-                {hasUnsettled && <TableCell className="text-right tabular-nums">{formatUsd(usdAverage)}</TableCell>}
-                <TableCell className="text-right tabular-nums">{formatCny(row.settled_product_cost_cny)}</TableCell>
-                <TableCell className="text-right tabular-nums font-medium text-green-700">{formatCny(row.settled_product_profit_cny)}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatQuantityWhole(row.sales_quantity)}</TableCell>
+                <TableCell className="text-right tabular-nums">{formatCnyWhole(cnySalesAmount)}</TableCell>
+                {hasUnsettled && <TableCell className="text-right tabular-nums">{formatUsdWhole(row.sales_amount_usd)}</TableCell>}
+                <TableCell className="text-right tabular-nums">{formatCnyWhole(cnyAverage)}</TableCell>
+                {hasUnsettled && <TableCell className="text-right tabular-nums">{formatUsdWhole(usdAverage)}</TableCell>}
+                <TableCell className="text-right tabular-nums">{formatCnyWhole(row.settled_product_cost_cny)}</TableCell>
+                <TableCell className="text-right tabular-nums font-medium text-green-700">{formatCnyWhole(row.settled_product_profit_cny)}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {settled
                     ? '已结清'
@@ -288,6 +308,7 @@ export function PerformanceManager({
   const [exchangeRate, setExchangeRate] = useState('')
   const [selectedDimensions, setSelectedDimensions] = useState(multiDimensions)
   const [selectedDimensionValues, setSelectedDimensionValues] = useState<[string[], string[], string[]]>([[], [], []])
+  const [exporting, setExporting] = useState<'group' | 'multi' | null>(null)
 
   const rate = useMemo(() => {
     const value = Number(exchangeRate)
@@ -435,6 +456,215 @@ export function PerformanceManager({
   const multiDimensionLabels = multiDimensions
     .filter((dimension): dimension is BusinessPerformanceDimension => dimension !== null)
     .map((dimension) => DIMENSION_OPTIONS.find((option) => option.value === dimension)?.label ?? dimension)
+
+  const exportScope = dateFrom || dateTo
+    ? `${dateFrom || '不限'}至${dateTo || '不限'}`
+    : '全部日期'
+
+  async function downloadTableExport(
+    payload: {
+      fileName: string
+      sheetName: string
+      columns: string[]
+      rows: Array<Array<string | number | null>>
+      totalRow?: Array<string | number | null>
+    },
+    scope: 'group' | 'multi',
+  ) {
+    if (exporting) return
+    setExporting(scope)
+    try {
+      const response = await fetch('/api/finance/performance/export/xlsx', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!response.ok) {
+        let message = `导出失败（${response.status}）`
+        try {
+          const data = (await response.json()) as { error?: string }
+          if (data?.error) message = data.error
+        } catch {
+          // 错误体不是 JSON 时保留默认提示
+        }
+        toast.error(message)
+        return
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = payload.fileName
+      link.click()
+      URL.revokeObjectURL(url)
+      toast.success('已导出完整表格')
+    } catch {
+      toast.error('导出失败，请稍后重试')
+    } finally {
+      setExporting(null)
+    }
+  }
+
+  function fileNameFor(prefix: string) {
+    return `${prefix.replace(/[\\/:*?"<>|]/g, '_')}_${exportScope}.xlsx`
+  }
+
+  function exportGroupTable() {
+    if (isProductView) {
+      exportProductTable()
+      return
+    }
+    const columns = [
+      GROUP_COLUMN_LABELS[groupBy],
+      '订单数',
+      ...(rate
+        ? [`${amountLabel}（CNY）`, '已收（CNY）', '未收（CNY）']
+        : [
+            `${amountLabel}（CNY）`,
+            `${amountLabel}（USD）`,
+            '已收（CNY）',
+            '已收（USD）',
+            '未收（CNY）',
+            '未收（USD）',
+          ]),
+      '逾期订单',
+    ]
+    const rows = sortedRows.map((row) => {
+      const values: Array<string | number> = [row.group_label, Number(row.order_count)]
+      if (rate) {
+        values.push(
+          roundWhole(Number(row.order_total_cny_native) + Number(row.order_total_usd) * rate),
+          roundWhole(Number(row.received_cny_native) + Number(row.received_usd) * rate),
+          roundWhole(Number(row.outstanding_cny_native) + Number(row.outstanding_usd) * rate),
+        )
+      } else {
+        values.push(
+          roundWhole(Number(row.order_total_cny_native)),
+          roundWhole(Number(row.order_total_usd)),
+          roundWhole(Number(row.received_cny_native)),
+          roundWhole(Number(row.received_usd)),
+          roundWhole(Number(row.outstanding_cny_native)),
+          roundWhole(Number(row.outstanding_usd)),
+        )
+      }
+      values.push(Number(row.overdue_count))
+      return values
+    })
+    const totalRow: Array<string | number> = [
+      '合计',
+      isItemLevelGroup ? '—' : groupTotals.orderCount,
+    ]
+    if (rate) {
+      totalRow.push(
+        roundWhole(groupTotals.cnyTotal + groupTotals.usdTotal * rate),
+        roundWhole(groupTotals.cnyReceived + groupTotals.usdReceived * rate),
+        roundWhole(groupTotals.cnyOutstanding + groupTotals.usdOutstanding * rate),
+      )
+    } else {
+      totalRow.push(
+        roundWhole(groupTotals.cnyTotal),
+        roundWhole(groupTotals.usdTotal),
+        roundWhole(groupTotals.cnyReceived),
+        roundWhole(groupTotals.usdReceived),
+        roundWhole(groupTotals.cnyOutstanding),
+        roundWhole(groupTotals.usdOutstanding),
+      )
+    }
+    totalRow.push(isItemLevelGroup ? '—' : groupTotals.overdueCount)
+    downloadTableExport(
+      {
+        fileName: fileNameFor(`业务业绩_${GROUP_COLUMN_LABELS[groupBy]}`),
+        sheetName: '业务业绩',
+        columns,
+        rows,
+        totalRow,
+      },
+      'group',
+    )
+  }
+
+  function exportProductTable() {
+    const hasUnsettledRows = productRows.some(
+      (row) => row.unsettled_line_count > 0 || row.missing_exchange_rate_line_count > 0,
+    )
+    const columns = [
+      '产品',
+      '销售数量',
+      '销售金额（CNY）',
+      ...(hasUnsettledRows ? ['销售金额（USD）'] : []),
+      '平均客单价（CNY）',
+      ...(hasUnsettledRows ? ['平均客单价（USD）'] : []),
+      '产品总成本（CNY）',
+      '产品总利润（CNY）',
+      '结算状态',
+    ]
+    const rows = productRows.map((row) => {
+      const cnySalesAmount = hasUnsettledRows ? row.sales_amount_cny : row.settled_sales_amount_cny
+      const cnyAverage = hasUnsettledRows
+        ? (row.sales_quantity ? row.sales_amount_cny / row.sales_quantity : 0)
+        : (row.settled_quantity ? row.settled_sales_amount_cny / row.settled_quantity : 0)
+      const usdAverage = row.sales_quantity ? row.sales_amount_usd / row.sales_quantity : 0
+      const settled = row.unsettled_line_count === 0 && row.missing_exchange_rate_line_count === 0
+      const values: Array<string | number> = [
+        row.product_sku ? `${row.product_name}（${row.product_sku}）` : row.product_name,
+        roundWhole(row.sales_quantity),
+        roundWhole(cnySalesAmount),
+      ]
+      if (hasUnsettledRows) values.push(roundWhole(row.sales_amount_usd))
+      values.push(roundWhole(cnyAverage))
+      if (hasUnsettledRows) values.push(roundWhole(usdAverage))
+      values.push(
+        roundWhole(row.settled_product_cost_cny),
+        roundWhole(row.settled_product_profit_cny),
+        settled
+          ? '已结清'
+          : row.missing_exchange_rate_line_count > 0
+            ? '待补结清汇率'
+            : `含 ${row.unsettled_line_count} 条未结算行`,
+      )
+      return values
+    })
+    downloadTableExport(
+      {
+        fileName: fileNameFor(`业务业绩_${GROUP_COLUMN_LABELS[groupBy]}`),
+        sheetName: '业务业绩',
+        columns,
+        rows,
+      },
+      'group',
+    )
+  }
+
+  function exportMultiDimensionTable() {
+    const columns = [
+      ...multiDimensionLabels,
+      '订单数',
+      '销售数量',
+      '产品销售额（不含运费，CNY）',
+      '产品销售额（不含运费，USD）',
+    ]
+    const rows = filteredMultiDimensionRows.map((row) => {
+      const values: Array<string | number | null> = [row.dimension_1_label]
+      if (multiDimensions[1]) values.push(row.dimension_2_label)
+      if (multiDimensions[2]) values.push(row.dimension_3_label)
+      values.push(
+        Number(row.order_count),
+        roundWhole(row.sales_quantity),
+        roundWhole(row.sales_amount_cny),
+        roundWhole(row.sales_amount_usd),
+      )
+      return values
+    })
+    downloadTableExport(
+      {
+        fileName: fileNameFor(`多维销售总览_${multiDimensionLabels.join('-')}`),
+        sheetName: '多维销售总览',
+        columns,
+        rows,
+      },
+      'multi',
+    )
+  }
 
   const hasUsd =
     summary.order_total_usd > 0 ||
@@ -664,7 +894,7 @@ export function PerformanceManager({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {GROUP_TABS.filter((tab) => canViewProfit || !['catalog_product', 'custom_product'].includes(tab.value)).map((tab) => (
           <Button
             key={tab.value}
@@ -675,6 +905,16 @@ export function PerformanceManager({
             {tab.label}
           </Button>
         ))}
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto"
+          onClick={exportGroupTable}
+          disabled={exporting !== null || (isProductView ? productRows.length === 0 : sortedRows.length === 0)}
+        >
+          <Download className="h-3.5 w-3.5" />
+          {exporting === 'group' ? '导出中…' : '导出表格'}
+        </Button>
       </div>
 
       {isProductView ? (
@@ -726,49 +966,49 @@ export function PerformanceManager({
                   {rate ? (
                     <>
                       <TableCell className="text-right tabular-nums">
-                        {formatCny(Number(rowOrderTotal))}
+                        {formatCnyWhole(Number(rowOrderTotal))}
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-green-700">
-                        {formatCny(Number(rowReceived))}
+                        {formatCnyWhole(Number(rowReceived))}
                       </TableCell>
                       <TableCell
                         className={cn(
                           'text-right tabular-nums',
-                          Number(rowOutstanding) > 0.005 && 'text-destructive',
+                          roundWhole(Number(rowOutstanding)) !== 0 && 'text-destructive',
                         )}
                       >
-                        {formatCny(Number(rowOutstanding))}
+                        {formatCnyWhole(Number(rowOutstanding))}
                       </TableCell>
                     </>
                   ) : (
                     <>
                       <TableCell className="text-right tabular-nums">
-                        {formatCny(Number(row.order_total_cny_native))}
+                        {formatCnyWhole(Number(row.order_total_cny_native))}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatUsd(Number(row.order_total_usd))}
+                        {formatUsdWhole(Number(row.order_total_usd))}
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-green-700">
-                        {formatCny(Number(row.received_cny_native))}
+                        {formatCnyWhole(Number(row.received_cny_native))}
                       </TableCell>
                       <TableCell className="text-right tabular-nums text-green-700">
-                        {formatUsd(Number(row.received_usd))}
+                        {formatUsdWhole(Number(row.received_usd))}
                       </TableCell>
                       <TableCell
                         className={cn(
                           'text-right tabular-nums',
-                          Number(row.outstanding_cny) > 0.005 && 'text-destructive',
+                          roundWhole(Number(row.outstanding_cny)) !== 0 && 'text-destructive',
                         )}
                       >
-                        {formatCny(Number(row.outstanding_cny_native))}
+                        {formatCnyWhole(Number(row.outstanding_cny_native))}
                       </TableCell>
                       <TableCell
                         className={cn(
                           'text-right tabular-nums',
-                          Number(row.outstanding_cny) > 0.005 && 'text-destructive',
+                          roundWhole(Number(row.outstanding_cny)) !== 0 && 'text-destructive',
                         )}
                       >
-                        {formatUsd(Number(row.outstanding_usd))}
+                        {formatUsdWhole(Number(row.outstanding_usd))}
                       </TableCell>
                     </>
                   )}
@@ -794,50 +1034,50 @@ export function PerformanceManager({
                 {rate ? (
                   <>
                     <TableCell className="text-right tabular-nums">
-                      {formatCny(groupTotals.cnyTotal + groupTotals.usdTotal * rate)}
+                      {formatCnyWhole(groupTotals.cnyTotal + groupTotals.usdTotal * rate)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-green-700">
-                      {formatCny(groupTotals.cnyReceived + groupTotals.usdReceived * rate)}
+                      {formatCnyWhole(groupTotals.cnyReceived + groupTotals.usdReceived * rate)}
                     </TableCell>
                     <TableCell
                       className={cn(
                         'text-right tabular-nums',
-                        groupTotals.cnyOutstanding + groupTotals.usdOutstanding * rate > 0.005 &&
+                        roundWhole(groupTotals.cnyOutstanding + groupTotals.usdOutstanding * rate) !== 0 &&
                           'text-destructive',
                       )}
                     >
-                      {formatCny(groupTotals.cnyOutstanding + groupTotals.usdOutstanding * rate)}
+                      {formatCnyWhole(groupTotals.cnyOutstanding + groupTotals.usdOutstanding * rate)}
                     </TableCell>
                   </>
                 ) : (
                   <>
                     <TableCell className="text-right tabular-nums">
-                      {formatCny(groupTotals.cnyTotal)}
+                      {formatCnyWhole(groupTotals.cnyTotal)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatUsd(groupTotals.usdTotal)}
+                      {formatUsdWhole(groupTotals.usdTotal)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-green-700">
-                      {formatCny(groupTotals.cnyReceived)}
+                      {formatCnyWhole(groupTotals.cnyReceived)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-green-700">
-                      {formatUsd(groupTotals.usdReceived)}
+                      {formatUsdWhole(groupTotals.usdReceived)}
                     </TableCell>
                     <TableCell
                       className={cn(
                         'text-right tabular-nums',
-                        groupTotals.cnyOutstanding > 0.005 && 'text-destructive',
+                        roundWhole(groupTotals.cnyOutstanding) !== 0 && 'text-destructive',
                       )}
                     >
-                      {formatCny(groupTotals.cnyOutstanding)}
+                      {formatCnyWhole(groupTotals.cnyOutstanding)}
                     </TableCell>
                     <TableCell
                       className={cn(
                         'text-right tabular-nums',
-                        groupTotals.usdOutstanding > 0.005 && 'text-destructive',
+                        roundWhole(groupTotals.usdOutstanding) !== 0 && 'text-destructive',
                       )}
                     >
-                      {formatUsd(groupTotals.usdOutstanding)}
+                      {formatUsdWhole(groupTotals.usdOutstanding)}
                     </TableCell>
                   </>
                 )}
@@ -870,9 +1110,20 @@ export function PerformanceManager({
       )}
 
       <div className="space-y-3 rounded-xl border bg-card p-4 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
-        <div>
-          <h2 className="font-semibold">多维销售总览</h2>
-          <p className="text-sm text-muted-foreground">按最多三层维度交叉汇总销售产品行，沿用上方筛选条件。</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">多维销售总览</h2>
+            <p className="text-sm text-muted-foreground">按最多三层维度交叉汇总销售产品行，沿用上方筛选条件。</p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportMultiDimensionTable}
+            disabled={exporting !== null || filteredMultiDimensionRows.length === 0}
+          >
+            <Download className="h-3.5 w-3.5" />
+            {exporting === 'multi' ? '导出中…' : '导出表格'}
+          </Button>
         </div>
         <div className="grid gap-3 md:grid-cols-3">
           {(['第一层维度', '第二层维度', '第三层维度'] as const).map((label, index) => (
@@ -936,9 +1187,9 @@ export function PerformanceManager({
                   {multiDimensions[1] && <TableCell>{row.dimension_2_label}</TableCell>}
                   {multiDimensions[2] && <TableCell>{row.dimension_3_label}</TableCell>}
                   <TableCell className="text-right tabular-nums">{row.order_count.toLocaleString()}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatAmount(row.sales_quantity)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatCny(row.sales_amount_cny)}</TableCell>
-                  <TableCell className="text-right tabular-nums">{formatUsd(row.sales_amount_usd)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatQuantityWhole(row.sales_quantity)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatCnyWhole(row.sales_amount_cny)}</TableCell>
+                  <TableCell className="text-right tabular-nums">{formatUsdWhole(row.sales_amount_usd)}</TableCell>
                 </TableRow>
               ))}
               {filteredMultiDimensionRows.length === 0 && (
