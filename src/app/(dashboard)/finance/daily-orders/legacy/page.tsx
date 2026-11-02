@@ -17,6 +17,13 @@ export default async function LegacyDailyOrdersPage({
 }) {
   await requireApproved()
   const filters = parseDailyOrderFilters(await searchParams)
+  // 旧台账只区分正常/已作废，多选的记录状态折算回单值下拉。
+  const legacyRecordStatus =
+    filters.recordStatuses.length === 0
+      ? 'all'
+      : filters.recordStatuses.includes('voided')
+        ? 'voided'
+        : 'active'
   const supabase = await createClient()
   const [orders, options] = await Promise.all([
     fetchDailyOrders(supabase, filters, 500, true),
@@ -40,15 +47,15 @@ export default async function LegacyDailyOrdersPage({
       <form className="grid gap-3 rounded-md border p-4 md:grid-cols-4 xl:grid-cols-8">
         <Input name="q" defaultValue={filters.q} placeholder="订单/发货单/产品/SKU" className="xl:col-span-2" />
         <DateRangePicker from={filters.dateFrom} to={filters.dateTo} className="md:col-span-2" />
-        <select name="shop" defaultValue={filters.shop ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
+        <select name="shop" defaultValue={filters.shops[0] ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="">全部店铺</option>
           {options.shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}
         </select>
-        <select name="salesperson" defaultValue={filters.salesperson ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
+        <select name="salesperson" defaultValue={filters.salespeople[0] ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="">全部业务员</option>
           {options.salespeople.map((person) => <option key={person.id} value={person.id}>{displayProfileName(person)}</option>)}
         </select>
-        <select name="category" defaultValue={filters.category ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
+        <select name="category" defaultValue={filters.categories[0] ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="">全部发货分类</option>
           <option value="stock">现货</option>
           <option value="sample">现货样品</option>
@@ -56,13 +63,13 @@ export default async function LegacyDailyOrdersPage({
           <option value="custom">定制</option>
           <option value="purchase">外采</option>
         </select>
-        <select name="payment" defaultValue={filters.payment ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
+        <select name="payment" defaultValue={filters.payments[0] ?? ''} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="">全部收款分类</option>
           <option value="full">全款</option>
           <option value="deposit">定金</option>
           <option value="balance">尾款</option>
         </select>
-        <select name="recordStatus" defaultValue={filters.recordStatus ?? 'active'} className="h-10 rounded-md border bg-background px-3 text-sm">
+        <select name="recordStatus" defaultValue={legacyRecordStatus} className="h-10 rounded-md border bg-background px-3 text-sm">
           <option value="active">正常订单</option>
           <option value="voided">仅已作废</option>
           <option value="all">所有订单记录</option>

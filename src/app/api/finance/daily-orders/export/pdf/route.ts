@@ -17,6 +17,7 @@ import {
   formatDailyMoney,
   parseDailyOrderFilters,
   PAYMENT_LABELS,
+  searchParamsToFilterRecord,
   SHIPPING_LABELS,
 } from '@/lib/daily-orders'
 import { createClient } from '@/lib/supabase/server'
@@ -113,7 +114,7 @@ export async function GET(request: Request) {
   // 与 XLSX 导出一致：可见范围交给 business_orders 的 RLS，不再限定财务角色。
   await requireApproved()
   const searchParams = new URL(request.url).searchParams
-  const filters = parseDailyOrderFilters(Object.fromEntries(searchParams.entries()))
+  const filters = parseDailyOrderFilters(searchParamsToFilterRecord(searchParams))
   const ids = parseIds(searchParams.getAll('ids'))
   return buildPdfResponse(filters, ids.length > 0 ? ids : undefined)
 }
@@ -128,7 +129,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '请求格式错误' }, { status: 400 })
   }
   const params = new URLSearchParams(body.filterQuery)
-  const filters = parseDailyOrderFilters(Object.fromEntries(params.entries()))
+  const filters = parseDailyOrderFilters(searchParamsToFilterRecord(params))
   const ids = parseIds(Array.isArray(body.ids) ? body.ids : [])
   return buildPdfResponse(filters, ids.length > 0 ? ids : undefined)
 }

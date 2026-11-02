@@ -42,14 +42,18 @@ export async function fetchDailyOrders(
     .limit(Math.min(limit, DAILY_ORDER_EXPORT_LIMIT))
 
   if (includeScreenshots) query = query.eq('finance_daily_order_screenshots.status', 'active')
-  if (filters.recordStatus === 'voided') query = query.eq('status', 'void')
-  if (!filters.recordStatus || filters.recordStatus === 'active') query = query.eq('status', 'active')
+  // 记录状态按勾选项取并集；空数组表示不过滤。旧表只有 active / void 两态。
+  const recordStatuses = new Set(filters.recordStatuses)
+  const hasActive = recordStatuses.has('active')
+  const hasVoided = recordStatuses.has('voided')
+  if (hasVoided && !hasActive) query = query.eq('status', 'void')
+  else if (hasActive && !hasVoided) query = query.eq('status', 'active')
   if (filters.dateFrom) query = query.gte('order_date', filters.dateFrom)
   if (filters.dateTo) query = query.lte('order_date', filters.dateTo)
-  if (filters.shop) query = query.eq('shop_id', filters.shop)
-  if (filters.salesperson) query = query.eq('salesperson_id', filters.salesperson)
-  if (filters.category) query = query.eq('shipping_category', filters.category)
-  if (filters.payment) query = query.eq('payment_category', filters.payment)
+  if (filters.shops.length > 0) query = query.in('shop_id', filters.shops)
+  if (filters.salespeople.length > 0) query = query.in('salesperson_id', filters.salespeople)
+  if (filters.categories.length > 0) query = query.in('shipping_category', filters.categories)
+  if (filters.payments.length > 0) query = query.in('payment_category', filters.payments)
   const q = filters.q.replace(/[,()%]/g, ' ').trim()
   if (q) {
     query = query.or(

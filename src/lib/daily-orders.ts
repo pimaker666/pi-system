@@ -64,36 +64,68 @@ export function formatDailyMoney(amount: number | string, currency: CurrencyCode
   return `${currency} ${formatAmount(Number(amount))}`
 }
 
+/** URLSearchParams → 解析入参：重复键保留为数组，供多选筛选使用。 */
+export function searchParamsToFilterRecord(
+  params: URLSearchParams,
+): Record<string, string | string[] | undefined> {
+  const record: Record<string, string | string[]> = {}
+  for (const [key, value] of params.entries()) {
+    const current = record[key]
+    if (current === undefined) record[key] = value
+    else if (Array.isArray(current)) current.push(value)
+    else record[key] = [current, value]
+  }
+  return record
+}
+
 export function parseDailyOrderFilters(raw: Record<string, string | string[] | undefined>): DailyOrderFilters {
   const scalar = (key: string) => {
     const value = raw[key]
     return Array.isArray(value) ? value[0] : value
   }
-  const values = (key: string) => {
-    const value = raw[key]
-    if (Array.isArray(value)) return value
-    return value ? value.split(',').filter(Boolean) : []
+  // 多选字段同时接受旧版单数参数（历史台账页与旧书签仍可能带 shop=...）。
+  const values = (key: string, legacyKey: string) => {
+    const value = raw[key] ?? raw[legacyKey]
+    if (value == null) return []
+    const list = Array.isArray(value) ? value : value.split(',')
+    return list.filter(Boolean)
   }
+
+  // 清空多选时前端提交哨兵值 all，与「参数缺失」区分：缺失走默认值，all 表示不限制。
+  const settlementRaw = values('settlementStatuses', 'settlementStatus')
+  const recordRaw = values('recordStatuses', 'recordStatus')
+  const settlementValues = settlementRaw.filter((value) => value !== 'all')
+  const recordValues = recordRaw.filter((value) => value !== 'all')
+
   const parsed = dailyOrderFilterSchema.safeParse({
     q: scalar('q') || undefined,
     dateFrom: scalar('dateFrom') || undefined,
     dateTo: scalar('dateTo') || undefined,
-    shop: scalar('shop') || undefined,
-    shopGroup: scalar('shopGroup') || undefined,
-    salesperson: scalar('salesperson') || undefined,
-    category: scalar('category') || undefined,
-    payment: scalar('payment') || undefined,
-    completion: scalar('completion') || undefined,
-    balanceStatus: scalar('balanceStatus') || undefined,
-    customerBindingStatus: scalar('customerBindingStatus') || undefined,
-    recordStatus: scalar('recordStatus') || undefined,
-    fulfillmentStatuses: values('fulfillmentStatuses'),
+    shops: values('shops', 'shop'),
+    shopGroups: values('shopGroups', 'shopGroup'),
+    salespeople: values('salespeople', 'salesperson'),
+    categories: values('categories', 'category'),
+    payments: values('payments', 'payment'),
+    completions: values('completions', 'completion'),
+    balanceStatuses: values('balanceStatuses', 'balanceStatus'),
+    // 未提交结算条件时保持台账默认「未结算」。
+    settlementStatuses: settlementRaw.includes('all')
+      ? []
+      : settlementValues.length > 0
+        ? settlementValues
+        : ['unsettled'],
+    commissionClearanceStatuses: values('commissionClearanceStatuses', 'commissionClearanceStatus')
+      .filter((value) => value !== 'all'),
+    customerBindingStatuses: values('customerBindingStatuses', 'customerBindingStatus'),
+    recordStatuses: recordRaw.includes('all')
+      ? []
+      : recordValues.length > 0
+        ? recordValues
+        : ['active'],
+    fulfillmentStatuses: values('fulfillmentStatuses', 'fulfillmentStatus'),
     markedOnly: scalar('markedOnly') === '1' ? '1' : undefined,
-    commissionClearanceStatus: scalar('commissionClearanceStatus') || undefined,
-    // 台账默认只展示未结算订单；显式传 all 才展示全部。
-    settlementStatus: scalar('settlementStatus') || 'unsettled',
   })
-  return parsed.success ? parsed.data : { q: '', settlementStatus: 'unsettled', fulfillmentStatuses: [] }
+  return parsed.success ? parsed.data : dailyOrderFilterSchema.parse({})
 }
 
 export function dailyOrderFilterQuery(filters: DailyOrderFilters) {
@@ -105,6 +137,9 @@ export function dailyOrderFilterQuery(filters: DailyOrderFilters) {
       params.set(key, value)
     }
   })
+  // 结算/记录状态清空时显式写 all，否则导出侧重新解析会回落到「未结算 / 正常订单」。
+  if (filters.settlementStatuses.length === 0) params.set('settlementStatuses', 'all')
+  if (filters.recordStatuses.length === 0) params.set('recordStatuses', 'all')
   return params.toString()
 }
 

@@ -48,27 +48,28 @@ export const dailyOrderSchema = z.object({
 
 export const dailyOrderCompletionStatuses = ['completed', 'incomplete'] as const
 export const dailyOrderBalanceStatuses = ['settled', 'unsettled'] as const
-export const dailyOrderSettlementStatuses = ['settled', 'unsettled', 'all'] as const
-export const dailyOrderCommissionClearanceStatuses = ['cleared', 'uncleared', 'all'] as const
 export const dailyOrderCustomerBindingStatuses = ['bound', 'unbound'] as const
-export const dailyOrderRecordStatuses = ['active', 'voided', 'special_closed', 'all'] as const
 export const dailyOrderFulfillmentStatuses = ['fully_shipped', 'partially_shipped', 'unshipped'] as const
+/** 结算/提成结清/记录状态筛选可多选；空数组视为不限制（settlement 缺省见解析的未结算默认）。 */
+export const dailyOrderSettlementFilterValues = ['settled', 'unsettled'] as const
+export const dailyOrderCommissionClearanceFilterValues = ['cleared', 'uncleared'] as const
+export const dailyOrderRecordFilterValues = ['active', 'special_closed', 'voided'] as const
 
 export const dailyOrderFilterSchema = z.object({
   q: z.string().trim().max(200).optional().default(''),
   dateFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   dateTo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  shop: z.string().uuid().optional(),
-  shopGroup: z.string().uuid().optional(),
-  salesperson: z.string().uuid().optional(),
-  category: z.enum(dailyOrderShippingCategories).optional(),
-  payment: z.enum(dailyOrderPaymentCategories).optional(),
-  completion: z.enum(dailyOrderCompletionStatuses).optional(),
-  balanceStatus: z.enum(dailyOrderBalanceStatuses).optional(),
-  settlementStatus: z.enum(dailyOrderSettlementStatuses).optional(),
-  commissionClearanceStatus: z.enum(dailyOrderCommissionClearanceStatuses).optional(),
-  customerBindingStatus: z.enum(dailyOrderCustomerBindingStatuses).optional(),
-  recordStatus: z.enum(dailyOrderRecordStatuses).optional(),
+  shops: z.array(z.string().uuid()).default([]),
+  shopGroups: z.array(z.string().uuid()).default([]),
+  salespeople: z.array(z.string().uuid()).default([]),
+  categories: z.array(z.enum(dailyOrderShippingCategories)).default([]),
+  payments: z.array(z.enum(dailyOrderPaymentCategories)).default([]),
+  completions: z.array(z.enum(dailyOrderCompletionStatuses)).default([]),
+  balanceStatuses: z.array(z.enum(dailyOrderBalanceStatuses)).default([]),
+  settlementStatuses: z.array(z.enum(dailyOrderSettlementFilterValues)).default(['unsettled']),
+  commissionClearanceStatuses: z.array(z.enum(dailyOrderCommissionClearanceFilterValues)).default([]),
+  customerBindingStatuses: z.array(z.enum(dailyOrderCustomerBindingStatuses)).default([]),
+  recordStatuses: z.array(z.enum(dailyOrderRecordFilterValues)).default(['active']),
   fulfillmentStatuses: z.array(z.enum(dailyOrderFulfillmentStatuses)).default([]),
   /** 只看当前账号标记过的订单；空表示不限制。 */
   markedOnly: z.enum(['1']).optional(),

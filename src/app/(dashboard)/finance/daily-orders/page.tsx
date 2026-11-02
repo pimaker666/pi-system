@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { Archive, CreditCard, Plus, Settings, Upload } from 'lucide-react'
 import { BusinessDailyOrderTable } from '@/components/finance/business-daily-order-table'
-import { FulfillmentStatusSelect } from '@/components/finance/fulfillment-status-select'
+import { FormMultiSelect, type FormMultiSelectOption } from '@/components/shared/form-multi-select'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -106,17 +106,56 @@ export default async function DailyOrdersPage({
   const canManageShops = profile.role === 'finance' || profile.role === 'admin'
   const canCreate = ['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)
   const hasMoreFilters = Boolean(
-    filters.shopGroup ||
-    filters.category ||
-    filters.payment ||
-    filters.completion ||
-    (filters.recordStatus && filters.recordStatus !== 'active') ||
-    filters.balanceStatus ||
-    filters.customerBindingStatus ||
+    filters.shopGroups.length > 0 ||
+    filters.categories.length > 0 ||
+    filters.payments.length > 0 ||
+    filters.completions.length > 0 ||
+    filters.recordStatuses.join(',') !== 'active' ||
+    filters.balanceStatuses.length > 0 ||
+    filters.customerBindingStatuses.length > 0 ||
     filters.fulfillmentStatuses.length > 0 ||
     filters.markedOnly ||
-    (filters.commissionClearanceStatus && filters.commissionClearanceStatus !== 'all'),
+    filters.commissionClearanceStatuses.length > 0,
   )
+
+  const categoryOptions: FormMultiSelectOption[] = [
+    { value: 'stock', label: '现货' },
+    { value: 'sample', label: '现货样品' },
+    { value: 'custom_sample', label: '定制打样' },
+    { value: 'custom', label: '定制' },
+    { value: 'purchase', label: '外采' },
+  ]
+  const paymentOptions: FormMultiSelectOption[] = [
+    { value: 'full', label: '全款' },
+    { value: 'deposit', label: '定金' },
+    { value: 'balance', label: '尾款' },
+  ]
+  const settlementOptions: FormMultiSelectOption[] = [
+    { value: 'settled', label: '已结算' },
+    { value: 'unsettled', label: '未结算' },
+  ]
+  const recordStatusOptions: FormMultiSelectOption[] = [
+    { value: 'active', label: '正常订单（含特殊关闭）' },
+    { value: 'special_closed', label: '仅特殊关闭' },
+    { value: 'voided', label: '仅已作废' },
+  ]
+  const balanceStatusOptions: FormMultiSelectOption[] = [
+    { value: 'settled', label: '已收齐' },
+    { value: 'unsettled', label: '未收齐' },
+  ]
+  const customerBindingOptions: FormMultiSelectOption[] = [
+    { value: 'bound', label: '已绑定客户' },
+    { value: 'unbound', label: '未绑定客户' },
+  ]
+  const fulfillmentOptions: FormMultiSelectOption[] = [
+    { value: 'fully_shipped', label: '全部发货' },
+    { value: 'partially_shipped', label: '部分发货' },
+    { value: 'unshipped', label: '未发货' },
+  ]
+  const commissionClearanceOptions: FormMultiSelectOption[] = [
+    { value: 'cleared', label: '已结清' },
+    { value: 'uncleared', label: '未结清' },
+  ]
 
   const selectClassName =
     'h-10 min-w-0 rounded-md border border-input bg-card px-3 text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2'
@@ -187,21 +226,36 @@ export default async function DailyOrdersPage({
             to={filters.dateTo}
             className="md:col-span-2 xl:col-span-3"
           />
-          <select name="shop" defaultValue={filters.shop ?? ''} className={selectClassName + ' xl:col-span-2'}>
-            <option value="">全部店铺</option>
-            {options.shops.map((shop) => <option key={shop.id} value={shop.id}>{shop.name}</option>)}
-          </select>
-          <select name="salesperson" defaultValue={filters.salesperson ?? ''} className={selectClassName + ' xl:col-span-2'}>
-            <option value="">全部业务员</option>
-            {options.salespeople.map((person) => (
-              <option key={person.id} value={person.id}>{displayProfileName(person)}</option>
-            ))}
-          </select>
-          <select name="settlementStatus" defaultValue={filters.settlementStatus ?? 'unsettled'} className={selectClassName + ' xl:col-span-2'}>
-            <option value="all">全部结算状态</option>
-            <option value="settled">已结算</option>
-            <option value="unsettled">未结算</option>
-          </select>
+          <FormMultiSelect
+            name="shops"
+            label="店铺"
+            allLabel="全部店铺"
+            options={options.shops.map((shop) => ({ value: shop.id, label: shop.name }))}
+            defaultSelected={filters.shops}
+            triggerClassName={selectClassName + ' xl:col-span-2'}
+            panelClassName="w-64"
+          />
+          <FormMultiSelect
+            name="salespeople"
+            label="业务员"
+            allLabel="全部业务员"
+            options={options.salespeople.map((person) => ({
+              value: person.id,
+              label: displayProfileName(person),
+            }))}
+            defaultSelected={filters.salespeople}
+            triggerClassName={selectClassName + ' xl:col-span-2'}
+            panelClassName="w-56"
+          />
+          <FormMultiSelect
+            name="settlementStatuses"
+            label="结算状态"
+            allLabel="全部结算状态"
+            options={settlementOptions}
+            defaultSelected={filters.settlementStatuses}
+            triggerClassName={selectClassName + ' xl:col-span-2'}
+            emptyValue="all"
+          />
           <div className="flex flex-wrap gap-2 md:col-span-4 xl:col-span-3">
             <Button type="submit">应用筛选</Button>
             <Button asChild type="button" variant="outline">
@@ -215,58 +269,89 @@ export default async function DailyOrdersPage({
             <span className="text-xs font-normal text-muted-foreground">店铺分组、分类、状态、标记与结清条件 ▼</span>
           </summary>
           <div className="grid gap-3 border-t bg-muted/15 p-4 md:grid-cols-4 xl:grid-cols-6">
-            <select name="shopGroup" defaultValue={filters.shopGroup ?? ''} className={selectClassName}>
-              <option value="">全部店铺分组</option>
-              {options.groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}
-            </select>
-            <select name="category" defaultValue={filters.category ?? ''} className={selectClassName}>
-              <option value="">全部发货分类</option>
-              <option value="stock">现货</option>
-              <option value="sample">现货样品</option>
-              <option value="custom_sample">定制打样</option>
-              <option value="custom">定制</option>
-              <option value="purchase">外采</option>
-            </select>
-            <select name="payment" defaultValue={filters.payment ?? ''} className={selectClassName}>
-              <option value="">全部收款分类</option>
-              <option value="full">全款</option>
-              <option value="deposit">定金</option>
-              <option value="balance">尾款</option>
-            </select>
-            <select name="completion" defaultValue={filters.completion ?? ''} className={selectClassName}>
-              <option value="">订单状态</option>
-              <option value="completed">已完成</option>
-              <option value="incomplete">未完成</option>
-            </select>
-            <select name="recordStatus" defaultValue={filters.recordStatus ?? 'active'} className={selectClassName}>
-              <option value="active">正常订单（含特殊关闭）</option>
-              <option value="special_closed">仅特殊关闭</option>
-              <option value="voided">仅已作废</option>
-              <option value="all">所有订单记录</option>
-            </select>
+            <FormMultiSelect
+              name="shopGroups"
+              label="店铺分组"
+              allLabel="全部店铺分组"
+              options={options.groups.map((group) => ({ value: group.id, label: group.name }))}
+              defaultSelected={filters.shopGroups}
+              triggerClassName={selectClassName}
+              panelClassName="w-56"
+            />
+            <FormMultiSelect
+              name="categories"
+              label="发货分类"
+              allLabel="全部发货分类"
+              options={categoryOptions}
+              defaultSelected={filters.categories}
+              triggerClassName={selectClassName}
+            />
+            <FormMultiSelect
+              name="payments"
+              label="收款分类"
+              allLabel="全部收款分类"
+              options={paymentOptions}
+              defaultSelected={filters.payments}
+              triggerClassName={selectClassName}
+            />
+            <FormMultiSelect
+              name="completions"
+              label="订单状态"
+              allLabel="订单状态"
+              options={[
+                { value: 'completed', label: '已完成' },
+                { value: 'incomplete', label: '未完成' },
+              ]}
+              defaultSelected={filters.completions}
+              triggerClassName={selectClassName}
+            />
+            <FormMultiSelect
+              name="recordStatuses"
+              label="记录状态"
+              allLabel="所有订单记录"
+              options={recordStatusOptions}
+              defaultSelected={filters.recordStatuses}
+              triggerClassName={selectClassName}
+              panelClassName="w-64"
+              emptyValue="all"
+            />
             <select name="markedOnly" defaultValue={filters.markedOnly ?? ''} className={selectClassName}>
               <option value="">全部订单标记</option>
               <option value="1">只看我标记的订单</option>
             </select>
-            <select name="balanceStatus" defaultValue={filters.balanceStatus ?? ''} className={selectClassName}>
-              <option value="">全部尾款状态</option>
-              <option value="settled">已收齐</option>
-              <option value="unsettled">未收齐</option>
-            </select>
-            <select name="customerBindingStatus" defaultValue={filters.customerBindingStatus ?? ''} className={selectClassName}>
-              <option value="">全部客户状态</option>
-              <option value="bound">已绑定客户</option>
-              <option value="unbound">未绑定客户</option>
-            </select>
-            <FulfillmentStatusSelect
+            <FormMultiSelect
+              name="balanceStatuses"
+              label="尾款状态"
+              allLabel="全部尾款状态"
+              options={balanceStatusOptions}
+              defaultSelected={filters.balanceStatuses}
+              triggerClassName={selectClassName}
+            />
+            <FormMultiSelect
+              name="customerBindingStatuses"
+              label="客户状态"
+              allLabel="全部客户状态"
+              options={customerBindingOptions}
+              defaultSelected={filters.customerBindingStatuses}
+              triggerClassName={selectClassName}
+            />
+            <FormMultiSelect
+              name="fulfillmentStatuses"
+              label="发货状态"
+              allLabel="全部发货状态"
+              options={fulfillmentOptions}
               defaultSelected={filters.fulfillmentStatuses}
               triggerClassName={selectClassName}
             />
-            <select name="commissionClearanceStatus" defaultValue={filters.commissionClearanceStatus ?? 'all'} className={selectClassName}>
-              <option value="all">全部提成结清状态</option>
-              <option value="cleared">已结清</option>
-              <option value="uncleared">未结清</option>
-            </select>
+            <FormMultiSelect
+              name="commissionClearanceStatuses"
+              label="提成结清"
+              allLabel="全部提成结清状态"
+              options={commissionClearanceOptions}
+              defaultSelected={filters.commissionClearanceStatuses}
+              triggerClassName={selectClassName}
+              panelClassName="w-56"
+            />
           </div>
         </details>
       </form>

@@ -125,7 +125,7 @@ function buildLedgerQuery(
 ) {
   const keyword = normalizeKeyword(filters.q)
   // 发货分类落在明细上；下推到明细的筛选必须用 !inner，否则父订单不会被过滤。
-  const needInner = Boolean(filters.category) || productSearch
+  const needInner = filters.categories.length > 0 || productSearch
   const itemsEmbed = needInner ? 'business_order_items!inner(*)' : 'business_order_items(*)'
   // 标记按账号隔离（RLS 只返回本人行）；筛选时用 !inner 才能过滤掉未标记订单。
   const marksEmbed = filters.markedOnly
@@ -146,25 +146,42 @@ function buildLedgerQuery(
   if (ids && ids.length > 0) query = query.in('id', ids)
   if (filters.dateFrom) query = query.gte('order_date', filters.dateFrom)
   if (filters.dateTo) query = query.lte('order_date', filters.dateTo)
-  if (filters.shop) query = query.eq('shop_id', filters.shop)
-  if (filters.shopGroup) query = query.eq('shop_group_id', filters.shopGroup)
-  if (filters.salesperson) query = query.eq('salesperson_id', filters.salesperson)
-  if (filters.recordStatus === 'voided') query = query.not('voided_at', 'is', null)
-  if (!filters.recordStatus || filters.recordStatus === 'active' || filters.recordStatus === 'special_closed') {
-    query = query.is('voided_at', null)
+  if (filters.shops.length > 0) query = query.in('shop_id', filters.shops)
+  if (filters.shopGroups.length > 0) query = query.in('shop_group_id', filters.shopGroups)
+  if (filters.salespeople.length > 0) query = query.in('salesperson_id', filters.salespeople)
+  // 记录状态按勾选项取并集：正常（含特殊关闭）、仅特殊关闭、仅已作废。
+  const recordStatuses = new Set(filters.recordStatuses)
+  if (recordStatuses.size > 0) {
+    const hasActive = recordStatuses.has('active')
+    const hasSpecial = recordStatuses.has('special_closed')
+    const hasVoided = recordStatuses.has('voided')
+    if (hasActive && hasVoided) {
+      // 未作废 ∪ 已作废 = 全部记录
+    } else if (hasActive) {
+      query = query.is('voided_at', null)
+    } else if (hasSpecial && hasVoided) {
+      // 特殊关闭（未作废且有 closed_at）∪ 已作废 = closed_at 非空 ∪ voided_at 非空
+      query = query.or('closed_at.not.is.null,voided_at.not.is.null')
+    } else if (hasSpecial) {
+      query = query.is('voided_at', null).not('closed_at', 'is', null)
+    } else {
+      query = query.not('voided_at', 'is', null)
+    }
   }
-  if (filters.recordStatus === 'special_closed') query = query.not('closed_at', 'is', null)
-  if (filters.payment) query = query.eq('daily_payment_category', filters.payment)
-  if (filters.customerBindingStatus === 'bound') query = query.not('customer_id', 'is', null)
-  if (filters.customerBindingStatus === 'unbound') query = query.is('customer_id', null)
+  if (filters.payments.length > 0) query = query.in('daily_payment_category', filters.payments)
+  const bindingStatuses = new Set(filters.customerBindingStatuses)
+  if (bindingStatuses.size === 1) {
+    if (bindingStatuses.has('bound')) query = query.not('customer_id', 'is', null)
+    else if (bindingStatuses.has('unbound')) query = query.is('customer_id', null)
+  }
   if (filters.fulfillmentStatuses.length > 0) {
     query = query.in('fulfillment_status', filters.fulfillmentStatuses)
   }
-  if (filters.completion === 'completed') {
+  if (filters.completions.length === 1 && filters.completions[0] === 'completed') {
     query = query.eq('fulfillment_status', 'fully_shipped')
   }
-  if (filters.category) {
-    query = query.eq('business_order_items.daily_shipping_category', filters.category)
+  if (filters.categories.length > 0) {
+    query = query.in('business_order_items.daily_shipping_category', filters.categories)
   }
 
   if (keyword) {
@@ -196,24 +213,32 @@ function compareLedgerOrders(left: BusinessDailyLedgerOrder, right: BusinessDail
 
 /**
  * 完成状态后过滤：outstanding_amount 在 SQL 查询之后由 RPC 附加，
- * 因此收款是否收齐只能在 JS 侧判断。
+ * 因此收款是否收齐只能在 JS 侧判断。多选时按并集保留。
  */
 function applyCompletionFilter(
   orders: BusinessDailyLedgerOrder[],
-  completion: DailyOrderFilters['completion'],
+  completions: DailyOrderFilters['completions'],
 ): BusinessDailyLedgerOrder[] {
-  if (!completion) return orders
-  if (completion === 'completed') return orders.filter((o) => o.outstanding_amount <= 0)
-  return orders.filter((o) => o.fulfillment_status !== 'fully_shipped' || o.outstanding_amount > 0)
+  const wantCompleted = completions.includes('completed')
+  const wantIncomplete = completions.includes('incomplete')
+  if (wantCompleted === wantIncomplete) return orders
+  return orders.filter((order) => {
+    const completed =
+      order.fulfillment_status === 'fully_shipped' && order.outstanding_amount <= 0
+    return wantCompleted ? completed : !completed
+  })
 }
 
 function applyBalanceStatusFilter(
   orders: BusinessDailyLedgerOrder[],
-  balanceStatus: DailyOrderFilters['balanceStatus'],
+  balanceStatuses: DailyOrderFilters['balanceStatuses'],
 ): BusinessDailyLedgerOrder[] {
-  if (!balanceStatus) return orders
-  if (balanceStatus === 'settled') return orders.filter((order) => order.outstanding_amount === 0)
-  return orders.filter((order) => order.outstanding_amount !== 0)
+  const wantSettled = balanceStatuses.includes('settled')
+  const wantUnsettled = balanceStatuses.includes('unsettled')
+  if (wantSettled === wantUnsettled) return orders
+  return orders.filter((order) =>
+    wantSettled ? order.outstanding_amount === 0 : order.outstanding_amount !== 0,
+  )
 }
 
 function isOrderFullyInSet(order: BusinessDailyLedgerOrder, itemIdSet: Set<string>) {
@@ -223,28 +248,31 @@ function isOrderFullyInSet(order: BusinessDailyLedgerOrder, itemIdSet: Set<strin
 
 /**
  * 结算状态后过滤：结算按明细行记录（finance_business_order_item_settlements）。
- * 订单级判定——该订单本次读到的所有明细行都已结算才算“已结算”。`all` 或缺省不过滤。
+ * 订单级判定——该订单本次读到的所有明细行都已结算才算“已结算”。空数组不过滤。
  */
 function applySettlementFilter(
   orders: BusinessDailyLedgerOrder[],
-  settlementStatus: DailyOrderFilters['settlementStatus'],
+  settlementStatuses: DailyOrderFilters['settlementStatuses'],
   settledItemIdSet: Set<string>,
 ): BusinessDailyLedgerOrder[] {
-  if (!settlementStatus || settlementStatus === 'all') return orders
+  const wantSettled = settlementStatuses.includes('settled')
+  const wantUnsettled = settlementStatuses.includes('unsettled')
+  if (wantSettled === wantUnsettled) return orders
   return orders.filter(
-    (order) => isOrderFullyInSet(order, settledItemIdSet) === (settlementStatus === 'settled'),
+    (order) => isOrderFullyInSet(order, settledItemIdSet) === wantSettled,
   )
 }
 
 function applyCommissionClearanceFilter(
   orders: BusinessDailyLedgerOrder[],
-  commissionClearanceStatus: DailyOrderFilters['commissionClearanceStatus'],
+  commissionClearanceStatuses: DailyOrderFilters['commissionClearanceStatuses'],
   clearedItemIdSet: Set<string>,
 ): BusinessDailyLedgerOrder[] {
-  if (!commissionClearanceStatus || commissionClearanceStatus === 'all') return orders
+  const wantCleared = commissionClearanceStatuses.includes('cleared')
+  const wantUncleared = commissionClearanceStatuses.includes('uncleared')
+  if (wantCleared === wantUncleared) return orders
   return orders.filter(
-    (order) =>
-      isOrderFullyInSet(order, clearedItemIdSet) === (commissionClearanceStatus === 'cleared'),
+    (order) => isOrderFullyInSet(order, clearedItemIdSet) === wantCleared,
   )
 }
 
@@ -312,14 +340,8 @@ export async function fetchBusinessDailyLedgerWithStatusSets(
 
   const candidates = [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit)
   // 未收金额由 RPC 事后附加，结算/提成结清按明细行单独读取；三者互不依赖，并行发出。
-  const needSettled =
-    includeStatusSets ||
-    Boolean(filters.settlementStatus && filters.settlementStatus !== 'all')
-  const needCleared =
-    includeStatusSets ||
-    Boolean(
-      filters.commissionClearanceStatus && filters.commissionClearanceStatus !== 'all',
-    )
+  const needSettled = includeStatusSets || filters.settlementStatuses.length > 0
+  const needCleared = includeStatusSets || filters.commissionClearanceStatuses.length > 0
   const [withOutstanding, settledItemIds, confirmedCommissionItemIds] = await Promise.all([
     attachOutstandingAmounts(supabase, candidates),
     needSettled
@@ -333,13 +355,13 @@ export async function fetchBusinessDailyLedgerWithStatusSets(
   const orders = applyCommissionClearanceFilter(
     applySettlementFilter(
       applyBalanceStatusFilter(
-        applyCompletionFilter(withOutstanding, filters.completion),
-        filters.balanceStatus,
+        applyCompletionFilter(withOutstanding, filters.completions),
+        filters.balanceStatuses,
       ),
-      filters.settlementStatus,
+      filters.settlementStatuses,
       new Set(settledItemIds),
     ),
-    filters.commissionClearanceStatus,
+    filters.commissionClearanceStatuses,
     new Set(confirmedCommissionItemIds),
   )
 

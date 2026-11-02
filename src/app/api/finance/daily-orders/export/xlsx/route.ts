@@ -17,6 +17,7 @@ import {
   formatDailyMoney,
   parseDailyOrderFilters,
   PAYMENT_LABELS,
+  searchParamsToFilterRecord,
   SHIPPING_LABELS,
 } from '@/lib/daily-orders'
 import { isRenderableExportImage } from '@/lib/export-image-guard'
@@ -188,7 +189,7 @@ export async function GET(request: Request) {
   // 可见范围由 business_orders 的 RLS 决定，而不是页面级角色门禁。
   await requireApproved()
   const searchParams = new URL(request.url).searchParams
-  const filters = parseDailyOrderFilters(Object.fromEntries(searchParams.entries()))
+  const filters = parseDailyOrderFilters(searchParamsToFilterRecord(searchParams))
   const ids = parseIds(searchParams.getAll('ids'))
   return buildXlsxResponse(filters, ids.length > 0 ? ids : undefined)
 }
@@ -203,7 +204,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '请求格式错误' }, { status: 400 })
   }
   const params = new URLSearchParams(body.filterQuery)
-  const filters = parseDailyOrderFilters(Object.fromEntries(params.entries()))
+  const filters = parseDailyOrderFilters(searchParamsToFilterRecord(params))
   const ids = parseIds(Array.isArray(body.ids) ? body.ids : [])
   return buildXlsxResponse(filters, ids.length > 0 ? ids : undefined)
 }
