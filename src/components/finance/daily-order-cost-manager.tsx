@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useRef, useState, useTransition } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { Download, Eye, Save, CheckCircle2, Bookmark, BookmarkX } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
@@ -196,7 +196,30 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   const [pending, startTransition] = useTransition()
   const [settlePending, startSettleTransition] = useTransition()
   const [markPending, startMarkTransition] = useTransition()
-  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
+  // 勾选跨分页累计：分页是服务端渲染的 Link 跳转会重置组件状态，
+  // 按筛选条件（不含页码）做 sessionStorage 键，翻页后从存储恢复。
+  const selectionStorageKey = `finance-cost-selection:${businessOrderCostFilterQuery({ ...filters, page: 1 })}`
+  const [selectedOrders, setSelectedOrders] = useState<Set<string>>(() => {
+    if (typeof window === 'undefined') return new Set()
+    try {
+      const raw = sessionStorage.getItem(selectionStorageKey)
+      const parsed: unknown = raw ? JSON.parse(raw) : []
+      return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [])
+    } catch {
+      return new Set()
+    }
+  })
+  useEffect(() => {
+    try {
+      if (selectedOrders.size > 0) {
+        sessionStorage.setItem(selectionStorageKey, JSON.stringify([...selectedOrders]))
+      } else {
+        sessionStorage.removeItem(selectionStorageKey)
+      }
+    } catch {
+      // sessionStorage 不可用时勾选只在当前页内有效
+    }
+  }, [selectedOrders, selectionStorageKey])
   // 成本页标记先本地生效，失败时清空覆盖层回到服务端真值，避免每次点击都等刷新。
   const [markOverrides, setMarkOverrides] = useState<Record<string, boolean>>({})
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -257,29 +280,19 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   }, [rows])
 
   const orderIds = useMemo(() => groups.map((group) => group[0].order_id), [groups])
-  const ordersMissingCost = useMemo(() => {
-    const set = new Set<string>()
-    for (const row of rows) {
-      if (row.cost == null) set.add(row.order_id)
-    }
-    return set
-  }, [rows])
   // 成本页个人标记（business_order_cost_marks），与每日订单台账标记完全独立。
   const serverMarkedIds = useMemo(
     () => new Set(rows.filter((row) => row.marked).map((row) => row.order_id)),
     [rows],
   )
   const isOrderMarked = (orderId: string) => markOverrides[orderId] ?? serverMarkedIds.has(orderId)
-  const settleableOrderIds = useMemo(
-    () => orderIds.filter((id) => !ordersMissingCost.has(id)),
-    [orderIds, ordersMissingCost],
-  )
   const selectedCount = useMemo(
     () => orderIds.filter((id) => selectedOrders.has(id)).length,
     [orderIds, selectedOrders],
   )
-  const allSelected =
-    settleableOrderIds.length > 0 && settleableOrderIds.every((id) => selectedOrders.has(id))
+  // 全选覆盖本页全部订单（含未匹配成本行）：导出→填成本→导入的闭环需要整批带走，
+  // 结算入口自身会拦未填成本的产品行。
+  const allSelected = orderIds.length > 0 && orderIds.every((id) => selectedOrders.has(id))
 
   function toggleOrder(orderId: string, checked: boolean) {
     setSelectedOrders((previous) => {
@@ -291,7 +304,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   }
 
   function toggleSelectAll(checked: boolean) {
-    setSelectedOrders(checked ? new Set(settleableOrderIds) : new Set())
+    setSelectedOrders(checked ? new Set(orderIds) : new Set())
   }
 
   function setOrdersMarked(marked: boolean) {
@@ -423,7 +436,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
       </div>
 
       <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
-        <span className="text-sm text-muted-foreground">已选 {selectedCount} 个订单</span>
+        <span className="text-sm text-muted-foreground">已选 {selectedOrders.size} 个订单</span>
         <Button
           type="button"
           disabled={selectedCount === 0 || settlePending}

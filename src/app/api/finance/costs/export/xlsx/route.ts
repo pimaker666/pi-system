@@ -346,8 +346,10 @@ export async function POST(request: Request) {
   if (!body || typeof body.filterQuery !== 'string') {
     return NextResponse.json({ error: '请求格式错误' }, { status: 400 })
   }
+  // 多选筛选用重复 key 序列化（如 shippingCategories=a&shippingCategories=b），
+  // 不能用 Object.fromEntries——重复 key 会被折叠成最后一个，导致导出丢分类。
   const filters = parseBusinessOrderCostFilters(
-    Object.fromEntries(new URLSearchParams(body.filterQuery).entries()),
+    searchParamsToRecord(new URLSearchParams(body.filterQuery)),
   )
   const ids = parseIds(Array.isArray(body.ids) ? body.ids : [])
   return buildCostsXlsx(filters, ids.length > 0 ? ids : undefined)
