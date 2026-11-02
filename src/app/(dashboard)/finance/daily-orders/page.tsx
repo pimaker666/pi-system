@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Archive, CreditCard, Plus, Settings, Upload } from 'lucide-react'
 import { BusinessDailyOrderTable } from '@/components/finance/business-daily-order-table'
+import { FulfillmentStatusSelect } from '@/components/finance/fulfillment-status-select'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -257,48 +258,10 @@ export default async function DailyOrdersPage({
               <option value="bound">已绑定客户</option>
               <option value="unbound">未绑定客户</option>
             </select>
-            <details className="group relative">
-              <summary className={selectClassName + ' flex cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden'}>
-                <span>
-                  {filters.fulfillmentStatuses.length > 0
-                    ? `发货状态 (${filters.fulfillmentStatuses.length})`
-                    : '全部发货状态'}
-                </span>
-                <span aria-hidden className="text-xs text-muted-foreground">▼</span>
-              </summary>
-              <div className="absolute z-50 mt-1 w-44 rounded-md border bg-card p-2 shadow-md">
-                <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
-                  <input
-                    type="checkbox"
-                    name="fulfillmentStatuses"
-                    value="fully_shipped"
-                    defaultChecked={filters.fulfillmentStatuses.includes('fully_shipped')}
-                    className="h-4 w-4 rounded border-gray-300 accent-primary"
-                  />
-                  全部发货
-                </label>
-                <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
-                  <input
-                    type="checkbox"
-                    name="fulfillmentStatuses"
-                    value="partially_shipped"
-                    defaultChecked={filters.fulfillmentStatuses.includes('partially_shipped')}
-                    className="h-4 w-4 rounded border-gray-300 accent-primary"
-                  />
-                  部分发货
-                </label>
-                <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-muted">
-                  <input
-                    type="checkbox"
-                    name="fulfillmentStatuses"
-                    value="unshipped"
-                    defaultChecked={filters.fulfillmentStatuses.includes('unshipped')}
-                    className="h-4 w-4 rounded border-gray-300 accent-primary"
-                  />
-                  未发货
-                </label>
-              </div>
-            </details>
+            <FulfillmentStatusSelect
+              defaultSelected={filters.fulfillmentStatuses}
+              triggerClassName={selectClassName}
+            />
             <select name="commissionClearanceStatus" defaultValue={filters.commissionClearanceStatus ?? 'all'} className={selectClassName}>
               <option value="all">全部提成结清状态</option>
               <option value="cleared">已结清</option>
