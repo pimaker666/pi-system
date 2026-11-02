@@ -118,7 +118,22 @@ async function buildCostsXlsx(
     fetchAllLegacyReferences(supabase),
     fetchAllBusinessReferences(supabase),
   ])
-  const dailyCosts = dailyResult.rows
+  // 导出按最早订单在前：行本身已按订单连续、组内按产品顺序排列，
+  // 这里先按订单分组再按下单日期升序重排，页面列表仍保持最新在前。
+  const rowsByOrder = new Map<string, typeof dailyResult.rows>()
+  for (const row of dailyResult.rows) {
+    const bucket = rowsByOrder.get(row.order_id)
+    if (bucket) bucket.push(row)
+    else rowsByOrder.set(row.order_id, [row])
+  }
+  const dailyCosts = [...rowsByOrder.values()]
+    .sort((left, right) => {
+      if (left[0].order_date !== right[0].order_date) {
+        return left[0].order_date < right[0].order_date ? -1 : 1
+      }
+      return left[0].order_number.localeCompare(right[0].order_number)
+    })
+    .flat()
 
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'PI System'
