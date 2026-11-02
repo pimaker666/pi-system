@@ -196,8 +196,8 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   const [pending, startTransition] = useTransition()
   const [settlePending, startSettleTransition] = useTransition()
   const [markPending, startMarkTransition] = useTransition()
-  // 勾选跨分页累计：分页是服务端渲染的 Link 跳转会重置组件状态，
-  // 按筛选条件（不含页码）做 sessionStorage 键，翻页后从存储恢复。
+  // 勾选跨页/刷新保留：分页在本地切片，但筛选跳转或刷新会重建组件，
+  // 按筛选条件（不含页码）做 sessionStorage 键并从存储恢复。
   const selectionStorageKey = `finance-cost-selection:${businessOrderCostFilterQuery({ ...filters, page: 1 })}`
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') return new Set()
@@ -228,8 +228,21 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   const tableRef = useRef<HTMLTableElement>(null)
   const [pinnedCol, setPinnedCol] = useState<number | null>(null)
   const query = businessOrderCostFilterQuery(filters)
-  const currentPage = filters.page
+  // 服务端一次取回全部合格行，翻页只在本地切片，避免每翻一页都重跑整页查询与渲染。
+  const [currentPage, setCurrentPage] = useState(filters.page)
+  const filterKey = businessOrderCostFilterQuery({ ...filters, page: 1 })
   const totalPages = Math.max(1, Math.ceil(totalCount / COST_PAGE_SIZE))
+  useEffect(() => {
+    // 筛选条件或 URL 页码变化时回到服务端指定的页码；本地翻页不改变 filters，不会被覆盖。
+    setCurrentPage(Math.min(filters.page, totalPages))
+  }, [filters.page, filterKey, totalPages])
+
+  function goToPage(page: number) {
+    const target = Math.min(Math.max(1, page), totalPages)
+    setCurrentPage(target)
+    const nextQuery = businessOrderCostFilterQuery({ ...filters, page: target })
+    window.history.replaceState(null, '', nextQuery ? `/finance/costs?${nextQuery}` : '/finance/costs')
+  }
 
   // 冻结用户点击「固定」时视口最左侧的那一列，而不是永远固定首列。
   function togglePin(checked: boolean) {
@@ -279,7 +292,12 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
     return [...map.values()]
   }, [rows])
 
-  const orderIds = useMemo(() => groups.map((group) => group[0].order_id), [groups])
+  const pageGroups = useMemo(
+    () => groups.slice((currentPage - 1) * COST_PAGE_SIZE, currentPage * COST_PAGE_SIZE),
+    [groups, currentPage],
+  )
+  const pageRows = useMemo(() => pageGroups.flat(), [pageGroups])
+  const orderIds = useMemo(() => pageGroups.map((group) => group[0].order_id), [pageGroups])
   // 成本页个人标记（business_order_cost_marks），与每日订单台账标记完全独立。
   const serverMarkedIds = useMemo(
     () => new Set(rows.filter((row) => row.marked).map((row) => row.order_id)),
@@ -304,7 +322,13 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   }
 
   function toggleSelectAll(checked: boolean) {
-    setSelectedOrders(checked ? new Set(orderIds) : new Set())
+    // 跨页累计：全选只增删本页订单，不清掉其它页已勾选的订单。
+    setSelectedOrders((previous) => {
+      const next = new Set(previous)
+      if (checked) orderIds.forEach((id) => next.add(id))
+      else orderIds.forEach((id) => next.delete(id))
+      return next
+    })
   }
 
   function setOrdersMarked(marked: boolean) {
@@ -331,7 +355,8 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   }
 
   function confirmSettle() {
-    const selectedRows = rows.filter((row) => selectedOrders.has(row.order_id))
+    // 结算仍只处理本页勾选：跨页勾选的订单在各自页面上分批结算。
+    const selectedRows = pageRows.filter((row) => selectedOrders.has(row.order_id))
     if (selectedRows.some((row) => row.cost == null)) {
       toast.error('存在未填写成本的产品行，不能结算')
       return
@@ -367,11 +392,12 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   }
 
   // 导出走 POST：ids 放请求体，勾选几百单时 URL 拼不下（Kong ~8k / Node 16k）。
-  async function downloadExport() {
+  // onlySelected=false 时不传 ids，服务端按当前筛选导出全部订单（含未填成本的）。
+  async function downloadExport(onlySelected: boolean) {
     if (exportPending) return
     setExportPending(true)
     try {
-      const ids = [...selectedOrders]
+      const ids = onlySelected ? [...selectedOrders] : []
       const response = await fetch('/api/finance/costs/export/xlsx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -404,7 +430,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
       link.download = fileName
       link.click()
       URL.revokeObjectURL(url)
-      toast.success(ids.length > 0 ? `已导出勾选的 ${ids.length} 个订单` : '已导出全部订单')
+      toast.success(ids.length > 0 ? `已导出勾选的 ${ids.length} 个订单` : `已导出当前筛选的全部 ${totalCount} 个订单`)
     } catch {
       toast.error('导出失败，请稍后重试')
     } finally {
@@ -424,13 +450,23 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
         </div>
         <div className="flex flex-wrap gap-2">
           <BusinessOrderCostImporter />
-          <Button type="button" variant="outline" disabled={exportPending} onClick={downloadExport}>
+          <Button
+            type="button"
+            disabled={exportPending}
+            title="按当前筛选导出全部订单，含尚未填写成本的产品行，无需先勾选"
+            onClick={() => downloadExport(false)}
+          >
             <Download className="h-4 w-4" />
-            {exportPending
-              ? '导出中…'
-              : selectedOrders.size > 0
-                ? `导出勾选的 ${selectedOrders.size} 单`
-                : '导出成本表'}
+            {exportPending ? '导出中…' : `导出当前筛选全部（${totalCount} 单）`}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={exportPending || selectedOrders.size === 0}
+            onClick={() => downloadExport(true)}
+          >
+            <Download className="h-4 w-4" />
+            导出勾选的 {selectedOrders.size} 单
           </Button>
         </div>
       </div>
@@ -554,7 +590,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
           </TableRow>
         </TableHeader>
         <TableBody>
-            {groups.map((group, groupIndex) => {
+            {pageGroups.map((group, groupIndex) => {
               const rowSpan = group.length
               return group.map((row, rowIndex) => {
                 const isFirstRow = rowIndex === 0
@@ -708,7 +744,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                 )
               })
             })}
-            {rows.length === 0 && (
+            {pageGroups.length === 0 && (
               <TableRow>
                 <TableCell
                   colSpan={BUSINESS_ORDER_COST_COLUMNS.length + 1}
@@ -728,12 +764,13 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
           </span>
           <div className="flex items-center gap-1">
             {currentPage > 1 && (
-              <Link
-                href={`/finance/costs?${businessOrderCostFilterQuery({ ...filters, page: currentPage - 1 })}`}
+              <button
+                type="button"
+                onClick={() => goToPage(currentPage - 1)}
                 className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
               >
                 上一页
-              </Link>
+              </button>
             )}
             {Array.from({ length: totalPages }, (_, i) => i + 1)
               .filter((p) => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
@@ -746,9 +783,10 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                 item === 'ellipsis' ? (
                   <span key={`e${i}`} className="px-1 text-muted-foreground">…</span>
                 ) : (
-                  <Link
+                  <button
                     key={item}
-                    href={`/finance/costs?${businessOrderCostFilterQuery({ ...filters, page: item })}`}
+                    type="button"
+                    onClick={() => goToPage(item)}
                     className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md text-sm ${
                       item === currentPage
                         ? 'bg-primary text-primary-foreground'
@@ -756,16 +794,17 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                     }`}
                   >
                     {item}
-                  </Link>
+                  </button>
                 ),
               )}
             {currentPage < totalPages && (
-              <Link
-                href={`/finance/costs?${businessOrderCostFilterQuery({ ...filters, page: currentPage + 1 })}`}
+              <button
+                type="button"
+                onClick={() => goToPage(currentPage + 1)}
                 className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
               >
                 下一页
-              </Link>
+              </button>
             )}
           </div>
         </div>

@@ -4,7 +4,7 @@ import {
   type CostOrderOption,
 } from '@/components/finance/pi-cost-manager'
 import { requireFinanceView } from '@/lib/auth'
-import { fetchBusinessOrderProductCosts } from '@/lib/business-order-costs-server'
+import { BUSINESS_DAILY_EXPORT_LIMIT, fetchBusinessOrderProductCosts } from '@/lib/business-order-costs-server'
 import { parseBusinessOrderCostFilters } from '@/lib/business-order-cost'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
@@ -42,7 +42,8 @@ export default async function FinanceCostsPage({
         .order('incurred_date', { ascending: false })
         .limit(OPTION_LIMIT),
       fetchDailyOrderOptions(supabase),
-      fetchBusinessOrderProductCosts(supabase, filters, filters.page),
+      // 一次取回全部合格行，分页在客户端切片：翻页不再重跑整页查询与渲染。
+      fetchBusinessOrderProductCosts(supabase, filters, 1, BUSINESS_DAILY_EXPORT_LIMIT),
     ])
 
   const loadError = legacyOrdersResult.error || businessOrdersResult.error || costsResult.error
