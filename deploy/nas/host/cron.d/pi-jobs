@@ -1,0 +1,9 @@
+# pi-system 定时任务（2026-11-02 自 pi-cron 迁移到宿主机 cron）
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+
+# 每日 04:00 清除作废/特殊关闭满 3 个月的订单（保留期在 DB 函数内）
+0 4 * * * root /home/Jessie/scripts/purge-terminated-business-orders.sh
+
+# 每日 08:00 系统盘/数据卷使用率告警（>=85% WARN，>=92% CRIT）
+0 8 * * * root /home/Jessie/scripts/disk-alert.sh

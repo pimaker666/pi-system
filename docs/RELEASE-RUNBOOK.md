@@ -1,7 +1,8 @@
 # 发布运行手册（NAS 生产环境）
 
 生产环境是群晖 NAS（`Jessie@192.168.0.5`）上的一组 Docker 容器：`pi-app`（Next.js
-standalone）、`pi-cron`（备份与巡检）、以及自托管 Supabase（`supabase-db` 等）。
+standalone）、自托管 Supabase（`supabase-db` 等），以及跑在宿主机上的 cron 任务
+（备份与巡检）。
 本手册是唯一的发布口径，任何入口（人或 AI 助手）改动生产都按这里执行。
 
 ## 红线
@@ -147,5 +148,7 @@ ssh Jessie@192.168.0.5 'docker tag pi-system:rollback-<old> pi-system:latest; \
   `ssh ... 'cat > /path'` 流式写入并核对 md5。
 - PG 17 的 `pg_dump` 不接受 `-f -` 和 `-i`，会得到 0 字节产物；先 dump 到容器内
   `/tmp` 再 `cat` 出来。
-- `pi-cron` 的 crond 必须以 `hostuser` 身份运行，否则 bind-mount 出来的备份产物会变成
-  `root:root`。
+- 定时任务跑在宿主机 cron：`/etc/cron.d/pi-backup`（每日 03:30 备份，14 天滚动）、
+  `/etc/cron.d/pi-jobs`（每日 04:00 清理终止订单、08:00 磁盘告警）。脚本分别在
+  `/home/Jessie/backup-pg.sh` 与 `/home/Jessie/scripts/`。旧的 `pi-cron` 容器已于
+  2026-11-02 停用：其 Alpine 镜像没有 bash，三个任务实际从未自动执行过。
