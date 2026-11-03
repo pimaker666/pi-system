@@ -9,13 +9,41 @@ const dateFilter = z.string().refine((value) => {
 }, '日期格式错误')
 const idFilter = z.union([z.literal('all'), z.string().uuid()])
 
+export const REIMBURSEMENT_CATEGORY_NAME = '报销'
+
+const REIMBURSEE_STOPWORDS = new Set([
+  '公司', '员工', '个人', '费用', '财务', '部门', '出差', '差旅', '办公', '招待',
+  '采购', '业务', '团队', '客户', '现金', '银行', '线上', '线下', '微信', '支付宝',
+  '报销', '交通', '餐饮', '住宿', '物流', '快递', '广告', '推广', '培训', '会议',
+  '福利', '工资', '社保', '房租', '水电', '维修', '材料', '设备', '软件', '服务', '咨询',
+])
+
+// 银行摘要里全角空格、普通空格和零宽字符很常见，统一去掉后再比对姓名。
+export function normalizeMatchText(value: string) {
+  return value.normalize('NFKC').replace(/[\s\u3000\u200b]+/g, '').toLowerCase()
+}
+
+// 中文姓名 2 字起；英文别名太短容易误命中（如 li 出现在 delivery 里）。
+export function isUsableNameAlias(alias: string) {
+  return /[\u4e00-\u9fa5]/.test(alias) ? alias.length >= 2 : alias.length >= 4
+}
+
+// 兜底：摘要形如「杨晓玲报销 …」时直接取人名；只认「人名 + 报销」，
+// 避免「报销 打车费」这类把费用名当成人名。
+export function extractReimburseeFromSummary(summary: string): string | null {
+  for (const match of summary.matchAll(/([\u4e00-\u9fa5]{2,4})[\s\u3000]{0,2}报销/g)) {
+    if (!REIMBURSEE_STOPWORDS.has(match[1])) return match[1]
+  }
+  return null
+}
+
 export const journalFiltersSchema = z.object({
   from: dateFilter.default(''),
   to: dateFilter.default(''),
   account: idFilter.default('all'),
   kind: z.enum(['all', 'income', 'expense']).default('all'),
   category: idFilter.default('all'),
-  status: z.enum(['all', 'normal', 'voided']).default('all'),
+  status: z.enum(['all', 'normal', 'voided']).default('normal'),
   shop: z.string().max(200).default('all'),
   reimbursee: z.string().max(200).default('all'),
   keyword: z.string().trim().max(500).default(''),

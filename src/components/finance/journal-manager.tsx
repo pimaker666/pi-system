@@ -47,7 +47,7 @@ import {
   voidJournalEntry,
 } from '@/lib/actions/finance'
 import { formatCny, FINANCE_TRANSACTION_LABELS } from '@/lib/finance'
-import { DEFAULT_JOURNAL_FILTERS, filterJournalEntries, journalMonthRange, journalTotals, type JournalFilters } from '@/lib/finance-journal'
+import { DEFAULT_JOURNAL_FILTERS, REIMBURSEMENT_CATEGORY_NAME, filterJournalEntries, journalMonthRange, journalTotals, type JournalFilters } from '@/lib/finance-journal'
 import { parseBocStatementText, parseCmbCsv, type JournalImportParsedRow } from '@/lib/journal-import'
 import { cn, formatCurrency, formatDate, displayProfileName } from '@/lib/utils'
 import { financeCurrencies } from '@/schemas/finance'
@@ -152,6 +152,12 @@ export function JournalManager({
   const kindCategories = useMemo(
     () => categories.filter((c) => c.kind === entryKind && c.is_active),
     [categories, entryKind],
+  )
+  const reimburseeRequired =
+    kindCategories.find((category) => category.id === entryCategory)?.name === REIMBURSEMENT_CATEGORY_NAME
+  const reimbursementCategoryIds = useMemo(
+    () => new Set(categories.filter((category) => category.name === REIMBURSEMENT_CATEGORY_NAME).map((category) => category.id)),
+    [categories],
   )
 
   const shopOptions = useMemo(
@@ -397,6 +403,11 @@ export function JournalManager({
     if (!previewRows) return
     if (previewRows.some((row) => row.checked && !row.category_id)) {
       toast.error('请先为所有勾选的流水选择分类，未分类行不会自动跳过')
+      return
+    }
+    if (previewRows.some((row) => row.checked && row.category_id &&
+      reimbursementCategoryIds.has(row.category_id) && !row.reimbursee?.trim())) {
+      toast.error('分类为「报销」的流水必须填写报销人，请补全后再导入')
       return
     }
     if (!importRate.trim() || !Number.isFinite(Number(importRate)) || Number(importRate) <= 0) {
@@ -988,9 +999,14 @@ export function JournalManager({
                           </TableCell>
                           <TableCell>
                             <Input
-                              className="h-8 px-2 text-xs"
+                              className={cn(
+                                'h-8 px-2 text-xs',
+                                row.checked && row.category_id &&
+                                  reimbursementCategoryIds.has(row.category_id) &&
+                                  !row.reimbursee?.trim() && 'border-destructive',
+                              )}
                               value={row.reimbursee ?? ''}
-                              placeholder="建议：报销人"
+                              placeholder={reimbursementCategoryIds.has(row.category_id ?? '') ? '报销人必填' : '建议：报销人'}
                               list="journal-member-options"
                               onChange={(event) => patchPreviewRow(index, { reimbursee: event.target.value })}
                             />
@@ -1119,13 +1135,14 @@ export function JournalManager({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="journal-reimbursee">报销人（可选）</Label>
+              <Label htmlFor="journal-reimbursee">报销人{reimburseeRequired ? '' : '（可选）'}</Label>
               <Input
                 id="journal-reimbursee"
                 name="reimbursee"
-                placeholder="用于按人统计报销"
+                placeholder={reimburseeRequired ? '选择「报销」分类时必填' : '用于按人统计报销'}
                 list="journal-member-options"
                 defaultValue={editingEntry?.reimbursee ?? ''}
+                required={reimburseeRequired}
               />
             </div>
             <div className="space-y-2">

@@ -11,6 +11,12 @@ import {
   type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
 import {
+  REIMBURSEMENT_CATEGORY_NAME,
+  extractReimburseeFromSummary,
+  isUsableNameAlias,
+  normalizeMatchText,
+} from '@/lib/finance-journal'
+import {
   businessOrderItemCostOverrideSchema,
   businessOrderItemSettlementSchema,
   businessOrderItemUnsettleSchema,
@@ -551,6 +557,17 @@ export async function saveJournalEntry(formData: FormData): Promise<ActionResult
     typeof entryId === 'string' && /^[0-9a-f-]{36}$/i.test(entryId) ? entryId : null
 
   const supabase = await createClient()
+  if (!parsed.data.reimbursee) {
+    const { data: category, error } = await supabase
+      .from('finance_journal_categories')
+      .select('name')
+      .eq('id', parsed.data.category_id)
+      .maybeSingle()
+    if (error) return { ok: false, error: error.message }
+    if (category?.name === REIMBURSEMENT_CATEGORY_NAME) {
+      return { ok: false, fieldErrors: { reimbursee: ['选择「报销」分类时，报销人必填'] } }
+    }
+  }
   const payload = {
     account_id: parsed.data.account_id,
     category_id: parsed.data.category_id,
@@ -760,7 +777,7 @@ export async function previewJournalImport(input: unknown): Promise<
       .is('voided_at', null)
       .gte('entry_date', rows.reduce((min, r) => (r.entry_date < min ? r.entry_date : min), rows[0].entry_date))
       .lte('entry_date', rows.reduce((max, r) => (r.entry_date > max ? r.entry_date : max), rows[0].entry_date)),
-    supabase.from('profiles').select('chinese_name, full_name'),
+    supabase.from('profiles').select('chinese_name, full_name, email'),
   ])
   if (!rules || !existing || !profiles) return { ok: false, error: '加载匹配规则失败' }
 
@@ -782,10 +799,22 @@ export async function previewJournalImport(input: unknown): Promise<
     .filter((rule) => rule.shop)
     .map((rule) => ({ keyword: norm(rule), shop: rule.shop as string }))
 
-  const names = (profiles as Array<{ chinese_name: string | null; full_name: string | null }>)
-    .flatMap((profile) => [profile.chinese_name, profile.full_name])
-    .filter((name): name is string => Boolean(name && name.trim()))
-    .sort((a, b) => b.length - a.length)
+  // 姓名别名来自中文名、英文名和邮箱前缀，比较前统一去掉空格/全角字符。
+  const nameAliases = (profiles as Array<{
+    chinese_name: string | null
+    full_name: string | null
+    email: string | null
+  }>)
+    .flatMap((profile) => {
+      const display =
+        profile.chinese_name?.trim() || profile.full_name?.trim() || profile.email?.split('@')[0]?.trim()
+      if (!display) return []
+      return [profile.chinese_name, profile.full_name, profile.email?.split('@')[0]]
+        .map((alias) => (alias ? normalizeMatchText(alias) : ''))
+        .filter(isUsableNameAlias)
+        .map((alias) => ({ alias, name: display }))
+    })
+    .sort((a, b) => b.alias.length - a.alias.length)
 
   const existingKeys = new Set(
     (existing as Array<{ entry_date: string; kind: string; amount_original: number; summary: string }>).map(
@@ -804,12 +833,18 @@ export async function previewJournalImport(input: unknown): Promise<
       const shopHit = shopRules
         .filter((rule) => summary.includes(rule.keyword))
         .sort((a, b) => b.keyword.length - a.keyword.length)[0]
-      const reimburseeHit = names.find((name) => row.summary.includes(name))
+      const matchText = normalizeMatchText(`${row.summary} ${row.counterparty ?? ''}`)
+      const reimburseeHit =
+        row.kind === 'expense'
+          ? nameAliases.find((candidate) => matchText.includes(candidate.alias))?.name ??
+            extractReimburseeFromSummary(row.summary) ??
+            null
+          : null
       return {
         ...row,
         category_id: categoryHit?.category_id ?? null,
         shop: shopHit?.shop ?? null,
-        reimbursee: reimburseeHit ?? null,
+        reimbursee: reimburseeHit,
         duplicate: existingKeys.has(
           `${row.entry_date}|${row.kind}|${row.amount_original.toFixed(4)}|${row.summary.trim()}`,
         ),
@@ -836,6 +871,23 @@ export async function importJournalEntries(input: unknown): Promise<
     .maybeSingle()
   if (accountError) return { ok: false, error: accountError.message }
   if (!account) return { ok: false, error: '银行账户不存在' }
+
+  const { data: usedCategories, error: categoryError } = await supabase
+    .from('finance_journal_categories')
+    .select('id, name')
+    .in('id', [...new Set(rows.map((row) => row.category_id))])
+  if (categoryError) return { ok: false, error: categoryError.message }
+  const reimbursementIds = new Set(
+    (usedCategories ?? [])
+      .filter((category) => category.name === REIMBURSEMENT_CATEGORY_NAME)
+      .map((category) => category.id),
+  )
+  const missingReimbursee = rows.findIndex(
+    (row) => reimbursementIds.has(row.category_id) && !row.reimbursee?.trim(),
+  )
+  if (missingReimbursee >= 0) {
+    return { ok: false, error: `第 ${missingReimbursee + 1} 行分类为「报销」，请填写报销人后再导入` }
+  }
 
   const currency = (account as { currency: CurrencyCode }).currency
   const payload = rows.map((row) => ({
