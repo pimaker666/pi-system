@@ -245,10 +245,25 @@ interface StatementColumns {
   credit: number
   amount: number
   direction: number
+  businessType: number
   summary: number
+  purpose: number
+  remark: number
   counterparty: number
+  payer: number
+  payee: number
   notes: number
   reference: number
+}
+
+// 交易类型/借贷标志里出现的方向词，优先于金额正负号。
+function directionKind(direction: string): 'income' | 'expense' | null {
+  if (!direction) return null
+  if (/往账|往方|出账/.test(direction)) return 'expense'
+  if (/来账|来方|入账/.test(direction)) return 'income'
+  if (/收|贷|入|存/.test(direction)) return 'income'
+  if (/支|付|借|取|出/.test(direction)) return 'expense'
+  return null
 }
 
 function findColumn(headers: string[], keywords: string[]): number {
@@ -274,10 +289,15 @@ function detectColumns(row: unknown[]): StatementColumns | null {
     credit,
     amount,
     direction,
-    summary: findColumn(headers, ['摘要', '交易备注', '用途', '交易说明', '说明']),
+    businessType: findColumn(headers, ['业务类型']),
+    summary: findColumn(headers, ['摘要', '交易备注', '交易说明', '说明']),
+    purpose: findColumn(headers, ['用途']),
+    remark: findColumn(headers, ['交易附言', '附言']),
     counterparty: findColumn(headers, ['对方户名', '对方名称', '对方账户名称', '收付款人', '对方']),
+    payer: findColumn(headers, ['付款人名称', '付款方名称', '付款人户名']),
+    payee: findColumn(headers, ['收款人名称', '收款方名称', '收款人户名']),
     notes: findColumn(headers, ['备注']),
-    reference: findColumn(headers, ['凭证号码', '交易流水号', '流水号', '凭证号', '业务编号', '流水']),
+    reference: findColumn(headers, ['交易流水号', '流水号', '客户业务编号', '业务编号', '凭证号码', '凭证号', '流水']),
   }
 }
 
@@ -313,35 +333,42 @@ export function parseStatementRows(matrix: unknown[][]): JournalImportParsedRow[
       kind = 'income'
       amount = credit
     } else if (debit === null && credit === null && columns.amount >= 0) {
-      const signed = parseSignedAmount(statementCellText(row[columns.amount]))
+      const amountText = statementCellText(row[columns.amount])
+      const signed = parseSignedAmount(amountText)
       const direction = columns.direction >= 0 ? statementCellText(row[columns.direction]) : ''
-      if (signed !== null && /收|贷|入|存/.test(direction)) {
-        kind = 'income'
-        amount = Math.abs(signed)
-      } else if (signed !== null && /支|付|借|取|出/.test(direction)) {
-        kind = 'expense'
+      const byDirection = directionKind(direction)
+      if (signed !== null && byDirection) {
+        kind = byDirection
         amount = Math.abs(signed)
       } else if (signed !== null && signed < 0) {
         kind = 'expense'
+        amount = Math.abs(signed)
+      } else if (signed !== null && (columns.direction < 0 || /^\+/.test(amountText.trim()))) {
+        // 没有方向列时按正负号判断；部分银行收入金额带显式 + 号。
+        kind = 'income'
         amount = Math.abs(signed)
       }
     }
     if (!kind || amount === null) continue
 
+    const cell = (index: number) => (index >= 0 ? statementCellText(row[index]) : '')
     const summary =
-      (columns.summary >= 0 ? statementCellText(row[columns.summary]) : '') ||
-      (columns.counterparty >= 0 ? statementCellText(row[columns.counterparty]) : '') ||
-      (columns.notes >= 0 ? statementCellText(row[columns.notes]) : '') ||
-      (columns.direction >= 0 ? statementCellText(row[columns.direction]) : '')
+      cell(columns.purpose) ||
+      cell(columns.remark) ||
+      cell(columns.summary) ||
+      cell(columns.businessType) ||
+      cell(columns.counterparty) ||
+      cell(columns.notes) ||
+      cell(columns.direction)
     if (!summary) continue
 
+    // 中行把付款人、收款人拆成两列：支出取收款人，收入取付款人。
+    const partyByDirection = kind === 'expense' ? cell(columns.payee) : cell(columns.payer)
     const counterparty =
-      columns.counterparty >= 0
-        ? statementCellText(row[columns.counterparty])
-        : columns.notes >= 0 && columns.summary >= 0
-          ? statementCellText(row[columns.notes])
-          : ''
-    const referenceRaw = columns.reference >= 0 ? statementCellText(row[columns.reference]) : ''
+      partyByDirection ||
+      cell(columns.counterparty) ||
+      (columns.notes >= 0 && columns.summary >= 0 ? cell(columns.notes) : '')
+    const referenceRaw = cell(columns.reference)
     const referenceCandidate = referenceRaw
       .split('/')
       .map((segment) => segment.trim())

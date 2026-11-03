@@ -46,6 +46,24 @@ test('单金额列：无标志时负数视为支出，括号金额同样识别',
   assert.equal(rows[1].amount_original, 12)
 })
 
+test('中行 CSV：交易类型「往账/来账」定方向，正负号金额不丢收入', () => {
+  const rows = parseStatementRows([
+    ['交易类型[ Transaction Type ]', '业务类型[ Business type ]', '付款人名称', '收款人名称', '交易日期', '交易金额', '用途', '摘要', '交易流水号'],
+    ['往账', '转账支出', '甲公司', '乙公司', '20261009', '-5,172.05', '10月租金', 'OBSS0001GIRO0002', '117721057825'],
+    ['来账', '小额普通', '丙公司', '甲公司', '20261026', '+6,450.00', '', 'BEPS0003', '115075641812'],
+  ])
+  assert.equal(rows.length, 2)
+  assert.equal(rows[0].kind, 'expense')
+  assert.equal(rows[0].amount_original, 5172.05)
+  assert.equal(rows[0].summary, '10月租金')
+  assert.equal(rows[0].counterparty, '乙公司')
+  assert.equal(rows[0].reference_no, '117721057825')
+  assert.equal(rows[1].kind, 'income')
+  assert.equal(rows[1].amount_original, 6450)
+  assert.equal(rows[1].counterparty, '丙公司')
+  assert.equal(rows[1].reference_no, '115075641812')
+})
+
 test('Excel 日期序列号按 UTC 还原', () => {
   const rows = parseStatementRows([
     ['日期', '交易金额', '借贷标志', '摘要'],
