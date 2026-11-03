@@ -7,7 +7,8 @@ import {
 } from '@/lib/journal-import'
 import { extractPdfText } from '@/lib/pdf-import'
 
-function decodeHtml(buffer: ArrayBuffer): string {
+// 银行导出的 CSV / HTML 表格常见 GBK 编码，UTF-8 解码出现替换字符时回退 GB18030。
+function decodeText(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
   const utf8 = new TextDecoder('utf-8').decode(bytes)
   if (!utf8.includes('\uFFFD')) return utf8
@@ -21,7 +22,7 @@ function decodeHtml(buffer: ArrayBuffer): string {
 // 部分银行导出的 .xls 实际是 HTML 表格，需要单独识别。
 function looksLikeHtml(buffer: ArrayBuffer): boolean {
   const head = new TextDecoder('utf-8')
-    .decode(new Uint8Array(buffer.slice(0, 4096)))
+    .decode(new Uint8Array(buffer.slice(0, 65536)))
     .replace(/^\uFEFF/, '')
     .trimStart()
   return head.startsWith('<') && /<table/i.test(head)
@@ -85,14 +86,14 @@ export async function parseStatementFile(file: File): Promise<JournalImportParse
     return parsePdf(file)
   }
   if (name.endsWith('.csv')) {
-    const text = await file.text()
+    const text = decodeText(await file.arrayBuffer())
     const cmbRows = parseCmbCsv(text)
     return cmbRows.length > 0 ? cmbRows : parseStatementRows(parseDelimitedMatrix(text))
   }
   if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
     const buffer = await file.arrayBuffer()
     if (looksLikeHtml(buffer)) {
-      return parseStatementRows(parseHtmlMatrix(decodeHtml(buffer)))
+      return parseStatementRows(parseHtmlMatrix(decodeText(buffer)))
     }
     const signature = new Uint8Array(buffer.slice(0, 8))
     if (signature[0] === 0xd0 && signature[1] === 0xcf) {

@@ -143,7 +143,8 @@ export function JournalManager({
   const [bulkVoidTarget, setBulkVoidTarget] = useState<{
     ids: string[]
     count: number
-    totalCny: number
+    incomeCny: number
+    expenseCny: number
     source: 'import' | 'selection'
   } | null>(null)
   const [bulkVoidReason, setBulkVoidReason] = useState('')
@@ -200,7 +201,7 @@ export function JournalManager({
     () => filteredEntries.filter((row) => selectedIds.has(row.id) && !row.voided_at),
     [filteredEntries, selectedIds],
   )
-  const selectedTotalCny = selectedRows.reduce((sum, row) => sum + Number(row.amount_cny), 0)
+  const selectedTotals = journalTotals(selectedRows)
   const selectedMonth = filters.from && journalMonthRange(filters.from.slice(0, 7))?.from === filters.from &&
     journalMonthRange(filters.from.slice(0, 7))?.to === filters.to ? filters.from.slice(0, 7) : ''
 
@@ -316,9 +317,13 @@ export function JournalManager({
     })
   }
 
-  function openBulkVoid(ids: string[], source: 'import' | 'selection', totalCny: number) {
+  function openBulkVoid(
+    ids: string[],
+    source: 'import' | 'selection',
+    totals: { incomeCny: number; expenseCny: number },
+  ) {
     if (ids.length === 0) return
-    setBulkVoidTarget({ ids, count: ids.length, totalCny, source })
+    setBulkVoidTarget({ ids, count: ids.length, ...totals, source })
     setBulkVoidReason('')
   }
 
@@ -524,14 +529,22 @@ export function JournalManager({
       }
       const insertedIds = result.inserted_ids ?? []
       const insertedCount = result.inserted ?? rows.length
-      const importedTotalCny = rows.reduce((sum, row) => sum + row.amount_original, 0) * Number(importRate)
+      const importedTotals = rows.reduce(
+        (totals, row) => {
+          const amountCny = row.amount_original * Number(importRate)
+          if (row.kind === 'income') totals.incomeCny += amountCny
+          else totals.expenseCny += amountCny
+          return totals
+        },
+        { incomeCny: 0, expenseCny: 0 },
+      )
       toast.success(`已导入 ${insertedCount} 条流水`, {
         duration: 20000,
         ...(insertedIds.length > 0
           ? {
               action: {
                 label: '撤销本次导入',
-                onClick: () => openBulkVoid(insertedIds, 'import', importedTotalCny),
+                onClick: () => openBulkVoid(insertedIds, 'import', importedTotals),
               },
             }
           : {}),
@@ -792,13 +805,17 @@ export function JournalManager({
       {selectedRows.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm">
           <span>
-            已选 <strong>{selectedRows.length}</strong> 条 · 合计 {formatCny(selectedTotalCny)}
+            已选 <strong>{selectedRows.length}</strong> 条 · 收入 {formatCny(selectedTotals.income)} / 支出{' '}
+            {formatCny(selectedTotals.expense)}
           </span>
           <Button
             variant="destructive"
             size="sm"
             disabled={pending}
-            onClick={() => openBulkVoid(selectedRows.map((row) => row.id), 'selection', selectedTotalCny)}
+            onClick={() => openBulkVoid(selectedRows.map((row) => row.id), 'selection', {
+              incomeCny: selectedTotals.income,
+              expenseCny: selectedTotals.expense,
+            })}
           >
             <Ban className="h-4 w-4" />
             批量作废
@@ -1362,7 +1379,7 @@ export function JournalManager({
             </DialogTitle>
             <DialogDescription>
               {bulkVoidTarget
-                ? `将作废 ${bulkVoidTarget.count} 条流水，合计 ${formatCny(bulkVoidTarget.totalCny)}。作废后不可恢复、不可再编辑，余额统计将剔除这些记录；记录仍保留可查。`
+                ? `将作废 ${bulkVoidTarget.count} 条流水：收入 ${formatCny(bulkVoidTarget.incomeCny)}、支出 ${formatCny(bulkVoidTarget.expenseCny)}。作废后不可恢复、不可再编辑，余额统计将剔除这些记录；记录仍保留可查。`
                 : ''}
             </DialogDescription>
           </DialogHeader>

@@ -647,20 +647,33 @@ export async function bulkVoidJournalEntries(input: unknown): Promise<
   }
 
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('finance_journal_entries')
-    .update({
-      voided_at: new Date().toISOString(),
-      voided_by: profile.id,
-      void_reason: parsed.data.void_reason,
-    })
-    .in('id', [...new Set(parsed.data.entry_ids)])
-    .is('voided_at', null)
-    .select('id')
-  if (error) return { ok: false, error: error.message }
-  if (!data || data.length === 0) return { ok: false, error: '所选分录不存在或已作废' }
+  const ids = [...new Set(parsed.data.entry_ids)]
+  const voidedAt = new Date().toISOString()
+  let voided = 0
+  // 单次导入最多 2000 条，UUID 拼进 .in() 会超网关 URL 上限，按 100 分批。
+  for (let index = 0; index < ids.length; index += 100) {
+    const { data, error } = await supabase
+      .from('finance_journal_entries')
+      .update({
+        voided_at: voidedAt,
+        voided_by: profile.id,
+        void_reason: parsed.data.void_reason,
+      })
+      .in('id', ids.slice(index, index + 100))
+      .is('voided_at', null)
+      .select('id')
+    if (error) {
+      revalidateFinance()
+      return {
+        ok: false,
+        error: voided > 0 ? `已作废 ${voided} 条，其余失败：${error.message}` : error.message,
+      }
+    }
+    voided += data?.length ?? 0
+  }
+  if (voided === 0) return { ok: false, error: '所选分录不存在或已作废' }
   revalidateFinance()
-  return { ok: true, voided: data.length }
+  return { ok: true, voided }
 }
 
 export async function saveJournalCategory(formData: FormData): Promise<ActionResult> {
