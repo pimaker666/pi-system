@@ -153,6 +153,14 @@ export const financeJournalEntryVoidSchema = z.object({
   void_reason: z.string().trim().min(1, '请填写作废原因').max(500),
 })
 
+export const financeJournalEntriesBulkVoidSchema = z.object({
+  entry_ids: z
+    .array(z.string().uuid('分录 ID 无效'))
+    .min(1, '请至少选择一条分录')
+    .max(2000, '单次最多作废 2000 条'),
+  void_reason: z.string().trim().min(1, '请填写作废原因').max(500),
+})
+
 // ---------------------------------------------------------------------------
 // 费用报销（金额仅 CNY，不与记账联动）
 // ---------------------------------------------------------------------------

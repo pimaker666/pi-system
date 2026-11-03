@@ -35,6 +35,7 @@ import {
 import { Textarea } from '@/components/ui/textarea'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
 import {
+  bulkVoidJournalEntries,
   deleteJournalAccount,
   deleteJournalCategory,
   deleteJournalImportRule,
@@ -115,6 +116,12 @@ export function JournalManager({
   function patchFilters(patch: Partial<JournalFilters>) {
     setFilters((current) => ({ ...current, ...patch }))
     setPage(1)
+    setSelectedIds(new Set())
+  }
+
+  function goToPage(next: number) {
+    setPage(next)
+    setSelectedIds(new Set())
   }
 
   // 记一笔 / 编辑分录
@@ -129,6 +136,16 @@ export function JournalManager({
   // 作废
   const [voidTarget, setVoidTarget] = useState<FinanceJournalEntry | null>(null)
   const [voidReason, setVoidReason] = useState('')
+
+  // 批量作废 / 撤销本次导入
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkVoidTarget, setBulkVoidTarget] = useState<{
+    ids: string[]
+    count: number
+    totalCny: number
+    source: 'import' | 'selection'
+  } | null>(null)
+  const [bulkVoidReason, setBulkVoidReason] = useState('')
 
   // 账户管理
   const [accountDialogOpen, setAccountDialogOpen] = useState(false)
@@ -174,6 +191,15 @@ export function JournalManager({
   const pageCount = Math.max(1, Math.ceil(filteredEntries.length / 100))
   const currentPage = Math.min(page, pageCount)
   const visibleEntries = filteredEntries.slice((currentPage - 1) * 100, currentPage * 100)
+  const selectableEntries = visibleEntries.filter((row) => !row.voided_at)
+  const allVisibleSelected =
+    selectableEntries.length > 0 && selectableEntries.every((row) => selectedIds.has(row.id))
+  const someVisibleSelected = selectableEntries.some((row) => selectedIds.has(row.id))
+  const selectedRows = useMemo(
+    () => filteredEntries.filter((row) => selectedIds.has(row.id) && !row.voided_at),
+    [filteredEntries, selectedIds],
+  )
+  const selectedTotalCny = selectedRows.reduce((sum, row) => sum + Number(row.amount_cny), 0)
   const selectedMonth = filters.from && journalMonthRange(filters.from.slice(0, 7))?.from === filters.from &&
     journalMonthRange(filters.from.slice(0, 7))?.to === filters.to ? filters.from.slice(0, 7) : ''
 
@@ -264,6 +290,53 @@ export function JournalManager({
       toast.success('分录已作废')
       setVoidTarget(null)
       setVoidReason('')
+      router.refresh()
+    })
+  }
+
+  function toggleRow(id: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function togglePage() {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (selectableEntries.every((row) => next.has(row.id))) {
+        selectableEntries.forEach((row) => next.delete(row.id))
+      } else {
+        selectableEntries.forEach((row) => next.add(row.id))
+      }
+      return next
+    })
+  }
+
+  function openBulkVoid(ids: string[], source: 'import' | 'selection', totalCny: number) {
+    if (ids.length === 0) return
+    setBulkVoidTarget({ ids, count: ids.length, totalCny, source })
+    setBulkVoidReason('')
+  }
+
+  function handleBulkVoidSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!bulkVoidTarget) return
+    startTransition(async () => {
+      const result = await bulkVoidJournalEntries({
+        entry_ids: bulkVoidTarget.ids,
+        void_reason: bulkVoidReason,
+      })
+      if (!result.ok) {
+        toastError(result)
+        return
+      }
+      toast.success(`已作废 ${result.voided ?? bulkVoidTarget.count} 条流水`)
+      setBulkVoidTarget(null)
+      setBulkVoidReason('')
+      setSelectedIds(new Set())
       router.refresh()
     })
   }
@@ -441,7 +514,20 @@ export function JournalManager({
         toastError(result)
         return
       }
-      toast.success(`已导入 ${result.inserted ?? rows.length} 条流水`)
+      const insertedIds = result.inserted_ids ?? []
+      const insertedCount = result.inserted ?? rows.length
+      const importedTotalCny = rows.reduce((sum, row) => sum + row.amount_original, 0) * Number(importRate)
+      toast.success(`已导入 ${insertedCount} 条流水`, {
+        duration: 20000,
+        ...(insertedIds.length > 0
+          ? {
+              action: {
+                label: '撤销本次导入',
+                onClick: () => openBulkVoid(insertedIds, 'import', importedTotalCny),
+              },
+            }
+          : {}),
+      })
       setImportDialogOpen(false)
       setPreviewRows(null)
       router.refresh()
@@ -695,11 +781,44 @@ export function JournalManager({
         <span className="w-full text-xs text-muted-foreground">收支汇总排除作废记录；逐行结余包含筛选范围之前的历史流水。导出包含全部匹配记录，不受分页影响。</span>
       </div>
 
+      {selectedRows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-2 text-sm">
+          <span>
+            已选 <strong>{selectedRows.length}</strong> 条 · 合计 {formatCny(selectedTotalCny)}
+          </span>
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={pending}
+            onClick={() => openBulkVoid(selectedRows.map((row) => row.id), 'selection', selectedTotalCny)}
+          >
+            <Ban className="h-4 w-4" />
+            批量作废
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+            取消选择
+          </Button>
+        </div>
+      )}
+
       {/* 流水表 */}
       <div className="overflow-hidden rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 accent-primary"
+                  checked={allVisibleSelected}
+                  onChange={togglePage}
+                  disabled={selectableEntries.length === 0}
+                  aria-label="全选本页"
+                  ref={(element) => {
+                    if (element) element.indeterminate = someVisibleSelected && !allVisibleSelected
+                  }}
+                />
+              </TableHead>
               <TableHead className="w-24">日期</TableHead>
               <TableHead>账户</TableHead>
               <TableHead>类型</TableHead>
@@ -716,6 +835,17 @@ export function JournalManager({
           <TableBody>
             {visibleEntries.map((row) => (
               <TableRow key={row.id} className={cn(row.voided_at && 'opacity-50')}>
+                <TableCell>
+                  {row.voided_at ? null : (
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-primary"
+                      checked={selectedIds.has(row.id)}
+                      onChange={() => toggleRow(row.id)}
+                      aria-label="选择分录"
+                    />
+                  )}
+                </TableCell>
                 <TableCell className={cn(row.voided_at && 'line-through')}>
                   {formatDate(row.entry_date)}
                 </TableCell>
@@ -793,7 +923,7 @@ export function JournalManager({
             ))}
             {filteredEntries.length === 0 && (
               <TableRow>
-                <TableCell colSpan={11} className="py-12 text-center text-muted-foreground">
+                <TableCell colSpan={12} className="py-12 text-center text-muted-foreground">
                   暂无日记账记录
                 </TableCell>
               </TableRow>
@@ -805,8 +935,8 @@ export function JournalManager({
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
         <span>每页 100 条 · 第 {currentPage} / {pageCount} 页 · 共 {filteredEntries.length} 条</span>
         <div className="flex gap-2">
-          <Button variant="outline" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>上一页</Button>
-          <Button variant="outline" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>下一页</Button>
+          <Button variant="outline" disabled={currentPage === 1} onClick={() => goToPage(currentPage - 1)}>上一页</Button>
+          <Button variant="outline" disabled={currentPage === pageCount} onClick={() => goToPage(currentPage + 1)}>下一页</Button>
         </div>
       </div>
 
@@ -1203,6 +1333,47 @@ export function JournalManager({
               <Button type="button" variant="outline" onClick={() => setVoidTarget(null)}>取消</Button>
               <Button type="submit" variant="destructive" disabled={pending}>
                 {pending ? '作废中…' : '确认作废'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* 批量作废 / 撤销本次导入 */}
+      <Dialog
+        open={bulkVoidTarget !== null}
+        onOpenChange={(open) => { if (!open) setBulkVoidTarget(null) }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {bulkVoidTarget?.source === 'import' ? '撤销本次导入' : '批量作废'}
+            </DialogTitle>
+            <DialogDescription>
+              {bulkVoidTarget
+                ? `将作废 ${bulkVoidTarget.count} 条流水，合计 ${formatCny(bulkVoidTarget.totalCny)}。作废后不可恢复、不可再编辑，余额统计将剔除这些记录；记录仍保留可查。`
+                : ''}
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-4" onSubmit={handleBulkVoidSubmit}>
+            <div className="space-y-2">
+              <Label htmlFor="journal-bulk-void-reason">作废原因</Label>
+              <Input
+                id="journal-bulk-void-reason"
+                value={bulkVoidReason}
+                onChange={(event) => setBulkVoidReason(event.target.value)}
+                placeholder={
+                  bulkVoidTarget?.source === 'import' ? '例如：重复导入 / 选错账户' : '请填写作废原因'
+                }
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setBulkVoidTarget(null)}>
+                取消
+              </Button>
+              <Button type="submit" variant="destructive" disabled={pending}>
+                {pending ? '作废中…' : `确认作废 ${bulkVoidTarget?.count ?? 0} 条`}
               </Button>
             </DialogFooter>
           </form>

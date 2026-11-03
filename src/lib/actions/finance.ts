@@ -24,6 +24,7 @@ import {
   financeCostSchema,
   financeJournalAccountSchema,
   financeJournalCategorySchema,
+  financeJournalEntriesBulkVoidSchema,
   financeJournalEntrySchema,
   financeJournalEntryVoidSchema,
   financeJournalImportConfirmSchema,
@@ -636,6 +637,32 @@ export async function voidJournalEntry(input: {
   return { ok: true }
 }
 
+export async function bulkVoidJournalEntries(input: unknown): Promise<
+  ActionResult & { voided?: number }
+> {
+  const profile = await requireFinanceAccess()
+  const parsed = financeJournalEntriesBulkVoidSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('finance_journal_entries')
+    .update({
+      voided_at: new Date().toISOString(),
+      voided_by: profile.id,
+      void_reason: parsed.data.void_reason,
+    })
+    .in('id', [...new Set(parsed.data.entry_ids)])
+    .is('voided_at', null)
+    .select('id')
+  if (error) return { ok: false, error: error.message }
+  if (!data || data.length === 0) return { ok: false, error: '所选分录不存在或已作废' }
+  revalidateFinance()
+  return { ok: true, voided: data.length }
+}
+
 export async function saveJournalCategory(formData: FormData): Promise<ActionResult> {
   await requireFinanceAccess()
   const parsed = financeJournalCategorySchema.safeParse({
@@ -854,7 +881,7 @@ export async function previewJournalImport(input: unknown): Promise<
 }
 
 export async function importJournalEntries(input: unknown): Promise<
-  ActionResult & { inserted?: number }
+  ActionResult & { inserted?: number; inserted_ids?: string[] }
 > {
   const profile = await requireFinanceAccess()
   const parsed = financeJournalImportConfirmSchema.safeParse(input)
@@ -905,8 +932,15 @@ export async function importJournalEntries(input: unknown): Promise<
     shop: row.shop || null,
     created_by: profile.id,
   }))
-  const { error } = await supabase.from('finance_journal_entries').insert(payload)
+  const { data: insertedRows, error } = await supabase
+    .from('finance_journal_entries')
+    .insert(payload)
+    .select('id')
   if (error) return { ok: false, error: error.message }
   revalidateFinance()
-  return { ok: true, inserted: payload.length }
+  return {
+    ok: true,
+    inserted: insertedRows?.length ?? payload.length,
+    inserted_ids: (insertedRows ?? []).map((row) => row.id as string),
+  }
 }
