@@ -49,7 +49,8 @@ import {
 } from '@/lib/actions/finance'
 import { formatCny, FINANCE_TRANSACTION_LABELS } from '@/lib/finance'
 import { DEFAULT_JOURNAL_FILTERS, REIMBURSEMENT_CATEGORY_NAME, filterJournalEntries, journalMonthRange, journalTotals, type JournalFilters } from '@/lib/finance-journal'
-import { parseBocStatementText, parseCmbCsv, type JournalImportParsedRow } from '@/lib/journal-import'
+import { parseStatementFile } from '@/lib/journal-file-import'
+import { parseBocStatementText, type JournalImportParsedRow } from '@/lib/journal-import'
 import { cn, formatCurrency, formatDate, displayProfileName } from '@/lib/utils'
 import { financeCurrencies } from '@/schemas/finance'
 import type {
@@ -157,11 +158,11 @@ export function JournalManager({
 
   // 流水导入
   const [importDialogOpen, setImportDialogOpen] = useState(false)
-  const [importTab, setImportTab] = useState<'csv' | 'text'>('csv')
+  const [importTab, setImportTab] = useState<'file' | 'text'>('file')
   const [importAccount, setImportAccount] = useState('')
   const [importRate, setImportRate] = useState('1')
   const [importText, setImportText] = useState('')
-  const [importFileName, setImportFileName] = useState('')
+  const [importFile, setImportFile] = useState<File | null>(null)
   const [previewRows, setPreviewRows] = useState<ImportPreviewRow[] | null>(null)
   const importFileRef = useRef<HTMLInputElement>(null)
 
@@ -404,11 +405,12 @@ export function JournalManager({
     accounts.find((account) => account.id === importAccount)?.currency ?? 'CNY'
 
   function openImportDialog() {
-    setImportTab('csv')
+    setImportTab('file')
     setImportAccount(activeAccounts[0]?.id ?? '')
     setImportRate(!activeAccounts[0] || activeAccounts[0].currency === 'CNY' ? '1' : '')
     setImportText('')
-    setImportFileName('')
+    setImportFile(null)
+    if (importFileRef.current) importFileRef.current.value = ''
     setPreviewRows(null)
     setImportDialogOpen(true)
   }
@@ -427,31 +429,37 @@ export function JournalManager({
   function handleImportFileChange(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      setImportText(typeof reader.result === 'string' ? reader.result : '')
-      setImportFileName(file.name)
-      setPreviewRows(null)
-    }
-    reader.readAsText(file, 'utf-8')
+    setImportFile(file)
+    setPreviewRows(null)
   }
 
   function handleImportParse() {
-    const text = importText.trim()
-    if (!text) {
-      toast.error(importTab === 'csv' ? '请先选择招行 CSV 文件' : '请先粘贴对账单文本')
-      return
-    }
     if (!importAccount) {
       toast.error('请选择要导入的银行账户')
       return
     }
-    const rows = importTab === 'csv' ? parseCmbCsv(text) : parseBocStatementText(text)
-    if (rows.length === 0) {
-      toast.error('未解析到流水行，请确认文件/文本格式与所选方式一致')
+    if (importTab === 'file' && !importFile) {
+      toast.error('请先选择对账单文件')
+      return
+    }
+    if (importTab === 'text' && !importText.trim()) {
+      toast.error('请先粘贴对账单文本')
       return
     }
     startTransition(async () => {
+      let rows: JournalImportParsedRow[] = []
+      try {
+        rows = importTab === 'file' && importFile
+          ? await parseStatementFile(importFile)
+          : parseBocStatementText(importText)
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : '文件解析失败，请检查文件后重试')
+        return
+      }
+      if (rows.length === 0) {
+        toast.error('未解析到流水行，请确认文件格式，或改用粘贴文本方式')
+        return
+      }
       const result = await previewJournalImport({ account_id: importAccount, rows })
       if (!result.ok || !result.rows) {
         toastError(result)
@@ -946,7 +954,7 @@ export function JournalManager({
           <DialogHeader>
             <DialogTitle>导入银行流水</DialogTitle>
             <DialogDescription>
-              支持招商银行 CSV 文件、或粘贴中国银行对账单文本；系统按关键词规则建议分类并标出疑似重复，确认后才入账。
+              上传银行对账单文件（CSV / Excel / 电子版 PDF）或粘贴对账单文本，文件只在本机浏览器解析、不会上传服务器；系统按关键词规则建议分类并标出疑似重复，确认后才入账。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -969,14 +977,14 @@ export function JournalManager({
                 <Select
                   value={importTab}
                   onValueChange={(value) => {
-                    setImportTab(value as 'csv' | 'text')
+                    setImportTab(value as 'file' | 'text')
                     setPreviewRows(null)
                   }}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="csv">招行 CSV 文件</SelectItem>
-                    <SelectItem value="text">粘贴对账单文本（中行等）</SelectItem>
+                    <SelectItem value="file">上传对账单文件</SelectItem>
+                    <SelectItem value="text">粘贴对账单文本</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -996,19 +1004,22 @@ export function JournalManager({
               )}
             </div>
 
-            {importTab === 'csv' ? (
+            {importTab === 'file' ? (
               <div className="space-y-2">
                 <Label htmlFor="journal-import-file">选择文件</Label>
                 <Input
                   id="journal-import-file"
                   ref={importFileRef}
                   type="file"
-                  accept=".csv,text/csv"
+                  accept=".csv,.xlsx,.xls,.pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/pdf"
                   onChange={handleImportFileChange}
                 />
-                {importFileName && (
-                  <p className="text-xs text-muted-foreground">已读取：{importFileName}</p>
+                {importFile && (
+                  <p className="text-xs text-muted-foreground">已选择：{importFile.name}</p>
                 )}
+                <p className="text-xs text-muted-foreground">
+                  支持银行导出的 CSV、Excel，以及带文字层的电子版 PDF（目前按中国银行对账单版式识别）；扫描件或图片版 PDF 请改用粘贴文本。
+                </p>
               </div>
             ) : (
               <div className="space-y-2">

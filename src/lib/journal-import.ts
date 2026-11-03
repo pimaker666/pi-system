@@ -17,6 +17,16 @@ function parseAmount(raw: string): number | null {
   return Number.isFinite(value) && value > 0 ? value : null
 }
 
+// 部分银行把支出导出为负数或括号形式，符号本身即方向。
+function parseSignedAmount(raw: string): number | null {
+  const cleaned = raw
+    .replace(/[,，\s\u3000]/g, '')
+    .replace(/^[(（](.+)[)）]$/, '-$1')
+    .replace(/[−–—]/g, '-')
+  const value = Number(cleaned)
+  return Number.isFinite(value) && value !== 0 ? value : null
+}
+
 function ymdFromCompact(raw: string): string | null {
   const digits = raw.trim()
   if (/^\d{8}$/.test(digits)) {
@@ -158,4 +168,197 @@ export function parseBocStatementText(text: string): JournalImportParsedRow[] {
     }
   }
   return parsed
+}
+
+// ---------------------------------------------------------------------------
+// 电子表格（Excel / CSV 导出）导入：按表头识别列，兼容招行与中行的导出模板。
+// ---------------------------------------------------------------------------
+
+function pad2(value: number) {
+  return String(value).padStart(2, '0')
+}
+
+function ymdFromDate(date: Date): string {
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`
+}
+
+function ymdFromExcelSerial(serial: number): string | null {
+  if (!Number.isFinite(serial) || serial < 1 || serial > 100000) return null
+  const date = new Date(Math.round((serial - 25569) * 86400000))
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`
+}
+
+// Excel 单元格可能是 Date、数字（日期序列号）、富文本对象或公式结果。
+export function statementCellText(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? '' : ymdFromDate(value)
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'object') {
+    const cell = value as {
+      richText?: Array<{ text?: string }>
+      text?: string
+      result?: unknown
+    }
+    if (Array.isArray(cell.richText)) {
+      return cell.richText.map((part) => part.text ?? '').join('').trim()
+    }
+    if (typeof cell.text === 'string') return cell.text.trim()
+    if ('result' in cell) return statementCellText(cell.result)
+  }
+  return ''
+}
+
+function normalizeDateValue(value: unknown): string | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : ymdFromDate(value)
+  }
+  if (typeof value === 'number') return ymdFromExcelSerial(value)
+  const compact = statementCellText(value).replace(/[\s\u3000]/g, '')
+  if (!compact) return null
+  const compactYmd = ymdFromCompact(compact)
+  if (compactYmd) return compactYmd
+  const match = compact.match(/^(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?$/)
+  if (!match) return null
+  return `${match[1]}-${pad2(Number(match[2]))}-${pad2(Number(match[3]))}`
+}
+
+// 把 CSV 文本转成二维表，供按表头识别；支持逗号与制表符分隔。
+export function parseDelimitedMatrix(text: string): string[][] {
+  const lines = text
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .filter((line) => line.trim() && !line.trim().startsWith('#'))
+  const sample = lines.slice(0, 10).join('\n')
+  const tabs = (sample.match(/\t/g) ?? []).length
+  const commas = (sample.match(/,/g) ?? []).length
+  const delimiter = tabs > 0 && tabs >= commas ? '\t' : ','
+  return lines.map((line) =>
+    delimiter === '\t' ? line.split('\t').map((cell) => cell.trim()) : splitCsvLine(line).map((cell) => cell.trim()),
+  )
+}
+
+interface StatementColumns {
+  date: number
+  debit: number
+  credit: number
+  amount: number
+  direction: number
+  summary: number
+  counterparty: number
+  notes: number
+  reference: number
+}
+
+function findColumn(headers: string[], keywords: string[]): number {
+  for (const keyword of keywords) {
+    const index = headers.findIndex((header) => header.includes(keyword))
+    if (index >= 0) return index
+  }
+  return -1
+}
+
+function detectColumns(row: unknown[]): StatementColumns | null {
+  const headers = row.map((cell) => statementCellText(cell).replace(/[\s\u3000]/g, ''))
+  const date = findColumn(headers, ['记账日', '交易日期', '交易日', '记账日期', '交易时间', '入账日期', '入账日', '日期'])
+  const debit = findColumn(headers, ['借方发生额', '借方金额', '支出金额', '付款金额', '借方', '支出'])
+  const credit = findColumn(headers, ['贷方发生额', '贷方金额', '收入金额', '收款金额', '贷方', '收入'])
+  const amount = findColumn(headers, ['交易金额', '发生额', '金额'])
+  const direction = findColumn(headers, ['收付标志', '借贷标志', '交易类型', '收支类型', '方向'])
+  if (date < 0) return null
+  if (debit < 0 && credit < 0 && amount < 0 && direction < 0) return null
+  return {
+    date,
+    debit,
+    credit,
+    amount,
+    direction,
+    summary: findColumn(headers, ['摘要', '交易备注', '用途', '交易说明', '说明']),
+    counterparty: findColumn(headers, ['对方户名', '对方名称', '对方账户名称', '收付款人', '对方']),
+    notes: findColumn(headers, ['备注']),
+    reference: findColumn(headers, ['凭证号码', '交易流水号', '流水号', '凭证号', '业务编号', '流水']),
+  }
+}
+
+// 二维表 → 流水行。表头行在前 40 行内自动识别；列顺序不同、中英文表头均可。
+export function parseStatementRows(matrix: unknown[][]): JournalImportParsedRow[] {
+  let headerIndex = -1
+  let columns: StatementColumns | null = null
+  for (let index = 0; index < Math.min(matrix.length, 40); index += 1) {
+    const detected = detectColumns(matrix[index])
+    if (detected) {
+      headerIndex = index
+      columns = detected
+      break
+    }
+  }
+  if (!columns) return []
+
+  const rows: JournalImportParsedRow[] = []
+  for (const row of matrix.slice(headerIndex + 1)) {
+    const entryDate = normalizeDateValue(row[columns.date])
+    if (!entryDate) continue
+
+    const debitValue = columns.debit >= 0 ? parseSignedAmount(statementCellText(row[columns.debit])) : null
+    const creditValue = columns.credit >= 0 ? parseSignedAmount(statementCellText(row[columns.credit])) : null
+    const debit = debitValue !== null ? Math.abs(debitValue) : null
+    const credit = creditValue !== null ? Math.abs(creditValue) : null
+    let kind: 'income' | 'expense' | null = null
+    let amount: number | null = null
+    if (debit !== null && credit === null) {
+      kind = 'expense'
+      amount = debit
+    } else if (credit !== null && debit === null) {
+      kind = 'income'
+      amount = credit
+    } else if (debit === null && credit === null && columns.amount >= 0) {
+      const signed = parseSignedAmount(statementCellText(row[columns.amount]))
+      const direction = columns.direction >= 0 ? statementCellText(row[columns.direction]) : ''
+      if (signed !== null && /收|贷|入|存/.test(direction)) {
+        kind = 'income'
+        amount = Math.abs(signed)
+      } else if (signed !== null && /支|付|借|取|出/.test(direction)) {
+        kind = 'expense'
+        amount = Math.abs(signed)
+      } else if (signed !== null && signed < 0) {
+        kind = 'expense'
+        amount = Math.abs(signed)
+      }
+    }
+    if (!kind || amount === null) continue
+
+    const summary =
+      (columns.summary >= 0 ? statementCellText(row[columns.summary]) : '') ||
+      (columns.counterparty >= 0 ? statementCellText(row[columns.counterparty]) : '') ||
+      (columns.notes >= 0 ? statementCellText(row[columns.notes]) : '') ||
+      (columns.direction >= 0 ? statementCellText(row[columns.direction]) : '')
+    if (!summary) continue
+
+    const counterparty =
+      columns.counterparty >= 0
+        ? statementCellText(row[columns.counterparty])
+        : columns.notes >= 0 && columns.summary >= 0
+          ? statementCellText(row[columns.notes])
+          : ''
+    const referenceRaw = columns.reference >= 0 ? statementCellText(row[columns.reference]) : ''
+    const referenceCandidate = referenceRaw
+      .split('/')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+      .pop()
+    // 中行的「凭证号码/业务编号/用途/摘要」是合并列，最后一段常常是用途而非编号。
+    const referenceNo =
+      referenceCandidate && /\d/.test(referenceCandidate) ? referenceCandidate : undefined
+
+    rows.push({
+      entry_date: entryDate,
+      kind,
+      amount_original: amount,
+      summary,
+      counterparty: counterparty || undefined,
+      reference_no: referenceNo,
+    })
+  }
+  return rows
 }
