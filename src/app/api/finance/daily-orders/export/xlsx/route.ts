@@ -28,11 +28,18 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /** 导出列把「截图」挪到表尾：截图横向延伸时不会盖住结算/提成列。 */
-const EXPORT_COLUMNS = [...DAILY_ORDER_COLUMNS.filter((name) => name !== '截图'), '截图']
+const EXPORT_COLUMNS = [
+  ...DAILY_ORDER_COLUMNS.filter((name) => name !== '截图').flatMap((name) =>
+    name === '订单总金额' ? [name, '币种'] : [name],
+  ),
+  '截图',
+]
 /** 截图列的 0 基列号，用于 addImage 定位。 */
 const SCREENSHOT_COLUMN_INDEX = EXPORT_COLUMNS.indexOf('截图')
-/** 「订单总金额」是订单级字段，同一订单的多行产品合并成一个单元格。 */
-const ORDER_TOTAL_COLUMN = EXPORT_COLUMNS.indexOf('订单总金额') + 1
+/** 「订单总金额」「币种」是订单级字段，同一订单的多行产品合并成一个单元格。 */
+const ORDER_LEVEL_COLUMNS = ['订单总金额', '币种'].map(
+  (name) => EXPORT_COLUMNS.indexOf(name) + 1,
+)
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -69,7 +76,7 @@ async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilte
   const workbook = new ExcelJS.Workbook()
   workbook.creator = 'PI System'
   const sheet = workbook.addWorksheet('每日订单台账', { views: [{ state: 'frozen', ySplit: 1 }] })
-  sheet.columns = [6, 13, 16, 16, 18, 13, 18, 20, 12, 28, 12, 18, 18, 20, 18, 18, 18, 12, 30, 28, 10, 10]
+  sheet.columns = [6, 13, 16, 16, 18, 13, 18, 20, 12, 28, 12, 18, 18, 20, 18, 18, 10, 18, 12, 30, 28, 10, 10]
     .map((width) => ({ width }))
   const header = sheet.addRow([...EXPORT_COLUMNS])
   header.height = 24
@@ -101,6 +108,7 @@ async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilte
       exportRow.productReceived,
       exportRow.logisticsFee,
       exportRow.orderTotal,
+      exportRow.currency,
       exportRow.outstandingAmount,
       exportRow.paymentCategory,
       exportRow.remarks,
@@ -159,16 +167,18 @@ async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilte
     }
   }
 
-  // 订单总金额纵向合并：ExcelJS 合并会丢弃从属单元格样式，所以合并后要给区间底部补回分隔线。
+  // 订单级字段纵向合并：ExcelJS 合并会丢弃从属单元格样式，所以合并后要给区间底部补回分隔线。
   for (const group of orderGroups) {
     if (group.lastRow <= group.firstRow) continue
-    sheet.mergeCells(group.firstRow, ORDER_TOTAL_COLUMN, group.lastRow, ORDER_TOTAL_COLUMN)
-    sheet.getCell(group.lastRow, ORDER_TOTAL_COLUMN).border = {
-      bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+    for (const column of ORDER_LEVEL_COLUMNS) {
+      sheet.mergeCells(group.firstRow, column, group.lastRow, column)
+      sheet.getCell(group.lastRow, column).border = {
+        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+      }
     }
   }
 
-  sheet.autoFilter = { from: 'A1', to: 'V1' }
+  sheet.autoFilter = { from: 'A1', to: 'W1' }
   const buffer = await workbook.xlsx.writeBuffer()
   const body = new Uint8Array(buffer as ArrayBuffer)
   const date = new Date().toISOString().slice(0, 10)

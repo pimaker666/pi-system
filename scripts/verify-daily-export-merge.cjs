@@ -1,17 +1,15 @@
 /**
- * 验证每日订单导出的两项改动：
- *   1. 截图上限提到 1000 张 / 400MB（每日订单与订单成本共用同一组常量）；
- *   2. 同一订单的多行产品在「订单总金额」列纵向合并，单行订单不合并。
+ * 验证每日订单导出：
+ *   1. 截图上限 1000 张 / 400MB（每日订单与订单成本共用同一组常量）；
+ *   2. 同一订单的多行产品在「订单总金额」「币种」列纵向合并，单行订单不合并。
  *
  * 直接跑导出路由（POST），mock 掉鉴权、台账读取与 Supabase Storage，
  * 再用 ExcelJS 读回生成的 xlsx 检查合并区间与图片锚点。
- * 同时把 HEAD 版本一并装配做差分，确认断言能识别出改动前的行为。
  *
  * 运行：NODE_PATH=<主工作区>/node_modules ELECTRON_RUN_AS_NODE=1 <Qoder> scripts/verify-daily-export-merge.cjs
  */
 const assert = require('node:assert')
 const fs = require('node:fs')
-const { execFileSync } = require('node:child_process')
 const path = require('node:path')
 const ExcelJS = require('exceljs')
 const esbuild = require('esbuild')
@@ -203,9 +201,6 @@ async function readSheet(response) {
 
 async function main() {
   const current = await loadRoute(fs.readFileSync(path.join(REPO, ROUTE), 'utf8'))
-  const head = await loadRoute(
-    execFileSync('git', ['-C', REPO, 'show', `HEAD:${ROUTE}`], { encoding: 'utf8' }),
-  )
 
   // --- 1. 常量 -------------------------------------------------------------
   const libSource = fs.readFileSync(path.join(REPO, 'src/lib/business-daily-orders.ts'), 'utf8')
@@ -243,10 +238,18 @@ async function main() {
   assert.match(String(sheet.getCell('P2').value), /CNY/, '合并后的订单总金额保留首行取值')
   assert.match(String(sheet.getCell('P6').value), /USD/, 'USD 订单总金额同理')
   assert.notEqual(String(sheet.getCell('P5').value), '', '单行订单仍保留订单总金额')
-  // 合并只作用于订单总金额列：产品级列、截图列均不合并
+  // 「币种」紧跟订单总金额（Q 列），同样按订单纵向合并
+  assert.equal(sheet.getRow(1).getCell(16).value, '订单总金额', '第 16 列应为订单总金额')
+  assert.equal(sheet.getRow(1).getCell(17).value, '币种', '第 17 列应为币种')
+  assert.ok(merges.includes('Q2:Q4'), `订单 A 的币种应合并为 Q2:Q4，实际：${merges.join(',')}`)
+  assert.ok(merges.includes('Q6:Q7'), `订单 C 的币种应合并为 Q6:Q7，实际：${merges.join(',')}`)
+  assert.equal(String(sheet.getCell('Q2').value), 'CNY', '订单 A 币种应为 CNY')
+  assert.equal(String(sheet.getCell('Q6').value), 'USD', '订单 C 币种应为 USD')
+  assert.equal(String(sheet.getCell('Q5').value), 'CNY', '单行订单币种仍逐行填写')
+  // 合并只作用于订单级列：产品级列、截图列均不合并
   assert.ok(!sheet.getCell('A3').isMerged, '序号列不合并')
   assert.ok(!sheet.getCell('J3').isMerged, '产品名称列不合并')
-  assert.ok(!sheet.getCell('V3').isMerged, '截图列不合并')
+  assert.ok(!sheet.getCell('W3').isMerged, '截图列不合并')
   // 合并后底部单元格补回分隔线
   assert.ok(sheet.getCell('P4').border?.bottom, '合并区间底部应保留分隔线')
   // 图片仍嵌在订单首行（订单 A 两张、订单 C 一张）
@@ -257,14 +260,7 @@ async function main() {
     .sort((a, b) => a - b)
   assert.deepEqual(imageRows, [2, 2, 6], '截图锚定在各自订单的首行')
 
-  // --- 3. 差分：HEAD 尚未合并订单总金额 ------------------------------------
-  const headResponse = await exportXlsx(head, baseFixture())
-  const headSheet = (await readSheet(headResponse)).getWorksheet('每日订单台账')
-  const headMerges = headSheet.model.merges ?? []
-  assert.ok(!headMerges.includes('P2:P4'), '改动前不应出现订单总金额合并（差分有效）')
-  assert.match(String(headSheet.getCell('P2').value), /CNY/, '改动前订单总金额同样逐行填写')
-
-  // --- 4. 1000 张上限 ------------------------------------------------------
+  // --- 3. 1000 张上限 ------------------------------------------------------
   const underLimit = []
   for (let i = 0; i < 100; i += 1) {
     underLimit.push(

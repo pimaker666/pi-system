@@ -466,6 +466,8 @@ export interface BusinessDailyExportRow {
   productReceived: string
   logisticsFee: string
   orderTotal: string
+  /** 订单总金额/未收尾款所用币种（CNY/USD 等），导出时单独成列避免误读。 */
+  currency: CurrencyCode
   outstandingAmount: string
   paymentCategory: string
   remarks: string
@@ -524,6 +526,7 @@ export function buildBusinessDailyExportRows(
       shippingNumber: order.daily_shipping_number ?? '',
       paymentAccount: order.payment_account ?? '',
       orderTotal: format.money(Number(order.total_amount), order.currency),
+      currency: order.currency,
       outstandingAmount: format.money(order.outstanding_amount, order.currency),
       paymentCategory: format.payment(order.daily_payment_category),
       remarks: order.sales_notes ?? '',

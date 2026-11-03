@@ -14,7 +14,15 @@ export interface DailyOrderPdfRow extends BusinessDailyExportRow {
   imageSources: Array<string | null>
 }
 
-const widths = [2.5, 4.5, 4, 4.5, 5, 4, 5.5, 5.5, 4, 7, 3.5, 5, 4.5, 5, 4.5, 5.5, 5.5, 4.5, 5, 3, 4, 3.5]
+/** PDF 表头比台账多一列「币种」，紧跟在订单总金额右侧。 */
+const PDF_COLUMNS = DAILY_ORDER_COLUMNS.flatMap((name) =>
+  name === '订单总金额' ? [name, '币种'] : [name],
+)
+const SCREENSHOT_COLUMN = PDF_COLUMNS.indexOf('截图')
+const SETTLEMENT_COLUMN = PDF_COLUMNS.indexOf('结算状态')
+const COMMISSION_COLUMN = PDF_COLUMNS.indexOf('提成')
+
+const widths = [2.5, 4.5, 3.5, 4, 4.5, 4, 5.5, 5, 4, 6, 3.5, 5, 4.5, 5, 4.5, 5.5, 3, 5.5, 4.5, 5, 3, 4, 3.5]
 const styles = StyleSheet.create({
   page: { fontFamily: 'NotoSansSC', padding: 12, fontSize: 5, color: '#111827' },
   title: { fontSize: 13, fontWeight: 'bold', marginBottom: 8 },
@@ -35,7 +43,7 @@ export function DailyOrdersPdf({ orders }: { orders: DailyOrderPdfRow[] }) {
   return <Document><Page size="A3" orientation="landscape" style={styles.page}>
     <Text style={styles.title}>财务每日订单台账</Text>
     <View style={styles.table}>
-      <View style={[styles.row, styles.header]} fixed>{DAILY_ORDER_COLUMNS.map((label, index) => <Cell key={label} index={index}><Text>{label}</Text></Cell>)}</View>
+      <View style={[styles.row, styles.header]} fixed>{PDF_COLUMNS.map((label, index) => <Cell key={label} index={index}><Text>{label}</Text></Cell>)}</View>
       {orders.map((row, rowIndex) => {
         const values = [
           row.sequence, row.orderDate, row.shop, row.salesperson,
@@ -43,12 +51,13 @@ export function DailyOrdersPdf({ orders }: { orders: DailyOrderPdfRow[] }) {
           row.shippingCategory,
           row.productSku ? `${row.productName}\n${row.productSku}` : row.productName, row.quantity,
           row.shippingProgress, row.unitPrice, row.productReceived, row.logisticsFee,
-          row.orderTotal, row.outstandingAmount, row.paymentCategory, row.remarks,
-          row.settlementStatus, row.commissionClearanceStatus,
+          row.orderTotal, row.currency, row.outstandingAmount, row.paymentCategory, row.remarks,
         ]
         return <View key={`${row.orderId}-${rowIndex}`} style={styles.row} wrap={false}>
           {values.map((value, index) => <Cell key={index} index={index}><Text>{value}</Text></Cell>)}
-          <Cell index={21}><View style={styles.images}>{row.imageSources.map((source, index) => source ? <Image key={index} src={source} style={styles.image} /> : <Text key={index} style={styles.unavailable}>图片不可用</Text>)}</View></Cell>
+          <Cell index={SCREENSHOT_COLUMN}><View style={styles.images}>{row.imageSources.map((source, index) => source ? <Image key={index} src={source} style={styles.image} /> : <Text key={index} style={styles.unavailable}>图片不可用</Text>)}</View></Cell>
+          <Cell index={SETTLEMENT_COLUMN}><Text>{row.settlementStatus}</Text></Cell>
+          <Cell index={COMMISSION_COLUMN}><Text>{row.commissionClearanceStatus}</Text></Cell>
         </View>
       })}
     </View>

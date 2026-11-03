@@ -189,12 +189,12 @@ async function buildCostsXlsx(
     views: [{ state: 'frozen', ySplit: 1 }],
   })
   dailySheet.columns = [
-    10, 13, 20, 16, 24, 13, 20, 20, 12, 26, 14, 16, 16, 18, 16, 18, 16, 18, 16, 12, 32, 14,
+    10, 13, 20, 16, 24, 13, 20, 20, 12, 26, 14, 16, 16, 18, 16, 18, 16, 18, 8, 16, 12, 32, 14,
   ].map((width) => ({ width }))
   styleHeader(dailySheet.addRow([
     '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '发货单号', '收款账户',
     '发货分类', '产品名称', '数量', '成本', '总成本', '发货进度', '销售单价', '产品实收金额',
-    '运费实收金额', '订单总金额', '未收尾款', '收款分类', '备注', '截图数',
+    '运费实收金额', '订单总金额', '币种', '未收尾款', '收款分类', '备注', '截图数',
   ]))
 
   dailyCosts.forEach((item, index) => {
@@ -217,6 +217,7 @@ async function buildCostsXlsx(
       item.product_received_amount,
       item.logistics_fee_amount,
       item.order_total_amount,
+      item.currency,
       item.outstanding_amount,
       item.payment_category ? PAYMENT_LABELS[item.payment_category] : '',
       item.sales_notes ?? '',
@@ -229,13 +230,13 @@ async function buildCostsXlsx(
     row.getCell(16).numFmt = '#,##0.00'
     row.getCell(17).numFmt = '#,##0.00'
     row.getCell(18).numFmt = '#,##0.00'
-    row.getCell(19).numFmt = '#,##0.00'
+    row.getCell(20).numFmt = '#,##0.00'
     styleBody(row)
   })
 
   // 订单级列纵向合并（产品级列保持逐行）；ExcelJS 合并会丢弃从属单元格样式，
   // 所以合并后要给区间底部单元格补回分隔线。
-  const ORDER_MERGE_COLUMNS = [2, 3, 4, 5, 6, 7, 8, 18, 19, 20, 21, 22]
+  const ORDER_MERGE_COLUMNS = [2, 3, 4, 5, 6, 7, 8, 18, 19, 20, 21, 22, 23]
   for (const group of orderGroups) {
     if (group.lastRow > group.firstRow) {
       for (const column of ORDER_MERGE_COLUMNS) {
@@ -248,7 +249,7 @@ async function buildCostsXlsx(
   }
 
   // 每单截图嵌在订单第一行，从「截图数」右侧第一个空列起横向排开。
-  const IMAGE_START_COLUMN = 23
+  const IMAGE_START_COLUMN = 24
   let downloadedImageBytes = 0
   for (const group of orderGroups) {
     const attachments = group.attachments.slice(0, BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER)
@@ -290,7 +291,7 @@ async function buildCostsXlsx(
     }
   }
 
-  dailySheet.autoFilter = { from: 'A1', to: 'V1' }
+  dailySheet.autoFilter = { from: 'A1', to: 'W1' }
 
   const legacyReferences = new Map(
     legacyOrders.map((order) => [order.id, order.pi_number_snapshot]),
