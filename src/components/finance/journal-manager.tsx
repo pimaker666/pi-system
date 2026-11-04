@@ -133,6 +133,9 @@ export function JournalManager({
   const [entryCategory, setEntryCategory] = useState('')
   const [entryCurrency, setEntryCurrency] = useState<CurrencyCode>('CNY')
   const [entryRate, setEntryRate] = useState('1')
+  // 拆分模式：一笔银行流水按费用性质拆成多条分录，共享账户/日期/摘要/流水号等（仅新建可用）
+  const [splitEnabled, setSplitEnabled] = useState(false)
+  const [splitLines, setSplitLines] = useState<Array<{ category_id: string; amount: string }>>([])
 
   // 作废
   const [voidTarget, setVoidTarget] = useState<FinanceJournalEntry | null>(null)
@@ -172,11 +175,16 @@ export function JournalManager({
     () => categories.filter((c) => c.kind === entryKind && c.is_active),
     [categories, entryKind],
   )
-  const reimburseeRequired =
-    kindCategories.find((category) => category.id === entryCategory)?.name === REIMBURSEMENT_CATEGORY_NAME
   const reimbursementCategoryIds = useMemo(
     () => new Set(categories.filter((category) => category.name === REIMBURSEMENT_CATEGORY_NAME).map((category) => category.id)),
     [categories],
+  )
+  const reimburseeRequired = splitEnabled
+    ? splitLines.some((line) => reimbursementCategoryIds.has(line.category_id))
+    : kindCategories.find((category) => category.id === entryCategory)?.name === REIMBURSEMENT_CATEGORY_NAME
+  const splitTotal = useMemo(
+    () => splitLines.reduce((sum, line) => sum + (Number(line.amount) > 0 ? Number(line.amount) : 0), 0),
+    [splitLines],
   )
 
   const shopOptions = useMemo(
@@ -230,6 +238,8 @@ export function JournalManager({
     setEntryCategory('')
     setEntryCurrency(activeAccounts[0]?.currency ?? 'CNY')
     setEntryRate(!activeAccounts[0] || activeAccounts[0].currency === 'CNY' ? '1' : '')
+    setSplitEnabled(false)
+    setSplitLines([])
   }
 
   function openEntryDialog(entry?: FinanceJournalEntry) {
@@ -243,12 +253,37 @@ export function JournalManager({
     } else {
       resetEntryForm()
     }
+    setSplitEnabled(false)
+    setSplitLines([])
     setEntryDialogOpen(true)
   }
 
   function handleEntryKindChange(value: FinanceTransactionType) {
     setEntryKind(value)
     setEntryCategory('')
+    // 分类按收支类型过滤，切换类型后原有拆分行的分类不再适用
+    setSplitLines((current) => current.map((line) => ({ ...line, category_id: '' })))
+  }
+
+  function toggleSplitMode() {
+    if (splitEnabled) {
+      setSplitEnabled(false)
+      return
+    }
+    setSplitEnabled(true)
+    setSplitLines(entryCategory ? [{ category_id: entryCategory, amount: '' }] : [{ category_id: '', amount: '' }])
+  }
+
+  function patchSplitLine(index: number, patch: Partial<{ category_id: string; amount: string }>) {
+    setSplitLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)))
+  }
+
+  function addSplitLine() {
+    setSplitLines((current) => [...current, { category_id: '', amount: '' }])
+  }
+
+  function removeSplitLine(index: number) {
+    setSplitLines((current) => (current.length <= 1 ? current : current.filter((_, i) => i !== index)))
   }
 
   function handleEntryAccountChange(value: string) {
@@ -270,7 +305,13 @@ export function JournalManager({
         toastError(result)
         return
       }
-      toast.success(editingEntry ? '分录已更新' : '分录已登记')
+      toast.success(
+        editingEntry
+          ? '分录已更新'
+          : result.saved && result.saved > 1
+            ? `已登记 ${result.saved} 条分录（同一笔流水）`
+            : '分录已登记',
+      )
       setEntryDialogOpen(false)
       setEditingEntry(null)
       router.refresh()
@@ -1194,7 +1235,7 @@ export function JournalManager({
           <DialogHeader>
             <DialogTitle>{editingEntry ? '编辑分录' : '记一笔'}</DialogTitle>
             <DialogDescription>
-              登记银行账户的收入或支出；账户与分类可在「账户管理」「分类管理」中维护。
+              登记银行账户的收入或支出；账户与分类可在「账户管理」「分类管理」中维护。一笔流水含多种费用性质时可开拆分模式，按行各记一个分类。
             </DialogDescription>
           </DialogHeader>
           <form key={editingEntry?.id ?? 'new'} className="grid gap-4 sm:grid-cols-2" onSubmit={handleEntrySubmit}>
@@ -1220,17 +1261,103 @@ export function JournalManager({
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="journal-category">分类</Label>
-              <Select name="category_id" value={entryCategory} onValueChange={setEntryCategory} required>
-                <SelectTrigger id="journal-category"><SelectValue placeholder="选择分类" /></SelectTrigger>
-                <SelectContent>
-                  {kindCategories.map((category) => (
-                    <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
+            {!editingEntry && (
+              <div className="sm:col-span-2">
+                <Button
+                  type="button"
+                  variant={splitEnabled ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={toggleSplitMode}
+                >
+                  {splitEnabled ? '退出拆分模式' : '拆分模式：一笔流水按费用性质记多条分录'}
+                </Button>
+              </div>
+            )}
+            {splitEnabled ? (
+              <div className="space-y-2 sm:col-span-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Label>拆分明细（每笔一个分类 + 金额）</Label>
+                  <Button type="button" variant="outline" size="sm" onClick={addSplitLine}>
+                    <Plus className="mr-1 h-4 w-4" />
+                    添加一笔
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {splitLines.map((line, index) => (
+                    <div key={index} className="flex items-end gap-2">
+                      <div className="flex-1 space-y-1">
+                        {index === 0 ? <p className="text-xs text-muted-foreground">分类</p> : null}
+                        <Select
+                          name="category_id"
+                          value={line.category_id}
+                          onValueChange={(value) => patchSplitLine(index, { category_id: value })}
+                          required
+                        >
+                          <SelectTrigger><SelectValue placeholder="选择分类" /></SelectTrigger>
+                          <SelectContent>
+                            {kindCategories.map((category) => (
+                              <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="w-36 space-y-1">
+                        {index === 0 ? <p className="text-xs text-muted-foreground">金额</p> : null}
+                        <Input
+                          name="amount_original"
+                          type="number"
+                          min="0.0001"
+                          step="0.0001"
+                          value={line.amount}
+                          onChange={(event) => patchSplitLine(index, { amount: event.target.value })}
+                          required
+                        />
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="shrink-0"
+                        onClick={() => removeSplitLine(index)}
+                        disabled={splitLines.length <= 1}
+                        aria-label="移除该笔"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   ))}
-                </SelectContent>
-              </Select>
-            </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  合计 {formatCurrency(splitTotal, entryCurrency)}；每条分录共享上方账户、日期、摘要、流水号等信息，分类汇总与报销人统计按行各自归集。
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="journal-category">分类</Label>
+                  <Select name="category_id" value={entryCategory} onValueChange={setEntryCategory} required>
+                    <SelectTrigger id="journal-category"><SelectValue placeholder="选择分类" /></SelectTrigger>
+                    <SelectContent>
+                      {kindCategories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="journal-amount">金额</Label>
+                  <Input
+                    id="journal-amount"
+                    name="amount_original"
+                    type="number"
+                    min="0.0001"
+                    step="0.0001"
+                    defaultValue={editingEntry ? String(Number(editingEntry.amount_original)) : ''}
+                    required
+                  />
+                </div>
+              </>
+            )}
             <div className="space-y-2">
               <Label htmlFor="journal-date">日期</Label>
               <Input

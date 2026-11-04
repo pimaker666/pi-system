@@ -25,6 +25,7 @@ import {
   financeJournalAccountSchema,
   financeJournalCategorySchema,
   financeJournalEntriesBulkVoidSchema,
+  financeJournalEntryLineSchema,
   financeJournalEntrySchema,
   financeJournalEntryVoidSchema,
   financeJournalImportConfirmSchema,
@@ -33,6 +34,7 @@ import {
   financeTransactionSchema,
   type FinanceJournalImportRowInput,
 } from '@/schemas/finance'
+import { z } from 'zod'
 import type { ActionResult } from './products'
 import type { CurrencyCode } from '@/types'
 
@@ -533,14 +535,45 @@ export async function deleteJournalAccount(accountId: string): Promise<ActionRes
   return { ok: true }
 }
 
-export async function saveJournalEntry(formData: FormData): Promise<ActionResult> {
+export async function saveJournalEntry(
+  formData: FormData,
+): Promise<ActionResult & { saved?: number }> {
   const profile = await requireFinanceAccess()
+  const entryId = formData.get('entry_id')
+  const editingId =
+    typeof entryId === 'string' && /^[0-9a-f-]{36}$/i.test(entryId) ? entryId : null
+  // 拆分模式下表单含多组同名 category_id / amount_original；单笔记一笔时各只有 1 个。
+  const lineCategories = formData.getAll('category_id')
+  const lineAmounts = formData.getAll('amount_original')
+  if (editingId && lineCategories.length > 1) {
+    return { ok: false, error: '编辑分录时不支持拆分，请逐条修改' }
+  }
+  if (lineCategories.length === 0 || lineCategories.length !== lineAmounts.length) {
+    return { ok: false, error: '分录明细数据不完整，请重新填写' }
+  }
+  if (lineCategories.length > 50) {
+    return { ok: false, error: '单笔最多拆分 50 条分录' }
+  }
+  const lineInputs = lineCategories.map((category_id, index) => ({
+    category_id,
+    amount_original: lineAmounts[index],
+  }))
+  const parsedLines = z.array(financeJournalEntryLineSchema).safeParse(lineInputs)
+  if (!parsedLines.success) {
+    const first = parsedLines.error.issues[0]
+    const lineIndex = typeof first?.path[0] === 'number' ? first.path[0] : 0
+    return {
+      ok: false,
+      error: `第 ${lineIndex + 1} 笔：${first?.message ?? '明细填写有误'}`,
+    }
+  }
+
   const parsed = financeJournalEntrySchema.safeParse({
     account_id: formData.get('account_id'),
-    category_id: formData.get('category_id'),
+    category_id: lineInputs[0].category_id,
     entry_date: formData.get('entry_date'),
     kind: formData.get('kind'),
-    amount_original: formData.get('amount_original'),
+    amount_original: lineInputs[0].amount_original,
     currency: formData.get('currency'),
     exchange_rate_to_cny: formData.get('exchange_rate_to_cny'),
     summary: formData.get('summary'),
@@ -553,28 +586,30 @@ export async function saveJournalEntry(formData: FormData): Promise<ActionResult
   if (!parsed.success) {
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
   }
-  const entryId = formData.get('entry_id')
-  const editingId =
-    typeof entryId === 'string' && /^[0-9a-f-]{36}$/i.test(entryId) ? entryId : null
 
   const supabase = await createClient()
+  const lineCategoryIds = [...new Set(parsedLines.data.map((line) => line.category_id))]
+  const { data: lineCategoriesRows, error: categoryError } = await supabase
+    .from('finance_journal_categories')
+    .select('id, name')
+    .in('id', lineCategoryIds)
+  if (categoryError) return { ok: false, error: categoryError.message }
+  const categoryNameById = new Map((lineCategoriesRows ?? []).map((row) => [row.id, row.name]))
+  if (categoryNameById.size !== lineCategoryIds.length) {
+    return { ok: false, error: '存在无效的支出分类，请重新选择' }
+  }
   if (!parsed.data.reimbursee) {
-    const { data: category, error } = await supabase
-      .from('finance_journal_categories')
-      .select('name')
-      .eq('id', parsed.data.category_id)
-      .maybeSingle()
-    if (error) return { ok: false, error: error.message }
-    if (category?.name === REIMBURSEMENT_CATEGORY_NAME) {
-      return { ok: false, fieldErrors: { reimbursee: ['选择「报销」分类时，报销人必填'] } }
+    const hasReimbursementLine = parsedLines.data.some(
+      (line) => categoryNameById.get(line.category_id) === REIMBURSEMENT_CATEGORY_NAME,
+    )
+    if (hasReimbursementLine) {
+      return { ok: false, fieldErrors: { reimbursee: ['拆分中含有「报销」分类时，报销人必填'] } }
     }
   }
   const payload = {
     account_id: parsed.data.account_id,
-    category_id: parsed.data.category_id,
     entry_date: parsed.data.entry_date,
     kind: parsed.data.kind,
-    amount_original: parsed.data.amount_original,
     currency: parsed.data.currency,
     exchange_rate_to_cny: normalizedRate(parsed.data.currency, parsed.data.exchange_rate_to_cny),
     summary: parsed.data.summary,
@@ -584,6 +619,11 @@ export async function saveJournalEntry(formData: FormData): Promise<ActionResult
     shop: parsed.data.shop || null,
     remark: parsed.data.remark || null,
   }
+  const rows = parsedLines.data.map((line) => ({
+    ...payload,
+    category_id: line.category_id,
+    amount_original: line.amount_original,
+  }))
 
   if (editingId) {
     const { data: existing, error: loadError } = await supabase
@@ -596,17 +636,18 @@ export async function saveJournalEntry(formData: FormData): Promise<ActionResult
     if (!existing) return { ok: false, error: '分录不存在或已作废，不能编辑' }
     const { error } = await supabase
       .from('finance_journal_entries')
-      .update(payload)
+      .update(rows[0])
       .eq('id', editingId)
     if (error) return { ok: false, error: error.message }
-  } else {
-    const { error } = await supabase
-      .from('finance_journal_entries')
-      .insert({ ...payload, created_by: profile.id })
-    if (error) return { ok: false, error: error.message }
+    revalidateFinance()
+    return { ok: true, saved: 1 }
   }
+  const { error } = await supabase
+    .from('finance_journal_entries')
+    .insert(rows.map((row) => ({ ...row, created_by: profile.id })))
+  if (error) return { ok: false, error: error.message }
   revalidateFinance()
-  return { ok: true }
+  return { ok: true, saved: rows.length }
 }
 
 export async function voidJournalEntry(input: {
