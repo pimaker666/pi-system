@@ -1,9 +1,38 @@
 'use client'
 
+import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/types'
+
+/**
+ * 财务 tab 都是重查询页。prefetch 默认整页预取会在进入视口时同时渲染所有 tab，
+ * 反而拖慢当前页；这里改成悬停/聚焦后才升级为整页预取，点到时数据多半已就绪。
+ */
+function PrefetchOnIntentLink({
+  href,
+  className,
+  children,
+}: {
+  href: string
+  className: string
+  children: React.ReactNode
+}) {
+  const [intent, setIntent] = React.useState(false)
+  const arm = () => setIntent(true)
+  return (
+    <Link
+      href={href}
+      prefetch={intent}
+      className={className}
+      onPointerEnter={arm}
+      onFocus={arm}
+    >
+      {children}
+    </Link>
+  )
+}
 
 const financeNavGroups = [
   {
@@ -93,7 +122,7 @@ export function FinanceNav({
             {group.items.map((item) => {
               const active = item.href === activeHref
               return (
-                <Link
+                <PrefetchOnIntentLink
                   key={item.href}
                   href={item.href}
                   className={cn(
@@ -109,7 +138,7 @@ export function FinanceNav({
                       {commissionBadge}
                     </span>
                   )}
-                </Link>
+                </PrefetchOnIntentLink>
               )
             })}
           </div>

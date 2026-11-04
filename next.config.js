@@ -31,6 +31,12 @@ const nextConfig = {
     // Allow the client bundle to interop with the ESM-only @react-pdf/renderer
     // via dynamic import without tripping the strict esm-externals check.
     esmExternals: 'loose',
+    // 财务各 tab 都是重查询页，默认 dynamic=0 导致每次切回都重新取数、必然闪骨架。
+    // 保留 30 秒客户端路由缓存：来回切换直接复用，服务端 Action 里的 revalidatePath
+    // 会主动失效，写入后仍能立即看到新数据。
+    staleTimes: {
+      dynamic: 30,
+    },
   },
   images: {
     // 内网自托管（NAS）：图片走 http://<NAS_IP>:8000，非 https 且主机为内网 IP，
