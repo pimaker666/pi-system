@@ -156,6 +156,54 @@ function revalidateCommission() {
   revalidatePath('/finance/commission')
 }
 
+type CommissionSupabase = Awaited<ReturnType<typeof createClient>>
+
+const ACTIVE_CLEARANCE_STATUSES = ['pending', 'confirmed'] as const
+
+/**
+ * 已提交或已结清的产品行金额已经对外承诺，改提点/运费/汇率前必须撤销结清。
+ * 使用用户态客户端，销售只能读到本人订单的结清记录。
+ */
+async function findLockedClearanceItemIds(
+  supabase: CommissionSupabase,
+  itemIds: string[],
+): Promise<{ locked: Set<string>; error: string | null }> {
+  const locked = new Set<string>()
+  for (let index = 0; index < itemIds.length; index += 100) {
+    const { data, error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .select('business_order_item_id')
+      .in('business_order_item_id', itemIds.slice(index, index + 100))
+      .in('status', [...ACTIVE_CLEARANCE_STATUSES])
+    if (error) return { locked, error: `提成结清状态读取失败：${error.message}` }
+    for (const row of (data ?? []) as { business_order_item_id: string }[]) {
+      locked.add(row.business_order_item_id)
+    }
+  }
+  return { locked, error: null }
+}
+
+async function findLockedOrderIds(
+  supabase: CommissionSupabase,
+  orderIds: string[],
+): Promise<{ locked: Set<string>; error: string | null }> {
+  const locked = new Set<string>()
+  for (let index = 0; index < orderIds.length; index += 100) {
+    const { data, error } = await supabase
+      .from('business_order_items')
+      .select('id, order_id')
+      .in('order_id', orderIds.slice(index, index + 100))
+    if (error) return { locked, error: `订单明细读取失败：${error.message}` }
+    const items = (data ?? []) as { id: string; order_id: string }[]
+    const itemLock = await findLockedClearanceItemIds(supabase, items.map((item) => item.id))
+    if (itemLock.error) return { locked, error: itemLock.error }
+    for (const item of items) {
+      if (itemLock.locked.has(item.id)) locked.add(item.order_id)
+    }
+  }
+  return { locked, error: null }
+}
+
 export async function saveBusinessOrderItemCommission(input: {
   business_order_item_ids: string[]
   rate: number | null
@@ -170,18 +218,31 @@ export async function saveBusinessOrderItemCommission(input: {
   const itemIds = parsed.data.business_order_item_ids
   const { data: itemOrders, error: itemOrderError } = await supabase
     .from('business_order_items')
-    .select('id, order:business_orders!inner(customer_id, voided_at)')
+    .select('id, order:business_orders!inner(customer_id, voided_at, salesperson_id)')
     .in('id', itemIds)
   if (itemOrderError) return { ok: false, error: itemOrderError.message }
   if (!itemOrders || itemOrders.length !== itemIds.length) {
     return { ok: false, error: '部分订单明细行不存在' }
   }
-  const hasUncalculableOrder = itemOrders.some((item) => {
-    const order = item.order as unknown as { customer_id: string | null; voided_at: string | null }
-    return !order.customer_id || order.voided_at
+  const orderMeta = itemOrders.map((item) => item.order as unknown as {
+    customer_id: string | null
+    voided_at: string | null
+    salesperson_id: string | null
   })
+  const hasUncalculableOrder = orderMeta.some((order) => !order.customer_id || order.voided_at)
   if (hasUncalculableOrder) {
     return { ok: false, error: '请先为订单关联客户，再设置产品提点' }
+  }
+  if (profile.role !== 'admin' && profile.role !== 'finance') {
+    if (orderMeta.some((order) => order.salesperson_id !== profile.id)) {
+      return { ok: false, error: '只能维护自己订单的产品提点' }
+    }
+  }
+
+  const lock = await findLockedClearanceItemIds(supabase, itemIds)
+  if (lock.error) return { ok: false, error: lock.error }
+  if (lock.locked.size > 0) {
+    return { ok: false, error: '该产品行已提交或已结清，如需调整提点请先撤销结清' }
   }
 
   if (parsed.data.rate === null) {
@@ -228,6 +289,12 @@ export async function saveBusinessOrderCommission(input: {
   if (orderError) return { ok: false, error: orderError.message }
   if (!order || order.voided_at || !order.customer_id) {
     return { ok: false, error: '请先为订单关联客户，再设置运费提成' }
+  }
+
+  const lock = await findLockedOrderIds(supabase, [parsed.data.business_order_id])
+  if (lock.error) return { ok: false, error: lock.error }
+  if (lock.locked.size > 0) {
+    return { ok: false, error: '该订单已有产品行提交结清，如需修改运费或汇率请先撤销结清' }
   }
 
   const { data: settings, error: settingsError } = await supabase
@@ -277,6 +344,15 @@ export async function saveBusinessOrderCommissionExchangeRate(input: {
   }
 
   const supabase = await createClient()
+  const lock = await findLockedOrderIds(supabase, parsed.data.business_order_ids)
+  if (lock.error) return { ok: false, error: lock.error }
+  if (lock.locked.size > 0) {
+    return {
+      ok: false,
+      error: `${lock.locked.size} 个订单已有产品行提交结清，请先撤销结清后再改汇率`,
+    }
+  }
+
   const { data: existing, error: selectError } = await supabase
     .from('finance_business_order_commissions')
     .select('business_order_id, freight_cost, freight_commission_rate')
@@ -316,6 +392,15 @@ export async function saveBusinessOrderFreightCommissionRate(input: {
   }
 
   const supabase = await createClient()
+  const lock = await findLockedOrderIds(supabase, parsed.data.business_order_ids)
+  if (lock.error) return { ok: false, error: lock.error }
+  if (lock.locked.size > 0) {
+    return {
+      ok: false,
+      error: `所选订单中有 ${lock.locked.size} 个已提交结清，请先撤销结清或取消勾选`,
+    }
+  }
+
   const { error: settingsError } = await supabase
     .from('finance_freight_commission_settings')
     .update({

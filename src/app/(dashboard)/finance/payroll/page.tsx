@@ -67,7 +67,7 @@ export default async function PayrollPage({
         <h1 className="text-2xl font-semibold">{canManage ? '工资表' : '我的工资条'}</h1>
         <p className="text-sm text-muted-foreground">
           {canManage
-            ? '财务核算工资后推送给员工，员工在系统中确认或驳回；修改已推送的金额会自动回到待确认。'
+            ? '财务核算工资后推送给员工，员工在系统中确认或驳回；推送后金额锁定，修改需先撤回发布。'
             : '财务推送后可在此查看本人工资条并确认或驳回。'}
         </p>
       </div>

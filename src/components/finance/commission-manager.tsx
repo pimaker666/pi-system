@@ -966,7 +966,7 @@ function FreightCommissionRateDialog({
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              保存默认运费提点后，当前页正数运费成本订单立即套用；未填写或为 0 的运费成本固定按 0% 计算，后续填写正数成本时自动套用。
+              保存默认运费提点后，当前页正数运费成本订单立即套用；已提交或已结清的订单不会套用，需先撤销结清。未填写或为 0 的运费成本固定按 0% 计算，后续填写正数成本时自动套用。
             </p>
             <div className="relative">
               <Input
@@ -1095,7 +1095,18 @@ export function CommissionManager({
     [lockedUsdOrderIds, usdOrderIds],
   )
   const freightCommissionOrderIds = useMemo(
-    () => [...new Set(rows.filter((row) => row.commission_calculable).map((row) => row.order_id))],
+    () => [
+      ...new Set(
+        rows
+          .filter(
+            (row) =>
+              row.commission_calculable &&
+              row.clearance_status !== 'pending' &&
+              row.clearance_status !== 'confirmed',
+          )
+          .map((row) => row.order_id),
+      ),
+    ],
     [rows],
   )
   const canConfirmClearance = isSalespersonView
@@ -1567,6 +1578,12 @@ export function CommissionManager({
               const rowSpan = group.length
               return group.map((row, rowIndex) => {
                 const isFirstRow = rowIndex === 0
+                // 已提交或已结清的产品行金额已对外承诺，撤销结清前只读。
+                const clearanceLocked =
+                  row.clearance_status === 'pending' || row.clearance_status === 'confirmed'
+                const groupClearanceLocked = group.some(
+                  (entry) => entry.clearance_status === 'pending' || entry.clearance_status === 'confirmed',
+                )
                 const displayOrderNumber = row.external_order_number || row.order_number
                 return (
                   <TableRow
@@ -1686,7 +1703,9 @@ export function CommissionManager({
                     <TableCell>
                       <RateEditor
                         row={row}
-                        readOnly={readOnly || isSalespersonView || !row.commission_calculable}
+                        readOnly={
+                          readOnly || isSalespersonView || !row.commission_calculable || clearanceLocked
+                        }
                       />
                     </TableCell>
                     <TableCell className="bg-sky-50 font-semibold text-sky-950 tabular-nums">
@@ -1697,7 +1716,12 @@ export function CommissionManager({
                       <FreightEditor
                         row={row}
                         rowSpan={rowSpan}
-                        readOnly={readOnly || isSalespersonView || !row.commission_calculable}
+                        readOnly={
+                          readOnly ||
+                          isSalespersonView ||
+                          !row.commission_calculable ||
+                          groupClearanceLocked
+                        }
                         exchangeRate={currentExchangeRate}
                         defaultFreightCommissionRate={defaultFreightCommissionRate}
                       />
