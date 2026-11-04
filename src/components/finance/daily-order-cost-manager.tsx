@@ -529,7 +529,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
           className="xl:col-span-2"
         />
         <div className="space-y-1 md:col-span-2">
-          <span className="text-xs font-medium text-muted-foreground">建单日期</span>
+          <span className="text-xs font-medium text-muted-foreground">下单日期</span>
           <DateRangePicker from={filters.dateFrom} to={filters.dateTo} className="w-full" />
         </div>
         <div className="space-y-1 md:col-span-2">

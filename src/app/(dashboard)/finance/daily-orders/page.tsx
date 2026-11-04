@@ -221,11 +221,14 @@ export default async function DailyOrdersPage({
             placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU"
             className="md:col-span-2 xl:col-span-4"
           />
-          <DateRangePicker
-            from={filters.dateFrom}
-            to={filters.dateTo}
-            className="md:col-span-2 xl:col-span-3"
-          />
+          <div className="space-y-1.5 md:col-span-2 xl:col-span-3">
+            <label className="text-xs font-medium text-muted-foreground">下单日期</label>
+            <DateRangePicker
+              from={filters.dateFrom}
+              to={filters.dateTo}
+              className="w-full"
+            />
+          </div>
           <FormMultiSelect
             name="shops"
             label="店铺"
