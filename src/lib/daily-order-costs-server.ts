@@ -29,14 +29,8 @@ interface CostOverrideRow {
   cost: number
 }
 
-export function chinaToday() {
-  return new Intl.DateTimeFormat('sv-SE', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date())
-}
+import { chinaToday } from '@/lib/china-date'
+export { chinaToday } from '@/lib/china-date'
 
 const PAGE_SIZE = 1000
 

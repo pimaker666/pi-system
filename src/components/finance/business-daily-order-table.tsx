@@ -62,6 +62,7 @@ import {
   businessOrderItemDisplayName,
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
+import { chinaToday } from '@/lib/china-date'
 import { DAILY_ORDER_COLUMNS, formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { cn, displayProfileName, formatAmount } from '@/lib/utils'
 import type { BusinessOrder, Customer, CustomerGroup, Profile } from '@/types'
@@ -306,7 +307,7 @@ export function BusinessDailyOrderTable({
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      const date = new Date().toISOString().slice(0, 10)
+      const date = chinaToday()
       link.download = kind === 'xlsx' ? `财务每日订单台账_${date}.xlsx` : `财务每日订单台账_${date}.pdf`
       link.click()
       URL.revokeObjectURL(url)

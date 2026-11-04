@@ -41,6 +41,7 @@ import {
   BUSINESS_ORDER_STATUS_LABELS,
   BUSINESS_ORDER_STATUS_VARIANTS,
 } from '@/lib/business-orders'
+import { chinaCurrentMonth, chinaToday } from '@/lib/china-date'
 import { formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { cn, displayProfileName } from '@/lib/utils'
 import type { BusinessOrderCostFilters } from '@/schemas/business-order-cost'
@@ -223,7 +224,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
   // 成本页标记先本地生效，失败时清空覆盖层回到服务端真值，避免每次点击都等刷新。
   const [markOverrides, setMarkOverrides] = useState<Record<string, boolean>>({})
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
+  const [period, setPeriod] = useState(chinaCurrentMonth)
   const [exportPending, setExportPending] = useState(false)
   const tableRef = useRef<HTMLTableElement>(null)
   const [pinnedCol, setPinnedCol] = useState<number | null>(null)
@@ -418,7 +419,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
       const match = response.headers
         .get('Content-Disposition')
         ?.match(/filename\*=UTF-8''([^;]+)/i)
-      const date = new Date().toISOString().slice(0, 10)
+      const date = chinaToday()
       const fileName = match
         ? decodeURIComponent(match[1])
         : ids.length > 0

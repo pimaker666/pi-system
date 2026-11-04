@@ -26,11 +26,12 @@ const AUTO_SKU_PREFIX = 'P'
  */
 async function nextGlobalSku(
   supabase: Awaited<ReturnType<typeof createClient>>,
-): Promise<string> {
-  const { data } = await supabase
+): Promise<{ sku: string } | { error: string }> {
+  const { data, error } = await supabase
     .from('products')
     .select('sku')
     .like('sku', `${AUTO_SKU_PREFIX}%`)
+  if (error) return { error: `产品编号读取失败：${error.message}` }
 
   let max = 0
   const pattern = new RegExp(`^${AUTO_SKU_PREFIX}(\\d+)$`)
@@ -41,7 +42,7 @@ async function nextGlobalSku(
       if (n > max) max = n
     }
   }
-  return `${AUTO_SKU_PREFIX}${String(max + 1).padStart(6, '0')}`
+  return { sku: `${AUTO_SKU_PREFIX}${String(max + 1).padStart(6, '0')}` }
 }
 
 /**
@@ -72,10 +73,11 @@ export async function createOrderScopedProduct(
 
   // SKU 由服务端自动编排；并发/残留冲突时重算，最多重试 5 次。
   for (let attempt = 0; attempt < 5; attempt++) {
-    const sku = await nextGlobalSku(supabase)
+    const next = await nextGlobalSku(supabase)
+    if ('error' in next) return { ok: false, error: next.error }
     const { data, error } = await supabase
       .from('products')
-      .insert({ ...base, sku })
+      .insert({ ...base, sku: next.sku })
       .select('*')
       .single()
 
@@ -166,8 +168,9 @@ export async function createProduct(formData: FormData): Promise<ActionResult> {
 
   // SKU 自动编排，冲突重试最多 5 次。
   for (let attempt = 0; attempt < 5; attempt++) {
-    const sku = await nextGlobalSku(supabase)
-    const { error } = await supabase.from('products').insert({ ...base, sku })
+    const next = await nextGlobalSku(supabase)
+    if ('error' in next) return { ok: false, error: next.error }
+    const { error } = await supabase.from('products').insert({ ...base, sku: next.sku })
     if (!error) {
       revalidatePath('/products')
       return { ok: true }

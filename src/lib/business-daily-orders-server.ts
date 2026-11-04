@@ -392,7 +392,7 @@ export async function fetchBusinessDailyLedger(
 
 /**
  * 读取台账中这批订单已结算的明细行 id 集合（供“结算状态”列判断）。
- * 结算表 select 对所有已认证用户开放，因此 sales 也能看到结算状态。
+ * 走只暴露明细行 id 的视图，结算表的成本列仍然只对财务开放。
  */
 export async function fetchSettledItemIdsForOrders(
   supabase: SupabaseClient,
@@ -409,7 +409,7 @@ export async function fetchSettledItemIdsForOrders(
   for (let i = 0; i < itemIds.length; i += CHUNK) {
     const chunk = itemIds.slice(i, i + CHUNK)
     const { data, error } = await supabase
-      .from('finance_business_order_item_settlements')
+      .from('business_order_item_settlement_flags')
       .select('business_order_item_id')
       .in('business_order_item_id', chunk)
     if (error) throw new Error(`结算状态读取失败：${error.message}`)

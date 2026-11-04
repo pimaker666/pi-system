@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { chinaToday } from '@/lib/china-date'
 import { cn } from '@/lib/utils'
 
 type DateRange = { from: string; to: string }
@@ -19,14 +20,6 @@ function dateKey(date: Date) {
 function parseDate(value: string) {
   const [year, month, day] = value.split('-').map(Number)
   return new Date(year, month - 1, day)
-}
-
-function chinaToday() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date())
-  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
-  return `${value('year')}-${value('month')}-${value('day')}`
 }
 
 function rangeForDate(date: Date, preset: Exclude<Preset, 'custom'>): DateRange {

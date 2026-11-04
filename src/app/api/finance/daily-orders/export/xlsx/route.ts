@@ -20,6 +20,7 @@ import {
   searchParamsToFilterRecord,
   SHIPPING_LABELS,
 } from '@/lib/daily-orders'
+import { chinaToday } from '@/lib/china-date'
 import { isRenderableExportImage } from '@/lib/export-image-guard'
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
@@ -181,7 +182,7 @@ async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilte
   sheet.autoFilter = { from: 'A1', to: 'W1' }
   const buffer = await workbook.xlsx.writeBuffer()
   const body = new Uint8Array(buffer as ArrayBuffer)
-  const date = new Date().toISOString().slice(0, 10)
+  const date = chinaToday()
   const fileName = `财务每日订单台账_${date}.xlsx`
   return new NextResponse(body, {
     headers: {

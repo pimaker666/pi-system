@@ -1,7 +1,6 @@
 import { FinanceNav } from '@/components/finance/finance-nav'
 import { hasFinanceViewFor, requireApproved } from '@/lib/auth'
-import { fetchBusinessOrderCommissions } from '@/lib/business-order-commissions-server'
-import { parseBusinessOrderCommissionFilters } from '@/lib/business-order-commission'
+import { fetchCommissionAttentionCount } from '@/lib/business-order-commissions-server'
 import { createClient } from '@/lib/supabase/server'
 
 export default async function FinanceLayout({ children }: { children: React.ReactNode }) {
@@ -9,12 +8,7 @@ export default async function FinanceLayout({ children }: { children: React.Reac
   const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
   const supabase = await createClient()
   const commissionAttentionCount = isSalesperson
-    ? (await fetchBusinessOrderCommissions(
-      supabase,
-      { ...parseBusinessOrderCommissionFilters({}), salespeople: [profile.id] },
-      1,
-      1000,
-    )).rows.filter((row) => row.clearance_status === 'pending').length
+    ? await fetchCommissionAttentionCount(supabase, profile.id)
     : 0
   const canViewFinance = await hasFinanceViewFor(profile)
 

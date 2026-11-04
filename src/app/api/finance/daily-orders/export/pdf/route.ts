@@ -12,6 +12,7 @@ import {
   fetchConfirmedCommissionItemIdsForOrders,
   fetchSettledItemIdsForOrders,
 } from '@/lib/business-daily-orders-server'
+import { chinaToday } from '@/lib/china-date'
 import { isRenderableExportImage } from '@/lib/export-image-guard'
 import {
   formatDailyMoney,
@@ -104,7 +105,7 @@ async function buildPdfResponse(filters: ReturnType<typeof parseDailyOrderFilter
   return new NextResponse(new Uint8Array(buffer), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`财务每日订单台账_${new Date().toISOString().slice(0, 10)}.pdf`)}`,
+      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(`财务每日订单台账_${chinaToday()}.pdf`)}`,
       'Cache-Control': 'no-store',
     },
   })

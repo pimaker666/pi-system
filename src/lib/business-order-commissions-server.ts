@@ -9,7 +9,7 @@ import type {
 } from '@/types'
 import type { BusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import { displayProfileName } from '@/lib/utils'
-import { COMMISSION_PAGE_SIZE } from '@/lib/business-order-commission'
+import { COMMISSION_PAGE_SIZE, parseBusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import {
   businessOrderAllocationBreakdown,
   collectBusinessOrderShippingDates,
@@ -769,4 +769,29 @@ export async function fetchConfirmedCommissionBySalesperson(
   }
   // 与结清提成总览同口径：明细先裸加总，最后按人一次四舍五入，避免逐行累加漂移
   return new Map([...totals].map(([id, total]) => [id, round4(total)]))
+}
+
+const ATTENTION_TTL_MS = 30_000
+const attentionCache = new Map<string, { count: number; expiresAt: number }>()
+
+/**
+ * 财务侧边栏角标：按人缓存 30 秒，避免每次页内导航都为角标重算上千单提成。
+ * 角标短暂滞后不影响操作，进入提成页读取的仍是实时数据。
+ */
+export async function fetchCommissionAttentionCount(
+  supabase: SupabaseClient,
+  profileId: string,
+): Promise<number> {
+  const cached = attentionCache.get(profileId)
+  if (cached && cached.expiresAt > Date.now()) return cached.count
+
+  const { rows } = await fetchBusinessOrderCommissions(
+    supabase,
+    { ...parseBusinessOrderCommissionFilters({}), salespeople: [profileId] },
+    1,
+    1000,
+  )
+  const count = rows.filter((row) => row.clearance_status === 'pending').length
+  attentionCache.set(profileId, { count, expiresAt: Date.now() + ATTENTION_TTL_MS })
+  return count
 }

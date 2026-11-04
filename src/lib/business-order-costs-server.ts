@@ -220,7 +220,7 @@ async function fetchAllSettledItemIds(supabase: SupabaseClient) {
   const PAGE_SIZE = 1000
   for (let from = 0; ; from += PAGE_SIZE) {
     const { data, error } = await supabase
-      .from('finance_business_order_item_settlements')
+      .from('business_order_item_settlement_flags')
       .select('business_order_item_id')
       .order('business_order_item_id')
       .range(from, from + PAGE_SIZE - 1)

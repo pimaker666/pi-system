@@ -26,6 +26,7 @@ import { formatCny } from '@/lib/finance'
 import { journalMonthRange, journalRunningBalances, journalTotals } from '@/lib/finance-journal'
 import { exportJournalOverview, type OverviewMonthStat } from '@/lib/journal-overview-export'
 import { cn, displayProfileName, formatCurrency } from '@/lib/utils'
+import { chinaToday } from '@/lib/china-date'
 import type { FinanceJournalAccount, FinanceJournalEntry } from '@/types'
 
 type OverviewMode = 'month' | 'quarter' | 'year' | 'ytd' | 'custom'
@@ -38,14 +39,6 @@ const MODE_OPTIONS: Array<[OverviewMode, string]> = [
   ['ytd', '今年'],
   ['custom', '自选'],
 ]
-
-function chinaToday() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date())
-  const value = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
-  return `${value('year')}-${value('month')}-${value('day')}`
-}
 
 function pad2(value: number) {
   return String(value).padStart(2, '0')

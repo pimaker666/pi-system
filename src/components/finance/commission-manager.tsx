@@ -55,6 +55,7 @@ import {
   businessOrderCommissionFilterQuery,
   formatCommissionAmount,
 } from '@/lib/business-order-commission'
+import { chinaCurrentMonth } from '@/lib/china-date'
 import { formatDailyMoney, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { cn, displayProfileName } from '@/lib/utils'
 import type { BusinessOrderCommissionFilters } from '@/lib/business-order-commission'
@@ -1055,7 +1056,7 @@ export function CommissionManager({
   const [selectedCancelledClearanceItemIds, setSelectedCancelledClearanceItemIds] = useState<Set<string>>(new Set())
   const [cancelClearanceDialogOpen, setCancelClearanceDialogOpen] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7))
+  const [period, setPeriod] = useState(chinaCurrentMonth)
   const [submitPending, startSubmitTransition] = useTransition()
   const [cancelClearancePending, startCancelClearanceTransition] = useTransition()
   const [confirmPending, startConfirmTransition] = useTransition()
