@@ -1457,20 +1457,20 @@ export function CommissionManager({
           placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU"
           className="xl:col-span-2"
         />
-        <div className="space-y-1 md:col-span-2">
-          <span className="text-xs font-medium text-muted-foreground">下单日期</span>
-          <DateRangePicker from={filters.dateFrom} to={filters.dateTo} className="w-full" />
-        </div>
-        <div className="space-y-1 md:col-span-2">
-          <span className="text-xs font-medium text-muted-foreground">发货日期</span>
-          <DateRangePicker
-            from={filters.shippingDateFrom}
-            to={filters.shippingDateTo}
-            nameFrom="shippingDateFrom"
-            nameTo="shippingDateTo"
-            className="w-full"
-          />
-        </div>
+        <DateRangePicker
+          from={filters.dateFrom}
+          to={filters.dateTo}
+          label="下单日期"
+          className="md:col-span-2"
+        />
+        <DateRangePicker
+          from={filters.shippingDateFrom}
+          to={filters.shippingDateTo}
+          nameFrom="shippingDateFrom"
+          nameTo="shippingDateTo"
+          label="发货日期"
+          className="md:col-span-2"
+        />
         <MultiSelect
           name="shops"
           label="店铺"

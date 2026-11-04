@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
@@ -70,11 +70,22 @@ function formatRange(from?: string, to?: string) {
   return `${from} 至 ${to}`
 }
 
+function shortDate(value: string) {
+  return value.slice(0, 4) === chinaToday().slice(0, 4) ? value.slice(5) : value
+}
+
+function formatCompact(from?: string, to?: string) {
+  if (!from || !to) return '全部'
+  if (from === to) return shortDate(from)
+  return `${shortDate(from)} ~ ${shortDate(to)}`
+}
+
 export function DateRangePicker({
   from: initialFrom = '',
   to: initialTo = '',
   nameFrom = 'dateFrom',
   nameTo = 'dateTo',
+  label,
   onChange,
   className,
 }: {
@@ -82,6 +93,8 @@ export function DateRangePicker({
   to?: string
   nameFrom?: string
   nameTo?: string
+  /** 传入后使用单行筛选样式：字段名内联在触发器里，不占用额外一行高度。 */
+  label?: string
   onChange?: (range: { from: string; to: string }) => void
   className?: string
 }) {
@@ -143,10 +156,29 @@ export function DateRangePicker({
       <input type="hidden" name={nameFrom} value={range.from} />
       <input type="hidden" name={nameTo} value={range.to} />
       <PopoverTrigger asChild>
-        <Button type="button" variant="outline" className={cn('justify-start gap-2 font-normal', className)}>
-          <CalendarDays className="h-4 w-4" />
-          {formatRange(range.from, range.to)}
-        </Button>
+        {label ? (
+          <button
+            type="button"
+            className={cn(
+              'flex h-10 w-full min-w-0 items-center gap-1.5 rounded-md border bg-background px-3 text-sm transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+              (range.from || range.to) && 'border-primary/50',
+              className,
+            )}
+          >
+            <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="shrink-0 text-muted-foreground">{label}</span>
+            <span aria-hidden className="text-muted-foreground/40">·</span>
+            <span className={cn('truncate', range.from || range.to ? 'text-foreground' : 'text-muted-foreground')}>
+              {formatCompact(range.from, range.to)}
+            </span>
+            <ChevronDown className="ml-auto h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          </button>
+        ) : (
+          <Button type="button" variant="outline" className={cn('justify-start gap-2 font-normal', className)}>
+            <CalendarDays className="h-4 w-4" />
+            {formatRange(range.from, range.to)}
+          </Button>
+        )}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[min(44rem,calc(100vw-2rem))] p-0">
         <div className="flex flex-col sm:flex-row">
