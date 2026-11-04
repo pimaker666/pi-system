@@ -30,7 +30,7 @@ import {
   getBusinessOrderEditConstraints,
   getBusinessOrderSettlementSummary,
 } from '@/lib/actions/business-orders'
-import { hasCurrentPermission, requireApproved } from '@/lib/auth'
+import { canViewSensitiveField, hasCurrentPermission, requireApproved } from '@/lib/auth'
 import { sortedBusinessDailyItems } from '@/lib/business-daily-orders'
 import { fetchCurrentCustomerCountries } from '@/lib/business-daily-orders-server'
 import {
@@ -112,6 +112,7 @@ export default async function BusinessOrderDetailPage({
   const { fromCustomer } = await searchParams
   const profile = await requireApproved()
   const canShip = await hasCurrentPermission('orders.ship')
+  const canViewFinancialNumber = await canViewSensitiveField('financial_number')
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('business_orders')
@@ -138,6 +139,7 @@ export default async function BusinessOrderDetailPage({
     supabase,
     order.business_order_items,
     profile.role,
+    canViewFinancialNumber,
   )
   order.business_order_items = sortedBusinessDailyItems(
     order as unknown as Parameters<typeof sortedBusinessDailyItems>[0],
@@ -790,6 +792,7 @@ export default async function BusinessOrderDetailPage({
               completionGateVersion={order.closed_at || order.voided_at ? 2 : order.completion_gate_version}
               profile={profile}
               orderVersion={order.version}
+              canViewFinancialNumber={canViewFinancialNumber}
               payments={order.business_order_payments}
             />
           )}

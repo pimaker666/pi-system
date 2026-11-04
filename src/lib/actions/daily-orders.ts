@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireApproved, requireFinanceAccess } from '@/lib/auth'
+import { hasCurrentPermission, requireApproved, requireFinanceAccess } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import {
   dailyOrderBatchSchema,
@@ -145,7 +145,9 @@ export async function bulkCreateDailyOrders(raw: unknown, rawTotals?: unknown): 
 }
 
 export async function voidDailyOrder(id: string, expectedVersion: number): Promise<ActionResult> {
-  await requireFinanceAccess()
+  if (!(await hasCurrentPermission('orders.void'))) {
+    return { ok: false, error: '当前账号没有作废订单权限' }
+  }
   const supabase = await createClient()
   const { error } = await supabase.rpc('void_finance_daily_order', {
     p_order_id: id,

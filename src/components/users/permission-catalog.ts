@@ -48,6 +48,9 @@ export const permissionGroups: { title: string; description: string; items: Perm
       { path: 'system.manage_users', label: '管理账号', description: '创建、启用和停用账号' },
       { path: 'system.manage_permissions', label: '管理权限', description: '配置角色、账号例外和审核规则' },
       { path: 'system.view_audit', label: '查看审计日志', description: '查看权限与订单操作记录' },
+      { path: 'attendance.manage', label: '考勤工资管理', description: '维护考勤表、工资表与审批请假' },
+      { path: 'company.settings', label: '公司设置', description: '修改公司资料、收款银行与 PI 默认币种' },
+      { path: 'reimbursement.review', label: '报销审批', description: '审批报销单并标记打款完成' },
     ],
   },
 ]

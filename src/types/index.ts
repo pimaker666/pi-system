@@ -113,8 +113,8 @@ export interface BusinessPerformanceProductRow {
   sales_amount_usd: number
   settled_sales_amount_cny: number
   settled_quantity: number
-  settled_product_cost_cny: number
-  settled_product_profit_cny: number
+  settled_product_cost_cny: number | null
+  settled_product_profit_cny: number | null
   unsettled_line_count: number
   missing_exchange_rate_line_count: number
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createElement } from 'react'
-import { requireApproved } from '@/lib/auth'
+import { hasCurrentPermission, requireApproved } from '@/lib/auth'
 import {
   BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES,
   buildBusinessDailyExportRows,
@@ -114,6 +114,9 @@ async function buildPdfResponse(filters: ReturnType<typeof parseDailyOrderFilter
 export async function GET(request: Request) {
   // 与 XLSX 导出一致：可见范围交给 business_orders 的 RLS，不再限定财务角色。
   await requireApproved()
+  if (!(await hasCurrentPermission('orders.export'))) {
+    return NextResponse.json({ error: '当前账号没有订单导出权限' }, { status: 403 })
+  }
   const searchParams = new URL(request.url).searchParams
   const filters = parseDailyOrderFilters(searchParamsToFilterRecord(searchParams))
   const ids = parseIds(searchParams.getAll('ids'))
@@ -123,6 +126,9 @@ export async function GET(request: Request) {
 // 批量选中导出走 POST：ids 放请求体，避免超长 URL 被 Kong（~8k）或 Node（16k）拒绝。
 export async function POST(request: Request) {
   await requireApproved()
+  if (!(await hasCurrentPermission('orders.export'))) {
+    return NextResponse.json({ error: '当前账号没有订单导出权限' }, { status: 403 })
+  }
   const body = (await request.json().catch(() => null)) as
     | { filterQuery?: string; ids?: string[] }
     | null

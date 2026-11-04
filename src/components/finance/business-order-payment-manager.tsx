@@ -78,6 +78,8 @@ interface BusinessOrderPaymentManagerProps {
   profile: Pick<Profile, 'id' | 'role'>
   /** 订单版本号：加单/改删明细会自增版本，组件据此重新拉取结算汇总，避免转账卡停留在旧金额。 */
   orderVersion: number
+  /** 财务编号敏感字段不可见时，产品编码回落下单快照 SKU。 */
+  canViewFinancialNumber: boolean
   /** 详情页仍会传入旧只读数据；新组件不会读取或写入旧付款表。 */
   payments?: unknown[]
 }
@@ -157,6 +159,7 @@ export function BusinessOrderPaymentManager({
   completionGateVersion,
   profile,
   orderVersion,
+  canViewFinancialNumber,
 }: BusinessOrderPaymentManagerProps) {
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -313,7 +316,11 @@ export function BusinessOrderPaymentManager({
         if (left.sort_order !== right.sort_order) return left.sort_order - right.sort_order
         return left.created_at.localeCompare(right.created_at)
       })
-      const displayItems = await attachBusinessOrderItemsDisplay(supabase, itemRows)
+      const displayItems = await attachBusinessOrderItemsDisplay(
+        supabase,
+        itemRows,
+        canViewFinancialNumber,
+      )
 
       setCustomerId(currentCustomerId)
       setOrders(orderRows)
@@ -340,7 +347,7 @@ export function BusinessOrderPaymentManager({
     } finally {
       setLoading(false)
     }
-  }, [orderId, orderVersion])
+  }, [orderId, orderVersion, canViewFinancialNumber])
 
   useEffect(() => {
     void loadData()

@@ -7,6 +7,7 @@ import {
   fetchProductFinancialLabels,
 } from '@/lib/business-order-financials'
 import { fetchProductFinancialLabelsCached } from '@/lib/business-order-financials-server'
+import { canViewSensitiveField } from '@/lib/auth'
 
 /** 台账页面展示上限，和旧版每日订单台账保持一致。 */
 export const BUSINESS_DAILY_LEDGER_LIMIT = 500
@@ -105,10 +106,11 @@ async function attachItemDisplayLabels(
     viewerRole === undefined
       ? await fetchProductFinancialLabels(supabase)
       : await fetchProductFinancialLabelsCached(supabase, viewerRole)
+  const canViewFinancialNumber = await canViewSensitiveField('financial_number')
   return orders.map((order) => ({
     ...order,
     business_order_items: (order.business_order_items ?? []).map((item) =>
-      applyBusinessOrderItemDisplay(item, labels),
+      applyBusinessOrderItemDisplay(item, labels, canViewFinancialNumber),
     ),
   }))
 }

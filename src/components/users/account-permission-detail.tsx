@@ -26,6 +26,9 @@ const permissionRows = [
   ['登记订单转账', 'orders.record_transfer'],
   ['审核订单', 'orders.approve'],
   ['导出订单', 'orders.export'],
+  ['考勤工资管理', 'attendance.manage'],
+  ['公司设置', 'company.settings'],
+  ['报销审批', 'reimbursement.review'],
 ] as const
 const sensitiveFields = [
   ['财务编号', 'financial_number'],

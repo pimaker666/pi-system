@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireAdmin, requireApproved } from '@/lib/auth'
+import { requireApproved, hasCurrentPermission } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import {
   financeReimbursementRequestSchema,
@@ -115,7 +115,9 @@ export async function deleteReimbursementRequest(requestId: string): Promise<Act
 }
 
 export async function reviewReimbursementRequest(input: unknown): Promise<ActionResult> {
-  await requireAdmin()
+  if (!(await hasCurrentPermission('reimbursement.review'))) {
+    return { ok: false, error: '当前账号没有报销审批权限' }
+  }
   const parsed = financeReimbursementReviewSchema.safeParse(input)
   if (!parsed.success) {
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
@@ -143,7 +145,9 @@ export async function reviewReimbursementRequest(input: unknown): Promise<Action
 }
 
 export async function completeReimbursementRequest(requestId: string): Promise<ActionResult> {
-  await requireAdmin()
+  if (!(await hasCurrentPermission('reimbursement.review'))) {
+    return { ok: false, error: '当前账号没有报销审批权限' }
+  }
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('finance_reimbursement_requests')

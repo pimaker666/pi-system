@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { imageThumbTransform } from '@/lib/supabase/image'
-import { hasCurrentPermission, requireAdmin, requireApproved, requireFinanceAccess } from '@/lib/auth'
+import { getCurrentSensitiveFields, hasCurrentPermission, requireAdmin, requireApproved, requireFinanceAccess } from '@/lib/auth'
 import {
   businessCustomerTransferAllocationInputSchema,
   businessCustomerTransferInputSchema,
@@ -966,9 +966,9 @@ export async function listBusinessCustomProductsLibrary(
 export async function recordBusinessCustomerTransfer(
   rawInput: unknown,
 ): Promise<BusinessCustomerTransferActionResult> {
-  const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '当前角色不能登记客户转账' }
+  await requireApproved()
+  if (!(await hasCurrentPermission('orders.record_transfer'))) {
+    return { ok: false, error: '当前账号没有登记转账权限' }
   }
 
   const parsed = businessCustomerTransferInputSchema.safeParse(rawInput)
@@ -1010,9 +1010,9 @@ export async function allocateBusinessCustomerTransfer(
   transferId: string,
   rawInput: unknown,
 ): Promise<BusinessCustomerTransferActionResult> {
-  const profile = await requireApproved()
-  if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '当前角色不能追加转账分摊' }
+  await requireApproved()
+  if (!(await hasCurrentPermission('orders.record_transfer'))) {
+    return { ok: false, error: '当前账号没有追加转账分摊权限' }
   }
 
   const parsed = businessCustomerTransferAllocationInputSchema.safeParse(rawInput)
@@ -1537,6 +1537,9 @@ export async function getBusinessPerformanceByProduct(
   })
   if (error) return { ok: false, error: businessOrderError(error.message, '读取产品业绩失败') }
 
+  const sensitiveFields = await getCurrentSensitiveFields()
+  const canViewCost = sensitiveFields.cost === true
+  const canViewProfit = sensitiveFields.profit === true
   return {
     ok: true,
     data: ((data ?? []) as BusinessPerformanceProductRow[]).map((row) => ({
@@ -1546,8 +1549,8 @@ export async function getBusinessPerformanceByProduct(
       sales_amount_usd: Number(row.sales_amount_usd),
       settled_sales_amount_cny: Number(row.settled_sales_amount_cny),
       settled_quantity: Number(row.settled_quantity),
-      settled_product_cost_cny: Number(row.settled_product_cost_cny),
-      settled_product_profit_cny: Number(row.settled_product_profit_cny),
+      settled_product_cost_cny: canViewCost ? Number(row.settled_product_cost_cny) : null,
+      settled_product_profit_cny: canViewProfit ? Number(row.settled_product_profit_cny) : null,
       unsettled_line_count: Number(row.unsettled_line_count),
       missing_exchange_rate_line_count: Number(row.missing_exchange_rate_line_count),
     })),
@@ -1682,7 +1685,9 @@ export async function voidBusinessOrder(
   reason: string,
   idempotencyKey: string,
 ): Promise<BusinessOrderActionResult> {
-  await requireFinanceAccess()
+  if (!(await hasCurrentPermission('orders.void'))) {
+    return { ok: false, error: '当前账号没有作废订单权限' }
+  }
   const parsed = businessOrderVoidInputSchema.safeParse({
     order_id: orderId,
     expected_version: expectedVersion,

@@ -6,7 +6,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { requireApproved } from '@/lib/auth'
+import { requireApproved, hasCurrentPermission } from '@/lib/auth'
 import { daysBetweenInclusive } from '@/lib/leave'
 import type { ActionResult } from './products'
 import type { LeaveDayPart, LeaveType } from '@/types'
@@ -50,8 +50,8 @@ function revalidateLeave() {
 
 async function requireFinanceManager() {
   const profile = await requireApproved()
-  if (profile.role !== 'admin' && profile.role !== 'finance') {
-    throw new Error('仅财务或管理员可操作')
+  if (!(await hasCurrentPermission('attendance.manage'))) {
+    throw new Error('当前账号没有考勤工资管理权限')
   }
   return profile
 }

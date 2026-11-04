@@ -52,6 +52,7 @@ export async function fetchProductFinancialLabels(
 export function applyBusinessOrderItemDisplay<T extends BusinessOrderItem>(
   item: T,
   labels: Map<string, ProductFinancialLabel>,
+  canViewFinancialNumber = true,
 ): T & BusinessOrderItemDisplayFields {
   if (item.source_type === 'custom' || !item.product_id) return item
   const label = labels.get(item.product_id)
@@ -60,20 +61,21 @@ export function applyBusinessOrderItemDisplay<T extends BusinessOrderItem>(
   return {
     ...item,
     display_name: label.product_name,
-    display_sku: label.financial_number || item.sku_snapshot,
+    display_sku: canViewFinancialNumber ? label.financial_number || item.sku_snapshot : item.sku_snapshot,
   }
 }
 
 export async function attachBusinessOrderItemsDisplay(
   supabase: SupabaseClient,
   items: BusinessOrderItem[],
+  canViewFinancialNumber = true,
 ): Promise<BusinessOrderItemWithDisplay[]> {
   const hasLinkedProducts = items.some(
     (item) => item.source_type !== 'custom' && item.product_id,
   )
   if (!hasLinkedProducts) return items
   const labels = await fetchProductFinancialLabels(supabase)
-  return items.map((item) => applyBusinessOrderItemDisplay(item, labels))
+  return items.map((item) => applyBusinessOrderItemDisplay(item, labels, canViewFinancialNumber))
 }
 
 export function businessOrderItemDisplayName(

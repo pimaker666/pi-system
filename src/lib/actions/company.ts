@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { requireAdmin, requireProfile } from '@/lib/auth'
+import { requireApproved, hasCurrentPermission, requireProfile } from '@/lib/auth'
 import type { ActionResult } from './products'
 
 // 校验 schema 为本文件私有（原 @/schemas/company 只有一个消费者，已并入）。
@@ -33,7 +33,10 @@ const companyProfileSchema = companySchema.extend({
 })
 
 export async function upsertCompanySettings(formData: FormData): Promise<ActionResult> {
-  await requireAdmin()
+  await requireApproved()
+  if (!(await hasCurrentPermission('company.settings'))) {
+    return { ok: false, error: '当前账号没有公司设置权限' }
+  }
 
   const parsed = companySchema.safeParse({
     company_name: formData.get('company_name'),

@@ -253,8 +253,12 @@ function ProductPerformanceTable({ rows }: { rows: BusinessPerformanceProductRow
                 {hasUnsettled && <TableCell className="text-right tabular-nums">{formatUsdWhole(row.sales_amount_usd)}</TableCell>}
                 <TableCell className="text-right tabular-nums">{formatCnyWhole(cnyAverage)}</TableCell>
                 {hasUnsettled && <TableCell className="text-right tabular-nums">{formatUsdWhole(usdAverage)}</TableCell>}
-                <TableCell className="text-right tabular-nums">{formatCnyWhole(row.settled_product_cost_cny)}</TableCell>
-                <TableCell className="text-right tabular-nums font-medium text-green-700">{formatCnyWhole(row.settled_product_profit_cny)}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {row.settled_product_cost_cny === null ? '—' : formatCnyWhole(row.settled_product_cost_cny)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums font-medium text-green-700">
+                  {row.settled_product_profit_cny === null ? '—' : formatCnyWhole(row.settled_product_profit_cny)}
+                </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
                   {settled
                     ? '已结清'
@@ -614,8 +618,8 @@ export function PerformanceManager({
       values.push(roundWhole(cnyAverage))
       if (hasUnsettledRows) values.push(roundWhole(usdAverage))
       values.push(
-        roundWhole(row.settled_product_cost_cny),
-        roundWhole(row.settled_product_profit_cny),
+        row.settled_product_cost_cny === null ? '' : roundWhole(row.settled_product_cost_cny),
+        row.settled_product_profit_cny === null ? '' : roundWhole(row.settled_product_profit_cny),
         settled
           ? '已结清'
           : row.missing_exchange_rate_line_count > 0

@@ -33,11 +33,12 @@ export async function attachBusinessOrderItemsDisplayCached(
   supabase: SupabaseClient,
   items: BusinessOrderItem[],
   viewerRole: string,
+  canViewFinancialNumber = true,
 ): Promise<BusinessOrderItemWithDisplay[]> {
   const hasLinkedProducts = items.some(
     (item) => item.source_type !== 'custom' && item.product_id,
   )
   if (!hasLinkedProducts) return items
   const labels = await fetchProductFinancialLabelsCached(supabase, viewerRole)
-  return items.map((item) => applyBusinessOrderItemDisplay(item, labels))
+  return items.map((item) => applyBusinessOrderItemDisplay(item, labels, canViewFinancialNumber))
 }

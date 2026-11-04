@@ -82,3 +82,18 @@ export const hasCurrentPermission = cache(async (permission: string): Promise<bo
   if (error) throw new Error(`读取账号权限失败：${error.message}`)
   return data === true
 })
+
+/** 当前账号的敏感字段可见性（角色模板按键合并账号例外）。同请求内只查一次。 */
+export const getCurrentSensitiveFields = cache(
+  async (): Promise<Record<string, boolean>> => {
+    await requireApproved()
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('current_sensitive_fields')
+    if (error) throw new Error(`读取敏感字段权限失败：${error.message}`)
+    return (data ?? {}) as Record<string, boolean>
+  },
+)
+
+export async function canViewSensitiveField(field: string): Promise<boolean> {
+  return (await getCurrentSensitiveFields())[field] === true
+}
