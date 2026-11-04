@@ -238,7 +238,10 @@ export async function upsertAttendanceEntry(input: {
   return { ok: true }
 }
 
-// 批量保存（笔刷刷选）：逐格 upsert/清除，全部完成后统一 revalidate。
+// 批量保存（笔刷刷选）：整表刷选最多几百人 × 31 天，逐格往返会串行发出数千次请求，
+// 这里按批 upsert，清除项按成员合并成一次 delete。
+const ATTENDANCE_UPSERT_BATCH = 500
+
 export async function batchUpsertAttendanceEntries(input: {
   sheet_id: string
   items: { member_id: string; day: number; morning: string; afternoon: string }[]
@@ -250,30 +253,43 @@ export async function batchUpsertAttendanceEntries(input: {
   }
   const supabase = await createClient()
 
+  const upserts = parsed.data.items
+    .filter((item) => item.morning || item.afternoon)
+    .map((item) => ({
+      sheet_id: parsed.data.sheet_id,
+      member_id: item.member_id,
+      profile_id: null,
+      day: item.day,
+      morning: item.morning,
+      afternoon: item.afternoon,
+    }))
+  const clearsByMember = new Map<string, number[]>()
   for (const item of parsed.data.items) {
-    if (!item.morning && !item.afternoon) {
-      const { error } = await supabase
-        .from('attendance_entries')
-        .delete()
-        .eq('sheet_id', parsed.data.sheet_id)
-        .eq('member_id', item.member_id)
-        .eq('day', item.day)
-      if (error) return { ok: false, error: `保存失败（${item.day}日）：${error.message}` }
-    } else {
-      const { error } = await supabase.from('attendance_entries').upsert(
-        {
-          sheet_id: parsed.data.sheet_id,
-          member_id: item.member_id,
-          profile_id: null,
-          day: item.day,
-          morning: item.morning,
-          afternoon: item.afternoon,
-        },
-        { onConflict: 'sheet_id,member_id,day' },
-      )
-      if (error) return { ok: false, error: `保存失败（${item.day}日）：${error.message}` }
-    }
+    if (item.morning || item.afternoon) continue
+    const days = clearsByMember.get(item.member_id) ?? []
+    days.push(item.day)
+    clearsByMember.set(item.member_id, days)
   }
+
+  for (let index = 0; index < upserts.length; index += ATTENDANCE_UPSERT_BATCH) {
+    const { error } = await supabase
+      .from('attendance_entries')
+      .upsert(upserts.slice(index, index + ATTENDANCE_UPSERT_BATCH), {
+        onConflict: 'sheet_id,member_id,day',
+      })
+    if (error) return { ok: false, error: `保存考勤格失败：${error.message}` }
+  }
+
+  for (const [memberId, days] of clearsByMember) {
+    const { error } = await supabase
+      .from('attendance_entries')
+      .delete()
+      .eq('sheet_id', parsed.data.sheet_id)
+      .eq('member_id', memberId)
+      .in('day', days)
+    if (error) return { ok: false, error: `清除考勤格失败：${error.message}` }
+  }
+
   revalidateAttendance()
   return { ok: true }
 }
