@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { DailyOrderFilters } from '@/schemas/daily-order'
 import type { BusinessDailyLedgerOrder } from '@/lib/business-daily-orders'
+import type { CurrencyCode } from '@/types'
 import {
   applyBusinessOrderItemDisplay,
   fetchProductFinancialLabels,
@@ -277,6 +278,113 @@ function applyCommissionClearanceFilter(
   )
 }
 
+export interface BusinessDailyLedgerCurrencySummary {
+  currency: CurrencyCode
+  receivable: number
+  productReceived: number
+  shippingReceived: number
+  salesTotal: number
+  outstanding: number
+}
+
+export interface BusinessDailyLedgerPageSummary {
+  totalCount: number
+  page: number
+  pageSize: number
+  orderIds: string[]
+  currencies: BusinessDailyLedgerCurrencySummary[]
+}
+
+function toAmount(value: unknown): number {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? amount : 0
+}
+
+/**
+ * 汇总卡片与分页订单 id 一次取回。
+ * SQL 侧已复刻台账的基础筛选与后过滤（完成/尾款/结算/提成结清），
+ * 页面不再需要先拉 500 单明细再在 JS 里求和。
+ */
+export async function fetchBusinessDailyLedgerSummary(
+  supabase: SupabaseClient,
+  filters: DailyOrderFilters,
+  page: number,
+  pageSize: number,
+): Promise<BusinessDailyLedgerPageSummary> {
+  const { data, error } = await supabase.rpc('get_business_daily_order_ledger', {
+    p_date_from: filters.dateFrom ?? null,
+    p_date_to: filters.dateTo ?? null,
+    p_shops: filters.shops,
+    p_shop_groups: filters.shopGroups,
+    p_salespeople: filters.salespeople,
+    p_record_statuses: filters.recordStatuses,
+    p_payments: filters.payments,
+    p_customer_bindings: filters.customerBindingStatuses,
+    p_fulfillments: filters.fulfillmentStatuses,
+    p_completions: filters.completions,
+    p_balance_statuses: filters.balanceStatuses,
+    p_settlement_statuses: filters.settlementStatuses,
+    p_commission_statuses: filters.commissionClearanceStatuses,
+    p_categories: filters.categories,
+    p_marked_only: filters.markedOnly === '1',
+    p_keyword: normalizeKeyword(filters.q),
+    p_page: page,
+    p_page_size: pageSize,
+  })
+  if (error) throw new Error(`每日订单汇总读取失败：${error.message}`)
+
+  const payload = (data ?? {}) as {
+    totalCount?: number
+    page?: number
+    pageSize?: number
+    orderIds?: unknown[]
+    currencies?: Array<Record<string, unknown>>
+  }
+  return {
+    totalCount: toAmount(payload.totalCount),
+    page: toAmount(payload.page) || 1,
+    pageSize: toAmount(payload.pageSize) || pageSize,
+    orderIds: (payload.orderIds ?? []).map((id) => String(id)),
+    currencies: (payload.currencies ?? []).map((row) => ({
+      currency: row.currency as CurrencyCode,
+      receivable: toAmount(row.receivable),
+      productReceived: toAmount(row.productReceived),
+      shippingReceived: toAmount(row.shippingReceived),
+      salesTotal: toAmount(row.salesTotal),
+      outstanding: toAmount(row.outstanding),
+    })),
+  }
+}
+
+/**
+ * 取台账某一页的订单明细。订单 id 已由汇总 RPC 按全部筛选与后过滤挑好，
+ * 这里只做展示用途的取数，避免用后过滤再筛一遍导致行数与汇总口径不一致。
+ */
+export async function fetchBusinessDailyLedgerPage(
+  supabase: SupabaseClient,
+  filters: DailyOrderFilters,
+  orderIds: string[],
+  viewerRole?: string,
+): Promise<BusinessDailyLedgerResult> {
+  if (orderIds.length === 0) {
+    return { orders: [], settledItemIds: [], confirmedCommissionItemIds: [] }
+  }
+  const displayFilters: DailyOrderFilters = {
+    ...filters,
+    completions: [],
+    balanceStatuses: [],
+    settlementStatuses: [],
+    commissionClearanceStatuses: [],
+  }
+  return fetchBusinessDailyLedgerWithStatusSets(
+    supabase,
+    displayFilters,
+    orderIds.length,
+    orderIds,
+    viewerRole,
+  )
+}
+
 export interface BusinessDailyLedgerResult {
   orders: BusinessDailyLedgerOrder[]
   settledItemIds: string[]
@@ -300,13 +408,31 @@ async function fetchLedgerCandidates(
   if (ids && ids.length > 0) {
     // Kong 网关 URI 上限约 8k：.in('id', ids) 一批最多 100 个订单，超出拆分查询后按同一排序合并。
     for (let i = 0; i < ids.length; i += 100) {
+      const batch = ids.slice(i, i + 100)
+      if (keyword) {
+        // 订单 id 由汇总选好，但命中产品的关键字仍要保留该订单的命中明细：
+        // 订单字段查询只筛父行，产品查询走内联 join，两者取并集后表头命中优先。
+        const [headResult, itemResult] = await Promise.all([
+          buildLedgerQuery(supabase, filters, 0, pageSize, false, batch),
+          buildLedgerQuery(supabase, filters, 0, pageSize, true, batch),
+        ])
+        const error = headResult.error || itemResult.error
+        if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
+        for (const order of (itemResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
+          merged.set(order.id, order)
+        }
+        for (const order of (headResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
+          merged.set(order.id, order)
+        }
+        continue
+      }
       const { data, error } = await buildLedgerQuery(
         supabase,
         filters,
         0,
         pageSize,
         false,
-        ids.slice(i, i + 100),
+        batch,
       )
       if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
       for (const order of (data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
