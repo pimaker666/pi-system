@@ -31,6 +31,7 @@ import type {
   BusinessPerformanceGroupRow,
   BusinessPerformanceMultiDimensionRow,
   BusinessPerformanceProductRow,
+  BusinessPerformanceProductSource,
   BusinessPerformanceSummary,
   DailyOrderShippingCategory,
 } from '@/types'
@@ -42,8 +43,8 @@ interface Option {
 
 interface PerformanceManagerProps {
   summary: BusinessPerformanceSummary
-  groupRows: BusinessPerformanceGroupRow[]
-  productRows: BusinessPerformanceProductRow[]
+  groupRowsByGroupBy: Partial<Record<BusinessPerformanceGroupBy, BusinessPerformanceGroupRow[]>>
+  productRowsBySource: Partial<Record<BusinessPerformanceProductSource, BusinessPerformanceProductRow[]>>
   multiDimensionRows: BusinessPerformanceMultiDimensionRow[]
   multiDimensions: [BusinessPerformanceDimension, BusinessPerformanceDimension | null, BusinessPerformanceDimension | null]
   groupBy: BusinessPerformanceGroupBy
@@ -280,10 +281,13 @@ function ProductPerformanceTable({ rows }: { rows: BusinessPerformanceProductRow
   )
 }
 
+const EMPTY_GROUP_ROWS: BusinessPerformanceGroupRow[] = []
+const EMPTY_PRODUCT_ROWS: BusinessPerformanceProductRow[] = []
+
 export function PerformanceManager({
   summary,
-  groupRows,
-  productRows,
+  groupRowsByGroupBy,
+  productRowsBySource,
   multiDimensionRows,
   multiDimensions,
   groupBy,
@@ -296,6 +300,20 @@ export function PerformanceManager({
 }: PerformanceManagerProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
+  const [activeGroupBy, setActiveGroupBy] = useState<BusinessPerformanceGroupBy>(groupBy)
+  const [serverGroupBy, setServerGroupBy] = useState<BusinessPerformanceGroupBy>(groupBy)
+  if (groupBy !== serverGroupBy) {
+    // 浏览器前进/后退会带来新的服务端 groupBy，需要让本地切换状态跟上。
+    setServerGroupBy(groupBy)
+    setActiveGroupBy(groupBy)
+  }
+  const groupRows = groupRowsByGroupBy[activeGroupBy] ?? EMPTY_GROUP_ROWS
+  const productRows =
+    activeGroupBy === 'catalog_product'
+      ? productRowsBySource.catalog ?? EMPTY_PRODUCT_ROWS
+      : activeGroupBy === 'custom_product'
+        ? productRowsBySource.custom ?? EMPTY_PRODUCT_ROWS
+        : EMPTY_PRODUCT_ROWS
 
   const [dateFrom, setDateFrom] = useState(filters.dateFrom ?? '')
   const [dateTo, setDateTo] = useState(filters.dateTo ?? '')
@@ -318,7 +336,7 @@ export function PerformanceManager({
     const value = Number(exchangeRate)
     return Number.isFinite(value) && value > 0 ? value : null
   }, [exchangeRate])
-  const isProductView = groupBy === 'catalog_product' || groupBy === 'custom_product'
+  const isProductView = activeGroupBy === 'catalog_product' || activeGroupBy === 'custom_product'
 
   function buildUrl(overrides: {
     groupBy?: BusinessPerformanceGroupBy
@@ -339,7 +357,7 @@ export function PerformanceManager({
     if (selectedShipping.length > 0) {
       params.set('shipping', selectedShipping.join(','))
     }
-    params.set('groupBy', overrides.groupBy ?? groupBy)
+    params.set('groupBy', overrides.groupBy ?? activeGroupBy)
     const dimensions = overrides.dimensions ?? selectedDimensions
     params.set('dimension1', dimensions[0])
     if (dimensions[1]) params.set('dimension2', dimensions[1])
@@ -352,6 +370,13 @@ export function PerformanceManager({
     startTransition(() => {
       router.push(url, { scroll: false })
     })
+  }
+
+  // 切换维度只改变展示口径，数据已在首屏一次取全；只同步地址栏，不回服务端。
+  function switchGroupBy(value: BusinessPerformanceGroupBy) {
+    if (value === activeGroupBy) return
+    setActiveGroupBy(value)
+    window.history.replaceState(null, '', buildUrl({ groupBy: value }))
   }
 
   function clearFilters() {
@@ -428,7 +453,7 @@ export function PerformanceManager({
     })
   }, [groupRows, rate])
 
-  const isItemLevelGroup = groupBy === 'product_group' || groupBy === 'shipping_category'
+  const isItemLevelGroup = activeGroupBy === 'product_group' || activeGroupBy === 'shipping_category'
   const amountLabel = isItemLevelGroup ? '产品金额' : '订单总额'
 
   const groupTotals = useMemo(() => {
@@ -519,7 +544,7 @@ export function PerformanceManager({
       return
     }
     const columns = [
-      GROUP_COLUMN_LABELS[groupBy],
+      GROUP_COLUMN_LABELS[activeGroupBy],
       '订单数',
       ...(rate
         ? [`${amountLabel}（CNY）`, '已收（CNY）', '未收（CNY）']
@@ -577,7 +602,7 @@ export function PerformanceManager({
     totalRow.push(isItemLevelGroup ? '—' : groupTotals.overdueCount)
     downloadTableExport(
       {
-        fileName: fileNameFor(`业务业绩_${GROUP_COLUMN_LABELS[groupBy]}`),
+        fileName: fileNameFor(`业务业绩_${GROUP_COLUMN_LABELS[activeGroupBy]}`),
         sheetName: '业务业绩',
         columns,
         rows,
@@ -630,7 +655,7 @@ export function PerformanceManager({
     })
     downloadTableExport(
       {
-        fileName: fileNameFor(`业务业绩_${GROUP_COLUMN_LABELS[groupBy]}`),
+        fileName: fileNameFor(`业务业绩_${GROUP_COLUMN_LABELS[activeGroupBy]}`),
         sheetName: '业务业绩',
         columns,
         rows,
@@ -902,9 +927,9 @@ export function PerformanceManager({
         {GROUP_TABS.filter((tab) => canViewProfit || !['catalog_product', 'custom_product'].includes(tab.value)).map((tab) => (
           <Button
             key={tab.value}
-            variant={groupBy === tab.value ? 'default' : 'outline'}
+            variant={activeGroupBy === tab.value ? 'default' : 'outline'}
             size="sm"
-            onClick={() => navigate(buildUrl({ groupBy: tab.value }))}
+            onClick={() => switchGroupBy(tab.value)}
           >
             {tab.label}
           </Button>
@@ -929,7 +954,7 @@ export function PerformanceManager({
         <Table className="min-w-[900px]">
           <TableHeader>
             <TableRow>
-              <TableHead>{GROUP_COLUMN_LABELS[groupBy]}</TableHead>
+              <TableHead>{GROUP_COLUMN_LABELS[activeGroupBy]}</TableHead>
               <TableHead className="text-right">订单数</TableHead>
               {rate ? (
                 <>
@@ -1105,7 +1130,7 @@ export function PerformanceManager({
       </div>
       {isItemLevelGroup && (
         <p className="text-xs text-muted-foreground">
-          {groupBy === 'shipping_category'
+          {activeGroupBy === 'shipping_category'
             ? '本表按产品明细行汇总：产品金额不含整单运费应收，也不含未填发货分类的产品行，因此合计小于上方「订单总额」。'
             : '本表按产品明细行汇总：产品金额不含整单运费应收，因此合计小于上方「订单总额」。'}
         </p>

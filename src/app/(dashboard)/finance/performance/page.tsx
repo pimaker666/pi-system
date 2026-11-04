@@ -14,11 +14,23 @@ import { requireApproved } from '@/lib/auth'
 import type {
   BusinessPerformanceDimension,
   BusinessPerformanceGroupBy,
+  BusinessPerformanceGroupRow,
+  BusinessPerformanceProductRow,
   BusinessPerformanceProductSource,
   DailyOrderShippingCategory,
   ProductGroup,
   Profile,
 } from '@/types'
+
+const GROUP_BY_KEYS = [
+  'salesperson',
+  'shop',
+  'date',
+  'month',
+  'product_group',
+  'shipping_category',
+  'country',
+] as const satisfies readonly BusinessPerformanceGroupBy[]
 
 function getCurrentMonthRange() {
   const today = getBusinessDateKey()
@@ -127,9 +139,10 @@ export default async function FinancePerformancePage({
   } = parseSearchParams(await searchParams)
 
   const canViewProfit = profile.role === 'admin' || profile.role === 'finance'
-  const productSource: BusinessPerformanceProductSource | null =
-    groupBy === 'catalog_product' ? 'catalog' : groupBy === 'custom_product' ? 'custom' : null
-  const effectiveGroupBy = productSource && !canViewProfit ? 'salesperson' : groupBy
+  const effectiveGroupBy: BusinessPerformanceGroupBy =
+    !canViewProfit && (groupBy === 'catalog_product' || groupBy === 'custom_product')
+      ? 'salesperson'
+      : groupBy
   const [options, productGroupsResult, performanceSalespeopleResult] = await Promise.all([
     fetchDailyOrderOptions(supabase),
     supabase.from('product_groups').select('id, name, sort_order').order('sort_order'),
@@ -161,31 +174,52 @@ export default async function FinancePerformancePage({
     productGroupIds,
     shippingCategories,
   }
-  const [summaryResult, groupResult, productResult, multiDimensionResult, profitRows] = await Promise.all([
-    getBusinessPerformanceSummary(filters),
-    productSource
-      ? Promise.resolve({ ok: true as const, data: [], error: undefined })
-      : getBusinessPerformanceByGroup(effectiveGroupBy, filters),
-    productSource && canViewProfit
-      ? getBusinessPerformanceByProduct(productSource, filters)
-      : Promise.resolve({ ok: true as const, data: [], error: undefined }),
-    getBusinessPerformanceMultiDimension(multiDimensions, filters),
-    canViewProfit
-      ? getBusinessOrderProfitRowsForPerformance(filters)
-      : Promise.resolve([]),
-  ])
+  // 维度切换只改展示口径，筛选条件不变，因此一次取回全部维度，前端切换不再回服务端。
+  const [summaryResult, groupResults, productResults, multiDimensionResult, profitRows] =
+    await Promise.all([
+      getBusinessPerformanceSummary(filters),
+      Promise.all(GROUP_BY_KEYS.map((key) => getBusinessPerformanceByGroup(key, filters))),
+      canViewProfit
+        ? Promise.all([
+            getBusinessPerformanceByProduct('catalog', filters),
+            getBusinessPerformanceByProduct('custom', filters),
+          ])
+        : Promise.resolve([]),
+      getBusinessPerformanceMultiDimension(multiDimensions, filters),
+      canViewProfit
+        ? getBusinessOrderProfitRowsForPerformance(filters)
+        : Promise.resolve([]),
+    ])
 
   if (!summaryResult.ok || !summaryResult.data) {
     throw new Error(summaryResult.error || '业绩汇总读取失败')
   }
-  if (!groupResult.ok || !groupResult.data) {
-    throw new Error(groupResult.error || '业绩分组读取失败')
-  }
-  if (!productResult.ok || !productResult.data) {
-    throw new Error(productResult.error || '产品业绩读取失败')
-  }
   if (!multiDimensionResult.ok || !multiDimensionResult.data) {
     throw new Error(multiDimensionResult.error || '多维销售总览读取失败')
+  }
+
+  const groupRowsByGroupBy: Partial<
+    Record<BusinessPerformanceGroupBy, BusinessPerformanceGroupRow[]>
+  > = {}
+  GROUP_BY_KEYS.forEach((key, index) => {
+    const result = groupResults[index]
+    if (!result.ok || !result.data) {
+      throw new Error(result.error || '业绩分组读取失败')
+    }
+    groupRowsByGroupBy[key] = result.data
+  })
+  const productRowsBySource: Partial<
+    Record<BusinessPerformanceProductSource, BusinessPerformanceProductRow[]>
+  > = {}
+  if (canViewProfit) {
+    const sources: BusinessPerformanceProductSource[] = ['catalog', 'custom']
+    sources.forEach((source, index) => {
+      const result = productResults[index]
+      if (!result.ok || !result.data) {
+        throw new Error(result.error || '产品业绩读取失败')
+      }
+      productRowsBySource[source] = result.data
+    })
   }
 
   const salespeople = performanceSalespeople.map((salesperson) => ({
@@ -218,8 +252,8 @@ export default async function FinancePerformancePage({
       </section>
       <PerformanceManager
         summary={summaryResult.data}
-        groupRows={groupResult.data}
-        productRows={productResult.data}
+        groupRowsByGroupBy={groupRowsByGroupBy}
+        productRowsBySource={productRowsBySource}
         multiDimensionRows={multiDimensionResult.data}
         multiDimensions={multiDimensions}
         groupBy={effectiveGroupBy}
