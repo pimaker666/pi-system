@@ -520,7 +520,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
             共 {totalCount} 个订单
           </span>
         </div>
-        <div className="grid gap-3 p-4 md:grid-cols-4 xl:grid-cols-9">
+        <div className="grid gap-3 p-4 md:grid-cols-4 xl:grid-cols-10">
         <input type="hidden" name="page" value="1" />
         <Input
           name="q"
@@ -528,7 +528,20 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
           placeholder="订单号/平台单号/发货单号/收款账户/产品/SKU"
           className="xl:col-span-2"
         />
-        <DateRangePicker from={filters.dateFrom} to={filters.dateTo} className="md:col-span-2" />
+        <div className="space-y-1 md:col-span-2">
+          <span className="text-xs font-medium text-muted-foreground">建单日期</span>
+          <DateRangePicker from={filters.dateFrom} to={filters.dateTo} className="w-full" />
+        </div>
+        <div className="space-y-1 md:col-span-2">
+          <span className="text-xs font-medium text-muted-foreground">发货日期</span>
+          <DateRangePicker
+            from={filters.shippingDateFrom}
+            to={filters.shippingDateTo}
+            nameFrom="shippingDateFrom"
+            nameTo="shippingDateTo"
+            className="w-full"
+          />
+        </div>
         <MultiSelect
           name="shops"
           label="店铺"
@@ -556,7 +569,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
           options={SHIPPING_CATEGORY_OPTIONS}
           selected={filters.shippingCategories}
         />
-        <div className="flex flex-wrap gap-2 xl:col-span-9">
+        <div className="flex flex-wrap gap-2 xl:col-span-10">
           <Button type="submit">筛选</Button>
           <Button asChild type="button" variant="outline">
             <Link href="/finance/costs">清空</Link>

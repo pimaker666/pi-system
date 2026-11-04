@@ -73,6 +73,8 @@ function buildOrdersQuery(
 
   if (dateFrom) query = query.gte('order_date', dateFrom)
   if (dateTo) query = query.lte('order_date', dateTo)
+  if (filters.shippingDateFrom) query = query.gte('daily_shipping_date', filters.shippingDateFrom)
+  if (filters.shippingDateTo) query = query.lte('daily_shipping_date', filters.shippingDateTo)
   if (filters.shops.length > 0) query = query.in('shop_id', filters.shops)
   if (filters.salespeople.length > 0) query = query.in('salesperson_id', filters.salespeople)
   if (filters.shopGroups.length > 0) query = query.in('shop_group_id', filters.shopGroups)

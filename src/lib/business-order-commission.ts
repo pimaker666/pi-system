@@ -2,6 +2,8 @@ export interface BusinessOrderCommissionFilters {
   q: string
   dateFrom?: string
   dateTo?: string
+  shippingDateFrom?: string
+  shippingDateTo?: string
   month?: string
   shops: string[]
   salespeople: string[]
@@ -34,6 +36,8 @@ export function parseBusinessOrderCommissionFilters(
     q: scalar(raw, 'q') ?? '',
     dateFrom: scalar(raw, 'dateFrom') || undefined,
     dateTo: scalar(raw, 'dateTo') || undefined,
+    shippingDateFrom: scalar(raw, 'shippingDateFrom') || undefined,
+    shippingDateTo: scalar(raw, 'shippingDateTo') || undefined,
     month: scalar(raw, 'month') || undefined,
     shops: array(raw, 'shops'),
     salespeople: array(raw, 'salespeople'),
@@ -47,6 +51,8 @@ export function businessOrderCommissionFilterQuery(filters: BusinessOrderCommiss
   if (filters.q) params.set('q', filters.q)
   if (filters.dateFrom) params.set('dateFrom', filters.dateFrom)
   if (filters.dateTo) params.set('dateTo', filters.dateTo)
+  if (filters.shippingDateFrom) params.set('shippingDateFrom', filters.shippingDateFrom)
+  if (filters.shippingDateTo) params.set('shippingDateTo', filters.shippingDateTo)
   if (filters.month) params.set('month', filters.month)
   filters.shops.forEach((id) => params.append('shops', id))
   filters.salespeople.forEach((id) => params.append('salespeople', id))
