@@ -202,23 +202,19 @@ export function BusinessDailyOrderTable({
     setPinnedCol(target)
   }
 
-  const headCn = (index: number, extra?: string) =>
-    cn(
-      'sticky top-0 border-b border-slate-200 bg-slate-100/95 text-xs font-semibold text-slate-700 backdrop-blur',
-      extra,
-      pinnedCol === index ? 'left-0 z-30 shadow-[4px_0_8px_rgb(15_23_42/0.08)]' : 'z-20',
-    )
-  const cellCn = (index: number, extra?: string) =>
-    cn(
-      extra,
-      pinnedCol === index && 'sticky left-0 z-10 bg-card shadow-[4px_0_8px_rgb(15_23_42/0.06)]',
-    )
-  const mergedCn = (index: number, extra?: string) =>
-    cn(
-      'align-top bg-slate-50/70',
-      pinnedCol === index && 'sticky left-0 z-10 bg-slate-50 shadow-[4px_0_8px_rgb(15_23_42/0.06)]',
-      extra,
-    )
+  // 单元格按列渲染上千次，直接用字符串拼接，避免每格走一遍 tailwind-merge。
+  const headCn = (index: number, extra = '') =>
+    `sticky top-0 border-b border-slate-200 bg-slate-100/95 text-xs font-semibold text-slate-700 backdrop-blur ${
+      pinnedCol === index ? 'left-0 z-30 shadow-[4px_0_8px_rgb(15_23_42/0.08)]' : 'z-20'
+    } ${extra}`.trim()
+  const cellCn = (index: number, extra = '') =>
+    pinnedCol === index
+      ? `${extra} sticky left-0 z-10 bg-card shadow-[4px_0_8px_rgb(15_23_42/0.06)]`.trim()
+      : extra
+  const mergedCn = (index: number, extra = '') =>
+    `align-top bg-slate-50/70 ${
+      pinnedCol === index ? 'sticky left-0 z-10 bg-slate-50 shadow-[4px_0_8px_rgb(15_23_42/0.06)]' : ''
+    } ${extra}`.trim()
 
   const settledSet = useMemo(() => new Set(settledItemIds), [settledItemIds])
   const isMergedItemSettled = (item: MergedBusinessDailyItem) =>
@@ -237,6 +233,8 @@ export function BusinessDailyOrderTable({
         order,
         items: mergeBusinessDailyItems(order),
         attachments: activeBusinessOrderAttachments(order),
+        totals: businessDailyOrderTotals(order),
+        shippingDates: collectBusinessOrderShippingDates(order),
       })),
     [orders],
   )
@@ -506,7 +504,7 @@ export function BusinessDailyOrderTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-            {groups.map(({ order, items, attachments }, groupIndex) => {
+            {groups.map(({ order, items, attachments, totals, shippingDates }, groupIndex) => {
               // 历史业务订单没有明细时也要占一行，否则订单会在台账里凭空消失。
               const rows = items.length > 0 ? items : [null]
               const rowSpan = rows.length
@@ -518,8 +516,6 @@ export function BusinessDailyOrderTable({
                 order.salesperson,
                 order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
               )
-              const totals = businessDailyOrderTotals(order)
-              const shippingDates = collectBusinessOrderShippingDates(order)
 
               return rows.map((item, rowIndex) => {
                 const isFirstRow = rowIndex === 0

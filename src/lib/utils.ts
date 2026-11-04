@@ -44,36 +44,53 @@ const CURRENCY_LOCALE: Record<string, string> = {
   JPY: 'ja-JP',
 }
 
+// 表格一次渲染会调用上千次，Intl 实例模块级复用，避免每次重新构造。
+const AMOUNT_FORMAT = new Intl.NumberFormat('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+})
+const DATE_FORMAT = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
+const DATE_TIME_FORMAT = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
+const CURRENCY_FORMATS = new Map<string, Intl.NumberFormat>()
+
 // 全站数字口径：默认展示 2 位小数；输入支持 4 位，带 3-4 位小数的值按实际显示。
 export function formatAmount(amount: number) {
   if (!Number.isFinite(amount)) return '—'
-  return new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  }).format(amount)
+  return AMOUNT_FORMAT.format(amount)
 }
 
 export function formatCurrency(amount: number, currency = 'USD') {
-  try {
-    return new Intl.NumberFormat(CURRENCY_LOCALE[currency] ?? 'en-US', {
-      style: 'currency',
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 4,
-    }).format(amount)
-  } catch {
-    return `${currency} ${formatAmount(amount)}`
+  let formatter = CURRENCY_FORMATS.get(currency)
+  if (!formatter) {
+    try {
+      formatter = new Intl.NumberFormat(CURRENCY_LOCALE[currency] ?? 'en-US', {
+        style: 'currency',
+        currency,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 4,
+      })
+    } catch {
+      return `${currency} ${formatAmount(amount)}`
+    }
+    CURRENCY_FORMATS.set(currency, formatter)
   }
+  return formatter.format(amount)
 }
 
 export function formatDate(input: string | Date, withTime = false) {
   const d = typeof input === 'string' ? new Date(input) : input
-  const opts: Intl.DateTimeFormatOptions = {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}),
-  }
-  return new Intl.DateTimeFormat('zh-CN', opts).format(d)
+  return (withTime ? DATE_TIME_FORMAT : DATE_FORMAT).format(d)
 }

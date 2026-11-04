@@ -80,24 +80,43 @@ export interface SettledOrdersResult {
 }
 
 /**
- * 已结算订单归档：对 finance_business_order_item_settlements 单次分页扫描，
- * 年月下拉与行列表在同一份数据上派生，避免同表双拉。期间与关键字筛选在内存执行。
+ * 已结算订单归档：年月下拉只读 period 一列，行列表按选中年月在数据库过滤，
+ * 关键字筛选仍在内存执行。两段查询同时发出。
  */
 export async function fetchSettledOrders(
   supabase: SupabaseClient,
   filters: SettledOrderFilters,
 ): Promise<SettledOrdersResult> {
   const rows: SettledOrderRow[] = []
-  const periods = new Set<string>()
   const keyword = filters.q.toLocaleLowerCase()
+  const periodDate = filters.period ? `${filters.period}-01` : null
+
+  const periodsPromise = (async () => {
+    const periods = new Set<string>()
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data, error } = await supabase
+        .from('finance_business_order_item_settlements')
+        .select('period')
+        .order('period', { ascending: false })
+        .range(from, from + PAGE_SIZE - 1)
+      if (error) throw new Error(`已结算年月读取失败：${error.message}`)
+      const page = (data ?? []) as { period: string }[]
+      for (const record of page) periods.add(String(record.period).slice(0, 7))
+      if (page.length < PAGE_SIZE) break
+    }
+    return [...periods].sort((a, b) => (a < b ? 1 : -1))
+  })()
+  // 行列表先报错时函数会提前退出，这里兜住年月查询的 rejection，避免未处理异常。
+  periodsPromise.catch(() => {})
 
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('finance_business_order_item_settlements')
       .select(SELECT)
       .order('period', { ascending: false })
       .order('settled_at', { ascending: false })
-      .range(from, from + PAGE_SIZE - 1)
+    if (periodDate) query = query.eq('period', periodDate)
+    const { data, error } = await query.range(from, from + PAGE_SIZE - 1)
     if (error) throw new Error(`已结算订单读取失败：${error.message}`)
     const page = (data ?? []) as unknown as SettlementQueryRow[]
 
@@ -107,14 +126,11 @@ export async function fetchSettledOrders(
       if (!item || !order || order.voided_at) continue
 
       const period = String(record.period).slice(0, 7)
-      periods.add(period)
 
       const unitCost = record.unit_cost == null ? null : Number(record.unit_cost)
       const quantity = Number(record.quantity)
       const productName = item.name_snapshot ?? '—'
       const productSku = item.sku_snapshot ?? ''
-
-      if (filters.period && period !== filters.period) continue
 
       if (keyword) {
         const haystack = [
@@ -160,7 +176,7 @@ export async function fetchSettledOrders(
   }
 
   return {
-    periods: [...periods].sort((a, b) => (a < b ? 1 : -1)),
+    periods: await periodsPromise,
     rows,
   }
 }
