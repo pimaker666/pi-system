@@ -1627,7 +1627,7 @@ export function CommissionManager({
                       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('order_date')}`}>{row.order_date}</TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('shipping_date') && (
-                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('shipping_date')}`}>{row.shipping_date || '—'}</TableCell>
+                      <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('shipping_date')}`}>{row.shipping_dates.join('、') || '—'}</TableCell>
                     )}
                     {isFirstRow && visibleColumns.has('shop') && (
                       <TableCell rowSpan={rowSpan} className={`${mergedCellClassName} ${optionalCommissionColumnClassName('shop')}`}>{row.shop_name || '—'}</TableCell>

@@ -364,7 +364,8 @@ export interface BusinessOrderProductCost {
   /** 合并行对应的底层明细行 ID；单行时与 item_id 相同。 */
   item_ids: string[]
   order_date: string
-  shipping_date: string | null
+  /** 全部有效发货批次日期 ∪ 登记的发货日期，升序。 */
+  shipping_dates: string[]
   shop_name: string | null
   shop_group_name: string | null
   salesperson_name: string
@@ -445,7 +446,8 @@ export interface BusinessOrderCommissionRow {
   /** 合并行对应的底层明细行 ID；单行时与 item_id 相同。 */
   item_ids: string[]
   order_date: string
-  shipping_date: string | null
+  /** 全部有效发货批次日期 ∪ 登记的发货日期，升序。 */
+  shipping_dates: string[]
   shop_name: string | null
   shop_group_name: string | null
   salesperson_name: string

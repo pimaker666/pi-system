@@ -6,6 +6,8 @@ import { COST_PAGE_SIZE } from '@/lib/business-order-cost'
 import {
   activeBusinessOrderAttachments,
   businessDailyOrderTotals,
+  collectBusinessOrderShippingDates,
+  filterBusinessOrdersByShippingDateRange,
   filterMergedItemsByCategoryCompletion,
   formatMergedBusinessDailyShippingProgress,
   type BusinessDailyLedgerOrder,
@@ -81,8 +83,6 @@ function buildBaseQuery(
 
   if (dateFrom) query = query.gte('order_date', dateFrom)
   if (dateTo) query = query.lte('order_date', dateTo)
-  if (filters.shippingDateFrom) query = query.gte('daily_shipping_date', filters.shippingDateFrom)
-  if (filters.shippingDateTo) query = query.lte('daily_shipping_date', filters.shippingDateTo)
   if (ids && ids.length > 0) query = query.in('id', ids)
   if (filters.shops.length > 0) query = query.in('shop_id', filters.shops)
   if (filters.salespeople.length > 0) query = query.in('salesperson_id', filters.salespeople)
@@ -139,13 +139,23 @@ async function fetchMatchingOrders(
         }
       }
     }
-    return [...merged.values()].sort(compareOrders).slice(0, limit)
+    return filterBusinessOrdersByShippingDateRange(
+      [...merged.values()],
+      filters.shippingDateFrom,
+      filters.shippingDateTo,
+    )
+      .sort(compareOrders)
+      .slice(0, limit)
   }
 
   if (!keyword) {
     const { data, error } = await buildBaseQuery(supabase, filters, offset, limit, false)
     if (error) throw new Error(`订单成本订单读取失败：${error.message}`)
-    return (data ?? []) as unknown as BusinessDailyLedgerOrder[]
+    return filterBusinessOrdersByShippingDateRange(
+      (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+      filters.shippingDateFrom,
+      filters.shippingDateTo,
+    )
   }
 
   const [headResult, itemResult] = await Promise.all([
@@ -164,7 +174,13 @@ async function fetchMatchingOrders(
     if (!merged.has(order.id)) merged.set(order.id, order)
   }
 
-  return [...merged.values()].sort(compareOrders).slice(0, limit)
+  return filterBusinessOrdersByShippingDateRange(
+    [...merged.values()],
+    filters.shippingDateFrom,
+    filters.shippingDateTo,
+  )
+    .sort(compareOrders)
+    .slice(0, limit)
 }
 
 async function fetchAllProductFinancials(supabase: SupabaseClient) {
@@ -323,6 +339,7 @@ export async function fetchBusinessOrderProductCosts(
   const result: BusinessOrderProductCost[] = []
 
   for (const { order, rows: mergedItems } of pagedOrders) {
+    const shippingDates = collectBusinessOrderShippingDates(order)
     const attachments = activeBusinessOrderAttachments(order)
     const salespersonName = displayProfileName(
       order.salesperson,
@@ -346,7 +363,7 @@ export async function fetchBusinessOrderProductCosts(
         item_id: representativeItemId,
         item_ids: item.item_ids,
         order_date: order.order_date,
-        shipping_date: order.daily_shipping_date,
+        shipping_dates: shippingDates,
         shop_name: order.shop_name_snapshot,
         shop_group_name: order.shop_group_name_snapshot,
         salesperson_name: salespersonName,

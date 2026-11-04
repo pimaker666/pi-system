@@ -204,7 +204,7 @@ async function buildCostsXlsx(
       item.shop_name ?? '',
       item.salesperson_name,
       item.external_order_number || item.order_number,
-      item.shipping_date ?? '',
+      item.shipping_dates.join('、'),
       item.shipping_number ?? '',
       item.payment_account || '',
       item.shipping_category ? SHIPPING_LABELS[item.shipping_category] : '',

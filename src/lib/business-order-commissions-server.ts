@@ -12,6 +12,8 @@ import { displayProfileName } from '@/lib/utils'
 import { COMMISSION_PAGE_SIZE } from '@/lib/business-order-commission'
 import {
   businessOrderAllocationBreakdown,
+  collectBusinessOrderShippingDates,
+  filterBusinessOrdersByShippingDateRange,
   filterMergedItemsByCategoryCompletion,
   type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
@@ -19,7 +21,7 @@ import {
 const COMMISSION_ORDER_LIMIT = 1000
 
 // 提成只需发货/退货的净发货量，按白名单取字段，避免把截图路径等大字段整行拉回。
-const COMMISSION_ORDER_SELECT = `*, business_order_items(*), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), customer:customers!customer_id(tag_color), business_order_shipments(id, voided_at, business_order_shipment_items(order_item_id, quantity)), business_order_returns(id, voided_at, business_order_return_items(order_item_id, quantity)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`
+const COMMISSION_ORDER_SELECT = `*, business_order_items(*), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), customer:customers!customer_id(tag_color), business_order_shipments(id, voided_at, shipped_at, business_order_shipment_items(order_item_id, quantity)), business_order_returns(id, voided_at, business_order_return_items(order_item_id, quantity)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`
 
 interface ItemCommissionRow {
   business_order_item_id: string
@@ -73,8 +75,6 @@ function buildOrdersQuery(
 
   if (dateFrom) query = query.gte('order_date', dateFrom)
   if (dateTo) query = query.lte('order_date', dateTo)
-  if (filters.shippingDateFrom) query = query.gte('daily_shipping_date', filters.shippingDateFrom)
-  if (filters.shippingDateTo) query = query.lte('daily_shipping_date', filters.shippingDateTo)
   if (filters.shops.length > 0) query = query.in('shop_id', filters.shops)
   if (filters.salespeople.length > 0) query = query.in('salesperson_id', filters.salespeople)
   if (filters.shopGroups.length > 0) query = query.in('shop_group_id', filters.shopGroups)
@@ -114,7 +114,11 @@ async function fetchMatchingOrders(
   if (!keyword) {
     const { data, error } = await buildOrdersQuery(supabase, filters, false)
     if (error) throw new Error(`业务提成订单读取失败：${error.message}`)
-    return (data ?? []) as unknown as BusinessDailyLedgerOrder[]
+    return filterBusinessOrdersByShippingDateRange(
+      (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+      filters.shippingDateFrom,
+      filters.shippingDateTo,
+    )
   }
 
   const [headResult, itemResult] = await Promise.all([
@@ -132,7 +136,11 @@ async function fetchMatchingOrders(
     if (!merged.has(order.id)) merged.set(order.id, order)
   }
 
-  return [...merged.values()].sort(compareOrders)
+  return filterBusinessOrdersByShippingDateRange(
+    [...merged.values()],
+    filters.shippingDateFrom,
+    filters.shippingDateTo,
+  ).sort(compareOrders)
 }
 
 async function fetchDefaultFreightCommissionRate(supabase: SupabaseClient) {
@@ -508,6 +516,7 @@ function buildCommissionRows(
   const builtRows: BusinessOrderCommissionRow[] = []
 
   for (const { order, items: mergedItems } of buildOrders) {
+    const shippingDates = collectBusinessOrderShippingDates(order)
     const salespersonName = displayProfileName(
       order.salesperson,
       order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
@@ -588,7 +597,7 @@ function buildCommissionRows(
         item_id: representativeItemId,
         item_ids: item.item_ids,
         order_date: order.order_date,
-        shipping_date: order.daily_shipping_date,
+        shipping_dates: shippingDates,
         shop_name: order.shop_name_snapshot,
         shop_group_name: order.shop_group_name_snapshot,
         salesperson_name: salespersonName,

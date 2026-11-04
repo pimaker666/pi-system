@@ -680,7 +680,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                           </div>
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={mergedCn(6)}>
-                          {row.shipping_date ?? '—'}
+                          {row.shipping_dates.join('、') || '—'}
                         </TableCell>
                         <TableCell rowSpan={rowSpan} className={mergedCn(7)}>
                           {row.shipping_number || '—'}

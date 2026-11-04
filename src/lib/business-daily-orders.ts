@@ -432,6 +432,28 @@ export function collectBusinessOrderShippingDates(
   return [...dates].sort()
 }
 
+/** 发货日期区间筛选口径：任一有效批次或登记日期落在区间内即命中（多批次订单不被最后一天整体挪走）。 */
+function matchesBusinessOrderShippingDateRange(
+  order: Pick<
+    BusinessDailyLedgerOrder,
+    'business_order_shipments' | 'daily_shipping_date'
+  >,
+  from?: string,
+  to?: string,
+) {
+  if (!from && !to) return true
+  return collectBusinessOrderShippingDates(order).some(
+    (date) => (!from || date >= from) && (!to || date <= to),
+  )
+}
+
+export function filterBusinessOrdersByShippingDateRange<
+  T extends Pick<BusinessDailyLedgerOrder, 'business_order_shipments' | 'daily_shipping_date'>,
+>(orders: readonly T[], from?: string, to?: string): T[] {
+  if (!from && !to) return [...orders]
+  return orders.filter((order) => matchesBusinessOrderShippingDateRange(order, from, to))
+}
+
 /** 订单在台账中可否直接编辑，与 /finance/daily-orders/[id]/edit 的服务端门禁保持一致。 */
 export function canEditBusinessDailyOrder(
   order: BusinessOrder,
