@@ -284,7 +284,7 @@ export async function updatePayrollSheetMeta(input: {
   if (sheet.status === 'published') {
     return { ok: false, error: '工资表已推送员工确认，请先撤回发布再修改' }
   }
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from('payroll_sheets')
     .update({
       payout_month: parsed.data.payout_month,
@@ -293,7 +293,12 @@ export async function updatePayrollSheetMeta(input: {
         : {}),
     })
     .eq('id', parsed.data.sheet_id)
+    .eq('status', 'draft')
+    .select('id')
   if (error) return { ok: false, error: `保存失败：${error.message}` }
+  if (!updated || updated.length === 0) {
+    return { ok: false, error: '工资表已推送员工确认，请先撤回发布再修改' }
+  }
   revalidatePayroll()
   return { ok: true }
 }
@@ -330,12 +335,16 @@ export async function publishPayrollSheet(input: { sheet_id: string }): Promise<
   const parsed = sheetIdSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: '参数不合法' }
   const supabase = await createClient()
-  const { error } = await supabase
+  const { data: updated, error } = await supabase
     .from('payroll_sheets')
     .update({ status: 'published' })
     .eq('id', parsed.data.sheet_id)
     .eq('status', 'draft')
+    .select('id')
   if (error) return { ok: false, error: `推送失败：${error.message}` }
+  if (!updated || updated.length === 0) {
+    return { ok: false, error: '工资表状态已变更，请刷新后重试' }
+  }
   revalidatePayroll()
   return { ok: true }
 }
