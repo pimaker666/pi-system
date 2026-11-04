@@ -1,56 +1,16 @@
-import { formatCommissionAmount } from '@/lib/business-order-commission'
-import type { BusinessOrderCommissionRow } from '@/types'
-
-interface CommissionSummaryTotal {
-  salespersonName: string
-  period: string
-  productAmount: number
-  freightAmount: number
-  missingRateCount: number
-}
-
-function round4(value: number) {
-  return Math.round(value * 10000) / 10000
-}
-
-function summarize(rows: BusinessOrderCommissionRow[]) {
-  const totals = new Map<string, CommissionSummaryTotal>()
-  for (const row of rows) {
-    if (!row.clearance_period) continue
-    const key = `${row.salesperson_name}\u0000${row.clearance_period}`
-    const total = totals.get(key) ?? {
-      salespersonName: row.salesperson_name,
-      period: row.clearance_period,
-      productAmount: 0,
-      freightAmount: 0,
-      missingRateCount: 0,
-    }
-    const rate = row.currency === 'USD' ? row.settlement_exchange_rate_to_cny : 1
-    if (rate == null) {
-      total.missingRateCount += 1
-    } else {
-      total.productAmount += row.product_commission_amount * rate
-      if (row.is_order_lead_row) {
-        const freightProfit = row.freight_received_amount * rate - row.freight_cost
-        total.freightAmount += round4((freightProfit * row.freight_commission_rate) / 100)
-      }
-    }
-    totals.set(key, total)
-  }
-  return [...totals.values()].sort(
-    (left, right) => right.period.localeCompare(left.period) || left.salespersonName.localeCompare(right.salespersonName, 'zh-CN'),
-  )
-}
+import {
+  formatCommissionAmount,
+  type CommissionSummaryTotal,
+} from '@/lib/business-order-commission'
 
 export function CommissionSummary({
-  rows,
+  totals,
   showSalesperson = true,
 }: {
-  rows: BusinessOrderCommissionRow[]
+  /** 服务端按「业务员 + 结清归属月」预先汇总好的行，组件只负责渲染。 */
+  totals: CommissionSummaryTotal[]
   showSalesperson?: boolean
 }) {
-  const totals = summarize(rows)
-
   return (
     <section className="space-y-3 rounded-md border bg-card p-4">
       <div>

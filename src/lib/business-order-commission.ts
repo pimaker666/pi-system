@@ -1,3 +1,5 @@
+import type { BusinessOrderCommissionRow } from '@/types'
+
 export interface BusinessOrderCommissionFilters {
   q: string
   dateFrom?: string
@@ -76,4 +78,53 @@ export function formatCommissionAmount(value: number | null | undefined) {
   const amount = Number(value)
   if (value == null || !Number.isFinite(amount)) return '—'
   return `CNY ${commissionAmountFormat.format(amount)}`
+}
+
+export interface CommissionSummaryTotal {
+  salespersonName: string
+  period: string
+  productAmount: number
+  freightAmount: number
+  missingRateCount: number
+}
+
+/**
+ * 按「业务员 + 结清归属月」汇总已结清提成。
+ *
+ * 服务端对全量已结清行调用一次，只把汇总结果下发给浏览器——已结清行动辄上千条，
+ * 把整批明细塞进 RSC 载荷只为了前端再算一遍总览，外网打开会明显变慢。
+ * 美元行按结清时锁定的汇率折算，缺汇率的行只计入 missingRateCount；
+ * 运费提成只取订单首行，避免同一订单多行重复计算运费利润。
+ */
+export function summarizeCommissionByPeriod(
+  rows: BusinessOrderCommissionRow[],
+): CommissionSummaryTotal[] {
+  const totals = new Map<string, CommissionSummaryTotal>()
+  for (const row of rows) {
+    if (!row.clearance_period) continue
+    const key = `${row.salesperson_name}\u0000${row.clearance_period}`
+    const total = totals.get(key) ?? {
+      salespersonName: row.salesperson_name,
+      period: row.clearance_period,
+      productAmount: 0,
+      freightAmount: 0,
+      missingRateCount: 0,
+    }
+    const rate = row.currency === 'USD' ? row.settlement_exchange_rate_to_cny : 1
+    if (rate == null) {
+      total.missingRateCount += 1
+    } else {
+      total.productAmount += row.product_commission_amount * rate
+      if (row.is_order_lead_row) {
+        const freightProfit = row.freight_received_amount * rate - row.freight_cost
+        total.freightAmount += Math.round(((freightProfit * row.freight_commission_rate) / 100) * 10000) / 10000
+      }
+    }
+    totals.set(key, total)
+  }
+  return [...totals.values()].sort(
+    (left, right) =>
+      right.period.localeCompare(left.period) ||
+      left.salespersonName.localeCompare(right.salespersonName, 'zh-CN'),
+  )
 }

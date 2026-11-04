@@ -390,15 +390,19 @@ export function BusinessOrderForm({
     initialOrder?.business_order_attachments?.filter((item) => item.status === 'active') ?? [],
   )
   const [attachmentPreviews, setAttachmentPreviews] = useState<Record<string, string>>({})
+  const [attachmentThumbs, setAttachmentThumbs] = useState<Record<string, string>>({})
   useEffect(() => {
     const ids = attachments.map((item) => item.id)
     if (ids.length === 0) {
       setAttachmentPreviews({})
+      setAttachmentThumbs({})
       return
     }
     let cancelled = false
     void getBusinessOrderAttachmentPreviews(ids).then((result) => {
-      if (!cancelled) setAttachmentPreviews(result.urls)
+      if (cancelled) return
+      setAttachmentPreviews(result.urls)
+      setAttachmentThumbs(result.thumbs)
     })
     return () => {
       cancelled = true
@@ -1748,6 +1752,7 @@ export function BusinessOrderForm({
                 <ImageAttachmentRow
                   key={attachment.id}
                   src={attachmentPreviews[attachment.id] ?? null}
+                  thumbSrc={attachmentThumbs[attachment.id] ?? null}
                   rawSrc
                   name={attachment.original_name}
                   uploadedAt={attachment.created_at}

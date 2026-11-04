@@ -78,6 +78,8 @@ const BUSINESS_DAILY_ORDER_COLUMNS = [
 
 export interface BusinessDailyOrderTableProps {
   orders: BusinessDailyLedgerOrder[]
+  /** 分页时当前页第一条订单在全量结果中的序号偏移，用于续排序号。 */
+  rowOffset?: number
   actor: Pick<Profile, 'id' | 'role'>
   customers: Customer[]
   customerGroups: CustomerGroup[]
@@ -160,6 +162,7 @@ function BulkShipControls({
  */
 export function BusinessDailyOrderTable({
   orders,
+  rowOffset = 0,
   actor,
   customers,
   customerGroups,
@@ -544,7 +547,7 @@ export function BusinessDailyOrderTable({
                     </TableCell>
                     <TableCell className={cellCn(1)}>
                       <div className="font-medium">
-                        {groupIndex + 1}
+                        {rowOffset + groupIndex + 1}
                         {rowSpan > 1 && (
                           <span className="ml-1 text-xs text-muted-foreground">-{rowIndex + 1}</span>
                         )}

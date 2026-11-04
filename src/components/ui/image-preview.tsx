@@ -6,8 +6,28 @@ import { ZoomIn } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { toImageSrc } from '@/lib/supabase/image'
 
+/**
+ * 缩略图改走 Supabase 图片变换（imgproxy）。产品图平均 600KB 以上，直接拉原图
+ * 在局域网感觉不到，但走公网隧道时一屏几十张就是几十 MB；96px 缩略图约 12KB。
+ * 仅对公开对象生效，签名 URL（rawSrc）保持原样。
+ */
+function toThumbSrc(src: string | null | undefined, sizes: string) {
+  const base = toImageSrc(src)
+  const marker = '/storage/v1/object/public/'
+  const index = base.indexOf(marker)
+  if (index === -1) return base
+  const cssPx = Number(/^(\d+)px/.exec(sizes)?.[1] ?? 40)
+  const width = Math.min(Math.max(cssPx * 2, 32), 256)
+  const tail = base.slice(index + marker.length)
+  return `/supabase/storage/v1/render/image/public/${tail}${
+    tail.includes('?') ? '&' : '?'
+  }width=${width}&height=${width}&resize=cover&quality=75`
+}
+
 interface ImagePreviewProps {
   src: string | null | undefined
+  /** 独立的小尺寸缩略图地址（私有桶签名变换），缺省时按 src 推导。 */
+  thumbSrc?: string | null
   alt?: string
   /** Container size class, e.g. "h-10 w-10" or "h-12 w-12" */
   size?: string
@@ -27,6 +47,7 @@ interface ImagePreviewProps {
  */
 export function ImagePreview({
   src,
+  thumbSrc: thumbSrcProp,
   alt = '产品图片',
   size = 'h-10 w-10',
   sizes = '40px',
@@ -36,6 +57,15 @@ export function ImagePreview({
 }: ImagePreviewProps) {
   const [open, setOpen] = React.useState(false)
   const imgSrc = rawSrc ? (src ?? '') : toImageSrc(src)
+  const [thumbFailed, setThumbFailed] = React.useState(false)
+
+  React.useEffect(() => {
+    setThumbFailed(false)
+  }, [src])
+
+  const thumbSrc = thumbFailed
+    ? imgSrc
+    : thumbSrcProp ?? (rawSrc ? imgSrc : toThumbSrc(src, sizes))
 
   return (
     <>
@@ -45,11 +75,12 @@ export function ImagePreview({
         {imgSrc ? (
           <>
             <Image
-              src={imgSrc}
+              src={thumbSrc}
               alt={alt}
               fill
               className="object-cover"
               sizes={sizes}
+              onError={() => setThumbFailed(true)}
             />
             <button
               type="button"

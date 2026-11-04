@@ -11,6 +11,16 @@ import { SUPABASE_SERVER_URL } from './urls'
  * 无论存的是哪种形态都能在对应环境正确解析。
  */
 
+/**
+ * 缩略图变换参数（Supabase imgproxy）。私有桶桶签名链接同样支持
+ * `/render/image/sign/...`，私钥截图按原图下发时每张上百 KB。
+ * 按 CSS 尺寸取 2 倍图，宽高一致裁切，限制在 32–512px 之间。
+ */
+export function imageThumbTransform(cssPx: number) {
+  const width = Math.min(Math.max(Math.round(cssPx * 2), 32), 512)
+  return { width, height: width, resize: 'cover' as const, quality: 75 }
+}
+
 /** `/storage/` 之后的部分（含前导斜杠），找不到返回 null。 */
 function storageTail(url?: string | null): string | null {
   if (!url) return null

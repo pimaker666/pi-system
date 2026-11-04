@@ -6,7 +6,12 @@ import { renameBusinessOrderAttachment } from '@/lib/actions/business-orders'
 import type { BusinessOrderAttachment } from '@/types'
 
 interface BusinessOrderAttachmentListProps {
-  items: Array<{ attachment: BusinessOrderAttachment; url: string | null }>
+  items: Array<{
+    attachment: BusinessOrderAttachment
+    url: string | null
+    /** 缩略图签名链接；缺省时缩略图退回原图。 */
+    thumbUrl?: string | null
+  }>
   canRename: boolean
 }
 
@@ -27,11 +32,12 @@ export function BusinessOrderAttachmentList({ items, canRename }: BusinessOrderA
 
   return (
     <div className="space-y-3">
-      {items.map(({ attachment, url }, index) =>
+      {items.map(({ attachment, url, thumbUrl }, index) =>
         url ? (
           <ImageAttachmentRow
             key={attachment.id}
             src={url}
+            thumbSrc={thumbUrl}
             rawSrc
             name={renamed[attachment.id] ?? attachment.original_name}
             uploadedAt={attachment.created_at}

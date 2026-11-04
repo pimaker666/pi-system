@@ -10,7 +10,12 @@ import type {
 import type { BusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import { displayProfileName } from '@/lib/utils'
 import { customerNameFromSnapshot, customerTagColorFromOrder } from '@/lib/customer-snapshot'
-import { COMMISSION_PAGE_SIZE, parseBusinessOrderCommissionFilters } from '@/lib/business-order-commission'
+import {
+  COMMISSION_PAGE_SIZE,
+  parseBusinessOrderCommissionFilters,
+  summarizeCommissionByPeriod,
+  type CommissionSummaryTotal,
+} from '@/lib/business-order-commission'
 import {
   businessOrderAllocationBreakdown,
   collectBusinessOrderShippingDates,
@@ -654,11 +659,11 @@ export async function fetchBusinessOrderCommissions(
   page = 1,
   pageSize = COMMISSION_PAGE_SIZE,
   scope: 'pending' | 'settled' = 'pending',
-  includeAllRows = false,
+  includeSummary = false,
 ): Promise<{
   rows: BusinessOrderCommissionRow[]
-  /** 仅在 includeAllRows 时返回：该筛选下的全部行（供汇总一次取全，避免二次重复查询）。 */
-  allRows?: BusinessOrderCommissionRow[]
+  /** 仅在 includeSummary 时返回：全量已结清行的服务端汇总，不再把明细行整体下发给浏览器。 */
+  summary?: CommissionSummaryTotal[]
   totalCount: number
   categoryRates: CommissionCategoryRate[]
   customerTags: CustomerCommissionTag[]
@@ -687,7 +692,7 @@ export async function fetchBusinessOrderCommissions(
   })
   const offset = (page - 1) * pageSize
   const pagedOrders = scopedOrders.slice(offset, offset + pageSize)
-  const buildOrders = includeAllRows ? scopedOrders : pagedOrders
+  const buildOrders = includeSummary ? scopedOrders : pagedOrders
 
   const ctx = await loadCommissionContext(
     supabase,
@@ -696,8 +701,8 @@ export async function fetchBusinessOrderCommissions(
   const builtRows = buildCommissionRows(buildOrders, ctx)
 
   return {
-    rows: includeAllRows ? builtRows.slice(offset, offset + pageSize) : builtRows,
-    allRows: includeAllRows ? builtRows : undefined,
+    rows: includeSummary ? builtRows.slice(offset, offset + pageSize) : builtRows,
+    summary: includeSummary ? summarizeCommissionByPeriod(builtRows) : undefined,
     totalCount: scopedOrders.length,
     categoryRates: ctx.categoryRates,
     customerTags: ctx.customerTags,

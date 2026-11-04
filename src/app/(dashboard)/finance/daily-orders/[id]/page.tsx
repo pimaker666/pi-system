@@ -205,7 +205,10 @@ export default async function BusinessOrderDetailPage({
         )
         .eq('order_id', id),
       getBusinessOrderEditConstraints(order.id),
-      getBusinessOrderAttachmentUrls(attachments.map((attachment) => attachment.id)),
+      getBusinessOrderAttachmentUrls(
+        attachments.map((attachment) => attachment.id),
+        64,
+      ),
       fetchCurrentCustomerCountries(supabase, [order.id]),
     ])
   if (!settlementResult.ok || !settlementResult.data) {
@@ -290,10 +293,14 @@ export default async function BusinessOrderDetailPage({
   const receivableReceivedDifference = hasDailyFields
     ? Number(settlement.outstanding_amount)
     : Math.round((Number(order.total_amount) - actualReceived) * 100) / 100
-  const attachmentLinks = attachments.map((attachment) => ({
-    attachment,
-    url: attachmentUrlMap.get(attachment.id) ?? null,
-  }))
+  const attachmentLinks = attachments.map((attachment) => {
+    const links = attachmentUrlMap.get(attachment.id)
+    return {
+      attachment,
+      url: links?.url ?? null,
+      thumbUrl: links?.thumbUrl ?? null,
+    }
+  })
 
   let auditLogs: BusinessOrderAuditLog[] = []
   let lifecycleAuditLogs: BusinessLifecycleAuditLog[] = []

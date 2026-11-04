@@ -23,6 +23,13 @@ import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
 import type { CurrencyCode, Customer, CustomerGroup } from '@/types'
 
+/**
+ * 台账一次仍取满筛选结果（汇总卡片要按全量算），但只把当前页订单发给浏览器。
+ * 500 行订单明细连内嵌附件、客户快照一起序列化有数 MB，走公网隧道时首屏和
+ * 切页都明显变慢；分页后单页载荷降到 1/10 左右。
+ */
+const DAILY_ORDER_PAGE_SIZE = 50
+
 type CurrencyTotals = Partial<Record<CurrencyCode, number>>
 
 function sumOrdersByCurrency(
@@ -87,7 +94,9 @@ export default async function DailyOrdersPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const profile = await requireApproved()
-  const filters = parseDailyOrderFilters(await searchParams)
+  const rawParams = await searchParams
+  const filters = parseDailyOrderFilters(rawParams)
+  const requestedPage = Math.max(1, Math.floor(Number(rawParams.page) || 1))
   const supabase = await createClient()
   const customersQuery = supabase.from('customers').select('*').is('deleted_at', null)
   const [ledger, canShip, options, customersResult, customerGroupsResult] = await Promise.all([
@@ -103,6 +112,25 @@ export default async function DailyOrdersPage({
   if (customerError) throw new Error(`订单客户数据读取失败：${customerError.message}`)
   const { orders, settledItemIds, confirmedCommissionItemIds } = ledger
   const query = dailyOrderFilterQuery(filters)
+  const totalPages = Math.max(1, Math.ceil(orders.length / DAILY_ORDER_PAGE_SIZE))
+  const currentPage = Math.min(requestedPage, totalPages)
+  const pageStart = (currentPage - 1) * DAILY_ORDER_PAGE_SIZE
+  const pageOrders = orders.slice(pageStart, pageStart + DAILY_ORDER_PAGE_SIZE)
+  // 结算/提成结清标记只下发当前页涉及的明细行，避免把全量 id 数组塞进 RSC 载荷。
+  const pageItemIds = new Set(
+    pageOrders.flatMap((order) => (order.business_order_items ?? []).map((item) => item.id)),
+  )
+  const pageSettledItemIds = settledItemIds.filter((id) => pageItemIds.has(id))
+  const pageConfirmedCommissionItemIds = confirmedCommissionItemIds.filter((id) =>
+    pageItemIds.has(id),
+  )
+  const pageHref = (target: number) => {
+    const params = new URLSearchParams(query)
+    if (target > 1) params.set('page', String(target))
+    else params.delete('page')
+    const qs = params.toString()
+    return qs ? `/finance/daily-orders?${qs}` : '/finance/daily-orders'
+  }
   const canManageShops = profile.role === 'finance' || profile.role === 'admin'
   const canCreate = ['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)
   const hasMoreFilters = Boolean(
@@ -171,7 +199,7 @@ export default async function DailyOrdersPage({
             <div>
               <h1 className="text-2xl font-semibold tracking-tight">财务每日订单台账</h1>
               <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-                每行对应一个产品；当前筛选最多显示 {BUSINESS_DAILY_LEDGER_LIMIT} 行、导出 {BUSINESS_DAILY_EXPORT_LIMIT} 行。
+                每行对应一个产品；当前筛选最多加载 {BUSINESS_DAILY_LEDGER_LIMIT} 行（每页 {DAILY_ORDER_PAGE_SIZE} 个订单）、导出 {BUSINESS_DAILY_EXPORT_LIMIT} 行。
                 建单、收款、发货、退货与结单全部使用业务订单作为单一事实源。
               </p>
             </div>
@@ -397,15 +425,44 @@ export default async function DailyOrdersPage({
       </section>
 
       <BusinessDailyOrderTable
-        orders={orders}
+        orders={pageOrders}
+        rowOffset={pageStart}
         actor={profile}
         customers={(customersResult.data ?? []) as Customer[]}
         customerGroups={(customerGroupsResult.data ?? []) as CustomerGroup[]}
         filterQuery={query}
-        settledItemIds={settledItemIds}
-        confirmedCommissionItemIds={confirmedCommissionItemIds}
+        settledItemIds={pageSettledItemIds}
+        confirmedCommissionItemIds={pageConfirmedCommissionItemIds}
         canShip={canShip}
       />
+
+      {totalPages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-sm">
+          <span className="text-muted-foreground">
+            第 {currentPage} / {totalPages} 页 · 本页 {pageOrders.length} 个订单（共 {orders.length} 个）
+          </span>
+          <div className="flex items-center gap-2">
+            {currentPage > 1 ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={pageHref(currentPage - 1)}>上一页</Link>
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled>
+                上一页
+              </Button>
+            )}
+            {currentPage < totalPages ? (
+              <Button asChild variant="outline" size="sm">
+                <Link href={pageHref(currentPage + 1)}>下一页</Link>
+              </Button>
+            ) : (
+              <Button variant="outline" size="sm" disabled>
+                下一页
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

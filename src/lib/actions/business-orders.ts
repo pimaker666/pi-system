@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { imageThumbTransform } from '@/lib/supabase/image'
 import { hasCurrentPermission, requireAdmin, requireApproved, requireFinanceAccess } from '@/lib/auth'
 import {
   businessCustomerTransferAllocationInputSchema,
@@ -656,9 +657,21 @@ export async function getBusinessOrderAttachmentUrl(
 
 const ATTACHMENT_URL_TTL_SECONDS = 60 * 10
 
+export interface BusinessOrderAttachmentLinks {
+  /** 原图签名链接：灯箱放大用。 */
+  url: string
+  /** 缩略图签名链接（经 imgproxy 变换）；生成失败时退回原图。 */
+  thumbUrl: string
+}
+
+/**
+ * 批量签发订单附件链接。传 `thumbSizePx` 时额外签发一份缩略图变换链接：
+ * 截图原图动辄上百 KB，列表里只显示 64px 缩略图，外网一屏十几张差别很明显。
+ */
 export async function getBusinessOrderAttachmentUrls(
   attachmentIds: string[],
-): Promise<Map<string, string>> {
+  thumbSizePx?: number,
+): Promise<Map<string, BusinessOrderAttachmentLinks>> {
   await requireApproved()
   const validIds = [
     ...new Set(attachmentIds.filter((id) => z.string().uuid().safeParse(id).success)),
@@ -689,11 +702,33 @@ export async function getBusinessOrderAttachmentUrls(
       .filter((signed) => signed?.signedUrl)
       .map((signed) => [signed.path, signed.signedUrl as string]),
   )
-  return new Map(
-    attachments
-      .filter((attachment) => attachment.object_path && urlByPath.has(attachment.object_path))
-      .map((attachment) => [attachment.id, urlByPath.get(attachment.object_path as string) as string]),
-  )
+
+  // createSignedUrls 目前不支持 transform，缩略图逐张签发（单张订单附件数量很小）。
+  const thumbByPath = new Map<string, string>()
+  if (thumbSizePx) {
+    const thumbs = await Promise.all(
+      paths.map(async (path) => {
+        const { data } = await admin.storage
+          .from('finance-daily-order-screenshots')
+          .createSignedUrl(path, ATTACHMENT_URL_TTL_SECONDS, {
+            transform: imageThumbTransform(thumbSizePx),
+          })
+        return { path, url: data?.signedUrl }
+      }),
+    )
+    for (const thumb of thumbs) {
+      if (thumb.url) thumbByPath.set(thumb.path, thumb.url)
+    }
+  }
+
+  const links = new Map<string, BusinessOrderAttachmentLinks>()
+  for (const attachment of attachments) {
+    const path = attachment.object_path as string | null
+    if (!path || !urlByPath.has(path)) continue
+    const url = urlByPath.get(path) as string
+    links.set(attachment.id, { url, thumbUrl: thumbByPath.get(path) ?? url })
+  }
+  return links
 }
 
 export async function getBusinessOrderShipmentScreenshotUrl(
@@ -781,10 +816,16 @@ export async function renameBusinessOrderAttachment(
 /** 供客户端表单一次性取回多张截图的查看链接（服务端 Action 无法返回 Map）。 */
 export async function getBusinessOrderAttachmentPreviews(
   attachmentIds: string[],
-): Promise<{ urls: Record<string, string>; error?: string }> {
+): Promise<{ urls: Record<string, string>; thumbs: Record<string, string>; error?: string }> {
   await requireApproved()
-  const urlMap = await getBusinessOrderAttachmentUrls(attachmentIds)
-  return { urls: Object.fromEntries(urlMap) }
+  const urlMap = await getBusinessOrderAttachmentUrls(attachmentIds, 64)
+  const urls: Record<string, string> = {}
+  const thumbs: Record<string, string> = {}
+  for (const [id, links] of urlMap) {
+    urls[id] = links.url
+    thumbs[id] = links.thumbUrl
+  }
+  return { urls, thumbs }
 }
 
 export async function createBusinessCustomProduct(

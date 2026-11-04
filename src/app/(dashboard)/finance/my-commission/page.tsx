@@ -3,7 +3,10 @@ import { CommissionManager } from '@/components/finance/commission-manager'
 import { CommissionSummary } from '@/components/finance/commission-summary'
 import { requireApproved } from '@/lib/auth'
 import { fetchBusinessOrderCommissions } from '@/lib/business-order-commissions-server'
-import { parseBusinessOrderCommissionFilters } from '@/lib/business-order-commission'
+import {
+  parseBusinessOrderCommissionFilters,
+  summarizeCommissionByPeriod,
+} from '@/lib/business-order-commission'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -29,7 +32,7 @@ export default async function MyCommissionPage({
         <p className="text-sm text-muted-foreground">查看本人已确认结清的历史订单及按结清归属月汇总的提成。</p>
       </div>
 
-      <CommissionSummary rows={commissions.rows} showSalesperson={false} />
+      <CommissionSummary totals={summarizeCommissionByPeriod(commissions.rows)} showSalesperson={false} />
 
       <CommissionManager
         rows={commissions.rows}

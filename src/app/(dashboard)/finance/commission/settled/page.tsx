@@ -25,7 +25,7 @@ export default async function SettledCommissionPage({
         <h1 className="text-2xl font-semibold">已结清订单</h1>
         <p className="text-sm text-muted-foreground">所有产品行均已确认结清的订单归档于此；点击订单号可进入详情，财务和管理员仍可作废。</p>
       </div>
-      <CommissionSummary rows={commissions.allRows ?? commissions.rows} />
+      <CommissionSummary totals={commissions.summary ?? []} />
       <CommissionManager
         rows={commissions.rows}
         totalCount={commissions.totalCount}

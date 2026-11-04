@@ -150,6 +150,8 @@ export function EditableImageName({
 
 interface ImageAttachmentRowProps {
   src?: string | null
+  /** 小尺寸缩略图地址（私有桶签名变换）；缺省时按 src 处理。 */
+  thumbSrc?: string | null
   name?: string | null
   uploadedAt?: string | null
   /** signed URL 需传 true，公开 URL 交给 toImageSrc 改写。 */
@@ -164,6 +166,7 @@ interface ImageAttachmentRowProps {
 /** 已上传图片：缩略图（点击放大）+ 可改名称 + 上传时间 + 删除。 */
 export function ImageAttachmentRow({
   src,
+  thumbSrc,
   name,
   uploadedAt,
   rawSrc = false,
@@ -177,6 +180,7 @@ export function ImageAttachmentRow({
     <div className="flex items-center gap-3 rounded-md border px-3 py-2 text-sm">
       <ImagePreview
         src={src}
+        thumbSrc={thumbSrc}
         alt={name?.trim() || '图片'}
         size="h-16 w-16"
         sizes="64px"
