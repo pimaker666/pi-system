@@ -9,6 +9,7 @@ import type {
 } from '@/types'
 import type { BusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import { displayProfileName } from '@/lib/utils'
+import { customerNameFromSnapshot, customerTagColorFromOrder } from '@/lib/customer-snapshot'
 import { COMMISSION_PAGE_SIZE, parseBusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import {
   businessOrderAllocationBreakdown,
@@ -402,19 +403,6 @@ export async function fetchBusinessOrderCommissionClearanceDetails(
   })
 }
 
-function getCustomerName(customerSnapshot: unknown): string | null {
-  if (!customerSnapshot || typeof customerSnapshot !== 'object') return null
-  const snapshot = customerSnapshot as { name?: string | null; company?: string | null }
-  return snapshot.company || snapshot.name || null
-}
-
-function getCustomerTagColor(order: BusinessDailyLedgerOrder): string | null {
-  const liveColor = (order.customer as { tag_color?: string | null } | undefined)?.tag_color
-  if (liveColor) return liveColor
-  if (!order.customer_snapshot || typeof order.customer_snapshot !== 'object') return null
-  return (order.customer_snapshot as { tag_color?: string | null }).tag_color ?? null
-}
-
 function round4(value: number) {
   return Math.round(value * 10000) / 10000
 }
@@ -536,7 +524,7 @@ function buildCommissionRows(
     const tagColor = commissionCalculable
       ? customerTagColors.has(order.id)
         ? customerTagColors.get(order.id) ?? null
-        : getCustomerTagColor(order)
+        : customerTagColorFromOrder(order)
       : null
     const tag = tagColor ? tagMap.get(tagColor.toLowerCase()) ?? null : null
     const tagRate = tag ? tag.product_commission_rate : null
@@ -603,7 +591,7 @@ function buildCommissionRows(
         salesperson_name: salespersonName,
         order_number: order.order_number,
         external_order_number: order.external_order_number,
-        customer_name: commissionCalculable ? getCustomerName(order.customer_snapshot) : null,
+        customer_name: commissionCalculable ? customerNameFromSnapshot(order.customer_snapshot) : null,
         commission_calculable: commissionCalculable,
         customer_tag_color: tagColor,
         customer_tag_label: tag ? tag.label : null,

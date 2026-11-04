@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BusinessOrderProductCost, CurrencyCode, DailyOrderShippingCategory } from '@/types'
 import type { BusinessOrderCostFilters } from '@/schemas/business-order-cost'
 import { displayProfileName, formatAmount } from '@/lib/utils'
+import { customerNameFromSnapshot, customerTagColorFromOrder } from '@/lib/customer-snapshot'
 import { COST_PAGE_SIZE } from '@/lib/business-order-cost'
 import {
   activeBusinessOrderAttachments,
@@ -252,19 +253,6 @@ function eligibleCostRows(
   )
 }
 
-function getCustomerName(customerSnapshot: unknown): string | null {
-  if (!customerSnapshot || typeof customerSnapshot !== 'object') return null
-  const snapshot = customerSnapshot as { name?: string | null; company?: string | null }
-  return snapshot.company || snapshot.name || null
-}
-
-function getCustomerTagColor(order: BusinessDailyLedgerOrder): string | null {
-  const liveColor = order.customer?.tag_color
-  if (liveColor) return liveColor
-  if (!order.customer_snapshot || typeof order.customer_snapshot !== 'object') return null
-  return (order.customer_snapshot as { tag_color?: string | null }).tag_color ?? null
-}
-
 export async function fetchBusinessOrderProductCosts(
   supabase: SupabaseClient,
   filters: BusinessOrderCostFilters,
@@ -369,8 +357,8 @@ export async function fetchBusinessOrderProductCosts(
         salesperson_name: salespersonName,
         order_number: order.order_number,
         external_order_number: order.external_order_number,
-        customer_name: getCustomerName(order.customer_snapshot),
-        customer_tag_color: getCustomerTagColor(order),
+        customer_name: customerNameFromSnapshot(order.customer_snapshot),
+        customer_tag_color: customerTagColorFromOrder(order),
         payment_account: order.payment_account,
         shipping_number: order.daily_shipping_number,
         shipping_category: item.daily_shipping_category ?? null,

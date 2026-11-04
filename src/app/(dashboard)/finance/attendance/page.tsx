@@ -13,11 +13,26 @@ export default async function AttendancePage({
   const { month } = await searchParams
   const supabase = await createClient()
 
-  const { data: sheetsData } = await supabase
-    .from('attendance_sheets')
-    .select('*')
-    .order('month', { ascending: false })
-  const sheets = (sheetsData ?? []) as AttendanceSheet[]
+  // 考勤表列表与账号下拉互不依赖，先并发取；明细等选中表后再查。
+  const [sheetsResult, accountsResult] = await Promise.all([
+    supabase
+      .from('attendance_sheets')
+      .select('*')
+      .order('month', { ascending: false }),
+    canManage
+      ? supabase
+        .from('profiles')
+        .select('id, chinese_name, full_name, email')
+        .eq('status', 'approved')
+        .order('created_at', { ascending: true })
+        .order('full_name', { ascending: true })
+      : Promise.resolve({ data: null }),
+  ])
+  const sheets = (sheetsResult.data ?? []) as AttendanceSheet[]
+  const accounts = (accountsResult.data ?? []) as Pick<
+    Profile,
+    'id' | 'chinese_name' | 'full_name' | 'email'
+  >[]
 
   const selected = sheets.find((sheet) => sheet.month === month) ?? sheets[0] ?? null
 
@@ -35,21 +50,6 @@ export default async function AttendancePage({
     ])
     entries = (entriesData ?? []) as AttendanceEntry[]
     members = (membersData ?? []) as AttendanceMember[]
-  }
-
-  // 有账号成员的去重选择源（管理端「从账号添加」用）
-  let accounts: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>[] = []
-  if (canManage) {
-    const { data: profilesData } = await supabase
-      .from('profiles')
-      .select('id, chinese_name, full_name, email')
-      .eq('status', 'approved')
-      .order('created_at', { ascending: true })
-      .order('full_name', { ascending: true })
-    accounts = (profilesData ?? []) as Pick<
-      Profile,
-      'id' | 'chinese_name' | 'full_name' | 'email'
-    >[]
   }
 
   return (

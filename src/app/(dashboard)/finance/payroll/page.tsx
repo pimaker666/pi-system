@@ -18,39 +18,43 @@ export default async function PayrollPage({
   const { month } = await searchParams
   const supabase = await createClient()
 
-  const { data: sheetsData } = await supabase
-    .from('payroll_sheets')
-    .select('*')
-    .order('period_month', { ascending: false })
-  const sheets = (sheetsData ?? []) as PayrollSheet[]
-
-  let itemsQuery = supabase
+  // 四段查询互不依赖，一次并发发出；可见表集合在拿到结果后再过滤。
+  const itemsQuery = supabase
     .from('payroll_items')
     .select('*, profile:profiles!inner(id, chinese_name, full_name, email)')
     .order('sort_order', { ascending: true })
-  if (!canManage) itemsQuery = itemsQuery.eq('profile_id', profile.id)
-  const { data: itemsData } = await itemsQuery
+  const scopedItemsQuery = canManage ? itemsQuery : itemsQuery.eq('profile_id', profile.id)
+
+  const [sheetsResult, itemsResult, profilesResult, salaryResult] = await Promise.all([
+    supabase
+      .from('payroll_sheets')
+      .select('*')
+      .order('period_month', { ascending: false }),
+    scopedItemsQuery,
+    canManage
+      ? supabase
+        .from('profiles')
+        .select('id, chinese_name, full_name, email')
+        .eq('status', 'approved')
+        .order('created_at', { ascending: true })
+        .order('full_name', { ascending: true })
+      : Promise.resolve({ data: null }),
+    canManage
+      ? supabase.from('payroll_salary_profiles').select('*')
+      : Promise.resolve({ data: null }),
+  ])
+
+  const sheets = (sheetsResult.data ?? []) as PayrollSheet[]
   const visibleSheetIds = new Set(sheets.map((sheet) => sheet.id))
-  const items = ((itemsData ?? []) as PayrollItemWithProfile[]).filter((item) =>
+  const items = ((itemsResult.data ?? []) as PayrollItemWithProfile[]).filter((item) =>
     visibleSheetIds.has(item.sheet_id),
   )
 
-  let profiles: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>[] = []
-  let salaryProfiles: PayrollSalaryProfile[] = []
-  if (canManage) {
-    const { data: profilesData } = await supabase
-      .from('profiles')
-      .select('id, chinese_name, full_name, email')
-      .eq('status', 'approved')
-      .order('created_at', { ascending: true })
-      .order('full_name', { ascending: true })
-    profiles = (profilesData ?? []) as Pick<
-      Profile,
-      'id' | 'chinese_name' | 'full_name' | 'email'
-    >[]
-    const { data: salaryData } = await supabase.from('payroll_salary_profiles').select('*')
-    salaryProfiles = (salaryData ?? []) as PayrollSalaryProfile[]
-  }
+  const profiles = (profilesResult.data ?? []) as Pick<
+    Profile,
+    'id' | 'chinese_name' | 'full_name' | 'email'
+  >[]
+  const salaryProfiles = (salaryResult.data ?? []) as PayrollSalaryProfile[]
 
   const selectedMonth =
     month && sheets.some((sheet) => sheet.period_month === month)

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { customerNameFromSnapshot } from '@/lib/customer-snapshot'
 import { displayProfileName } from '@/lib/utils'
 import type { CurrencyCode, DailyOrderShippingCategory, SettledOrderRow } from '@/types'
 
@@ -57,12 +58,6 @@ const SELECT = `
     )
   )
 `
-
-function getCustomerName(customerSnapshot: unknown): string | null {
-  if (!customerSnapshot || typeof customerSnapshot !== 'object') return null
-  const snapshot = customerSnapshot as { name?: string | null; company?: string | null }
-  return snapshot.company || snapshot.name || null
-}
 
 export interface SettledOrderFilters {
   period: string | null
@@ -145,7 +140,7 @@ export async function fetchSettledOrders(
           order.salesperson,
           order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
         ),
-        customer_name: getCustomerName(order.customer_snapshot),
+        customer_name: customerNameFromSnapshot(order.customer_snapshot),
         currency: order.currency,
         product_name: productName,
         product_sku: productSku,
