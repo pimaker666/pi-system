@@ -119,6 +119,7 @@ async function attachItemDisplayLabels(
 function buildLedgerQuery(
   supabase: SupabaseClient,
   filters: DailyOrderFilters,
+  offset: number,
   limit: number,
   productSearch: boolean,
   ids?: string[],
@@ -141,7 +142,7 @@ function buildLedgerQuery(
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .order('sort_order', { referencedTable: 'business_order_items', ascending: true })
-    .limit(limit)
+    .range(offset, offset + limit - 1)
 
   if (ids && ids.length > 0) query = query.in('id', ids)
   if (filters.dateFrom) query = query.gte('order_date', filters.dateFrom)
@@ -282,6 +283,65 @@ export interface BusinessDailyLedgerResult {
   confirmedCommissionItemIds: string[]
 }
 
+const LEDGER_FETCH_PAGE_SIZE = 500
+// 完成后过滤在内存里做，筛选很挑剔时要持续翻页；超过该上限说明范围过大，报错而非静默截断。
+const LEDGER_SOURCE_MAX = 20000
+
+async function fetchLedgerCandidates(
+  supabase: SupabaseClient,
+  filters: DailyOrderFilters,
+  keyword: string,
+  offset: number,
+  pageSize: number,
+  ids?: string[],
+): Promise<{ orders: BusinessDailyLedgerOrder[]; exhausted: boolean }> {
+  const merged = new Map<string, BusinessDailyLedgerOrder>()
+
+  if (ids && ids.length > 0) {
+    // Kong 网关 URI 上限约 8k：.in('id', ids) 一批最多 100 个订单，超出拆分查询后按同一排序合并。
+    for (let i = 0; i < ids.length; i += 100) {
+      const { data, error } = await buildLedgerQuery(
+        supabase,
+        filters,
+        0,
+        pageSize,
+        false,
+        ids.slice(i, i + 100),
+      )
+      if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
+      for (const order of (data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
+        merged.set(order.id, order)
+      }
+    }
+    return { orders: [...merged.values()], exhausted: true }
+  }
+
+  if (!keyword) {
+    const { data, error } = await buildLedgerQuery(supabase, filters, offset, pageSize, false)
+    if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
+    const page = (data ?? []) as unknown as BusinessDailyLedgerOrder[]
+    return { orders: page, exhausted: page.length < pageSize }
+  }
+
+  const [headResult, itemResult] = await Promise.all([
+    buildLedgerQuery(supabase, filters, offset, pageSize, false),
+    buildLedgerQuery(supabase, filters, offset, pageSize, true),
+  ])
+  const error = headResult.error || itemResult.error
+  if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
+
+  const head = (headResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]
+  const item = (itemResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]
+  for (const order of head) merged.set(order.id, order)
+  for (const order of item) {
+    if (!merged.has(order.id)) merged.set(order.id, order)
+  }
+  return {
+    orders: [...merged.values()],
+    exhausted: head.length < pageSize && item.length < pageSize,
+  }
+}
+
 /**
  * 读取每日订单台账。PostgREST 不支持跨表 or()，所以关键字搜索拆成两次查询：
  * 一次匹配订单号 / 平台订单号 / 发货单号 / 收款账户，一次匹配产品名称与 SKU，再按同一排序合并去重。
@@ -297,78 +357,71 @@ export async function fetchBusinessDailyLedgerWithStatusSets(
 ): Promise<BusinessDailyLedgerResult> {
   const effectiveLimit = Math.min(limit, BUSINESS_DAILY_EXPORT_LIMIT)
   const keyword = normalizeKeyword(filters.q)
-  const merged = new Map<string, BusinessDailyLedgerOrder>()
-
-  if (ids && ids.length > 0 || !keyword) {
-    // Kong 网关 URI 上限约 8k：.in('id', ids) 一批最多 100 个订单，超出拆分查询后按同一排序合并。
-    if (ids && ids.length > 0) {
-      for (let i = 0; i < ids.length; i += 100) {
-        const { data, error } = await buildLedgerQuery(
-          supabase,
-          filters,
-          effectiveLimit,
-          false,
-          ids.slice(i, i + 100),
-        )
-        if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
-        for (const order of (data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
-          merged.set(order.id, order)
-        }
-      }
-    } else {
-      const { data, error } = await buildLedgerQuery(supabase, filters, effectiveLimit, false)
-      if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
-      for (const order of (data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
-        merged.set(order.id, order)
-      }
-    }
-  } else {
-    const [headResult, itemResult] = await Promise.all([
-      buildLedgerQuery(supabase, filters, effectiveLimit, false),
-      buildLedgerQuery(supabase, filters, effectiveLimit, true),
-    ])
-    const error = headResult.error || itemResult.error
-    if (error) throw new Error(`每日订单台账读取失败：${error.message}`)
-
-    for (const order of (headResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
-      merged.set(order.id, order)
-    }
-    for (const order of (itemResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
-      if (!merged.has(order.id)) merged.set(order.id, order)
-    }
-  }
-
-  const candidates = [...merged.values()].sort(compareLedgerOrders).slice(0, effectiveLimit)
   // 未收金额由 RPC 事后附加，结算/提成结清按明细行单独读取；三者互不依赖，并行发出。
   const needSettled = includeStatusSets || filters.settlementStatuses.length > 0
   const needCleared = includeStatusSets || filters.commissionClearanceStatuses.length > 0
-  const [withOutstanding, settledItemIds, confirmedCommissionItemIds] = await Promise.all([
-    attachOutstandingAmounts(supabase, candidates),
-    needSettled
-      ? fetchSettledItemIdsForOrders(supabase, candidates)
-      : Promise.resolve<string[]>([]),
-    needCleared
-      ? fetchConfirmedCommissionItemIdsForOrders(supabase, candidates)
-      : Promise.resolve<string[]>([]),
-  ])
 
-  const orders = applyCommissionClearanceFilter(
-    applySettlementFilter(
-      applyBalanceStatusFilter(
-        applyCompletionFilter(withOutstanding, filters.completions),
-        filters.balanceStatuses,
-      ),
-      filters.settlementStatuses,
-      new Set(settledItemIds),
-    ),
-    filters.commissionClearanceStatuses,
-    new Set(confirmedCommissionItemIds),
-  )
+  const collected: BusinessDailyLedgerOrder[] = []
+  const seenOrderIds = new Set<string>()
+  const settledItemIdsAll = new Set<string>()
+  const confirmedCommissionItemIdsAll = new Set<string>()
+  let offset = 0
+
+  // 后过滤会丢弃部分行，持续翻页直到凑满目标行数或数据取尽。
+  while (collected.length < effectiveLimit) {
+    if (offset >= LEDGER_SOURCE_MAX) {
+      throw new Error(`每日订单台账达到 ${LEDGER_SOURCE_MAX} 单扫描上限，请缩小筛选范围后再试`)
+    }
+    const page = await fetchLedgerCandidates(
+      supabase,
+      filters,
+      keyword,
+      offset,
+      LEDGER_FETCH_PAGE_SIZE,
+      ids,
+    )
+    const fresh = page.orders.filter((order) => !seenOrderIds.has(order.id))
+    for (const order of fresh) seenOrderIds.add(order.id)
+
+    if (fresh.length > 0) {
+      const [withOutstanding, settledItemIds, confirmedCommissionItemIds] = await Promise.all([
+        attachOutstandingAmounts(supabase, fresh),
+        needSettled
+          ? fetchSettledItemIdsForOrders(supabase, fresh)
+          : Promise.resolve<string[]>([]),
+        needCleared
+          ? fetchConfirmedCommissionItemIdsForOrders(supabase, fresh)
+          : Promise.resolve<string[]>([]),
+      ])
+      for (const id of settledItemIds) settledItemIdsAll.add(id)
+      for (const id of confirmedCommissionItemIds) confirmedCommissionItemIdsAll.add(id)
+
+      collected.push(
+        ...applyCommissionClearanceFilter(
+          applySettlementFilter(
+            applyBalanceStatusFilter(
+              applyCompletionFilter(withOutstanding, filters.completions),
+              filters.balanceStatuses,
+            ),
+            filters.settlementStatuses,
+            new Set(settledItemIds),
+          ),
+          filters.commissionClearanceStatuses,
+          new Set(confirmedCommissionItemIds),
+        ),
+      )
+    }
+
+    if (page.exhausted) break
+    offset += LEDGER_FETCH_PAGE_SIZE
+  }
+
+  const orders = collected.sort(compareLedgerOrders).slice(0, effectiveLimit)
 
   return {
     orders: await attachLedgerDisplays(supabase, orders, viewerRole),
-    settledItemIds,
-    confirmedCommissionItemIds,
+    settledItemIds: [...settledItemIdsAll],
+    confirmedCommissionItemIds: [...confirmedCommissionItemIdsAll],
   }
 }
 

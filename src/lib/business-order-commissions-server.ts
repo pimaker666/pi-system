@@ -19,7 +19,9 @@ import {
   type BusinessDailyLedgerOrder,
 } from '@/lib/business-daily-orders'
 
-const COMMISSION_ORDER_LIMIT = 1000
+const COMMISSION_ORDER_PAGE_SIZE = 1000
+// 提成页汇总与分页都基于全量订单，超过该上限说明筛选范围过大，宁可报错也不静默截断。
+const COMMISSION_ORDER_MAX = 20000
 
 // 提成只需发货/退货的净发货量，按白名单取字段，避免把截图路径等大字段整行拉回。
 const COMMISSION_ORDER_SELECT = `*, business_order_items(*), salesperson:profiles!salesperson_id(id, chinese_name, full_name, email), customer:customers!customer_id(tag_color), business_order_shipments(id, voided_at, shipped_at, business_order_shipment_items(order_item_id, quantity)), business_order_returns(id, voided_at, business_order_return_items(order_item_id, quantity)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`
@@ -52,6 +54,7 @@ function buildOrdersQuery(
   supabase: SupabaseClient,
   filters: BusinessOrderCommissionFilters,
   productSearch: boolean,
+  offset: number,
 ) {
   const keyword = normalizeKeyword(filters.q)
   const itemsEmbed = productSearch ? 'business_order_items!inner(*)' : 'business_order_items(*)'
@@ -64,7 +67,7 @@ function buildOrdersQuery(
     .order('created_at', { ascending: false })
     .order('id', { ascending: false })
     .order('sort_order', { referencedTable: 'business_order_items', ascending: true })
-    .range(0, COMMISSION_ORDER_LIMIT - 1)
+    .range(offset, offset + COMMISSION_ORDER_PAGE_SIZE - 1)
 
   let dateFrom = filters.dateFrom
   let dateTo = filters.dateTo
@@ -106,6 +109,26 @@ function compareOrders(left: BusinessDailyLedgerOrder, right: BusinessDailyLedge
   return left.id < right.id ? 1 : -1
 }
 
+async function fetchAllOrdersForQuery(
+  supabase: SupabaseClient,
+  filters: BusinessOrderCommissionFilters,
+  productSearch: boolean,
+): Promise<BusinessDailyLedgerOrder[]> {
+  const orders: BusinessDailyLedgerOrder[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await buildOrdersQuery(supabase, filters, productSearch, offset)
+    if (error) throw new Error(`业务提成订单读取失败：${error.message}`)
+    const page = (data ?? []) as unknown as BusinessDailyLedgerOrder[]
+    orders.push(...page)
+    if (page.length < COMMISSION_ORDER_PAGE_SIZE) return orders
+    offset += COMMISSION_ORDER_PAGE_SIZE
+    if (orders.length >= COMMISSION_ORDER_MAX) {
+      throw new Error(`提成订单达到 ${COMMISSION_ORDER_MAX} 单上限，请缩小日期范围后再试`)
+    }
+  }
+}
+
 async function fetchMatchingOrders(
   supabase: SupabaseClient,
   filters: BusinessOrderCommissionFilters,
@@ -113,27 +136,22 @@ async function fetchMatchingOrders(
   const keyword = normalizeKeyword(filters.q)
 
   if (!keyword) {
-    const { data, error } = await buildOrdersQuery(supabase, filters, false)
-    if (error) throw new Error(`业务提成订单读取失败：${error.message}`)
+    const orders = await fetchAllOrdersForQuery(supabase, filters, false)
     return filterBusinessOrdersByShippingDateRange(
-      (data ?? []) as unknown as BusinessDailyLedgerOrder[],
+      orders,
       filters.shippingDateFrom,
       filters.shippingDateTo,
-    )
+    ).sort(compareOrders)
   }
 
-  const [headResult, itemResult] = await Promise.all([
-    buildOrdersQuery(supabase, filters, false),
-    buildOrdersQuery(supabase, filters, true),
+  const [headOrders, itemOrders] = await Promise.all([
+    fetchAllOrdersForQuery(supabase, filters, false),
+    fetchAllOrdersForQuery(supabase, filters, true),
   ])
-  const error = headResult.error || itemResult.error
-  if (error) throw new Error(`业务提成订单读取失败：${error.message}`)
 
   const merged = new Map<string, BusinessDailyLedgerOrder>()
-  for (const order of (headResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
-    merged.set(order.id, order)
-  }
-  for (const order of (itemResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
+  for (const order of headOrders) merged.set(order.id, order)
+  for (const order of itemOrders) {
     if (!merged.has(order.id)) merged.set(order.id, order)
   }
 

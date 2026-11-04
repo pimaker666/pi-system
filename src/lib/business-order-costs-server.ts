@@ -116,72 +116,88 @@ function compareOrders(left: BusinessDailyLedgerOrder, right: BusinessDailyLedge
   return left.id < right.id ? 1 : -1
 }
 
+const COST_ORDER_PAGE_SIZE = 500
+// 发货日期只能在内存里过滤：翻页要一直取到凑满目标行数或数据取尽，超过该上限则报错而非静默截断。
+const COST_ORDER_MAX = 20000
+
+async function collectOrdersForQuery(
+  supabase: SupabaseClient,
+  filters: BusinessOrderCostFilters,
+  productSearch: boolean,
+  ids?: readonly string[],
+): Promise<BusinessDailyLedgerOrder[]> {
+  const collected: BusinessDailyLedgerOrder[] = []
+  const seen = new Set<string>()
+  const idChunks = ids && ids.length > 0
+    ? Array.from({ length: Math.ceil(ids.length / 100) }, (_, index) =>
+        ids.slice(index * 100, index * 100 + 100),
+      )
+    : [undefined]
+
+  for (const chunk of idChunks) {
+    let offset = 0
+    while (true) {
+      const { data, error } = await buildBaseQuery(
+        supabase,
+        filters,
+        offset,
+        COST_ORDER_PAGE_SIZE,
+        productSearch,
+        chunk,
+      )
+      if (error) throw new Error(`订单成本订单读取失败：${error.message}`)
+      const page = (data ?? []) as unknown as BusinessDailyLedgerOrder[]
+      for (const order of page) {
+        if (seen.has(order.id)) continue
+        seen.add(order.id)
+        collected.push(order)
+      }
+      if (page.length < COST_ORDER_PAGE_SIZE) break
+      offset += COST_ORDER_PAGE_SIZE
+      if (collected.length >= COST_ORDER_MAX) {
+        throw new Error(`订单成本订单达到 ${COST_ORDER_MAX} 单上限，请缩小筛选范围后再试`)
+      }
+    }
+  }
+
+  return collected
+}
+
 async function fetchMatchingOrders(
   supabase: SupabaseClient,
   filters: BusinessOrderCostFilters,
-  offset: number,
-  limit: number,
   ids?: readonly string[],
 ): Promise<BusinessDailyLedgerOrder[]> {
   const keyword = normalizeKeyword(filters.q)
+  const merged = new Map<string, BusinessDailyLedgerOrder>()
 
   if (ids && ids.length > 0) {
     // Kong 网关 URI 上限约 8k：.in('id', ids) 一批最多 100 个订单，超出拆分后按同一排序合并。
-    const merged = new Map<string, BusinessDailyLedgerOrder>()
-    for (let i = 0; i < ids.length; i += 100) {
-      const chunk = ids.slice(i, i + 100)
-      const queries = [buildBaseQuery(supabase, filters, 0, limit, false, chunk)]
-      if (keyword) queries.push(buildBaseQuery(supabase, filters, 0, limit, true, chunk))
-      const results = await Promise.all(queries)
-      for (const result of results) {
-        if (result.error) throw new Error(`订单成本订单读取失败：${result.error.message}`)
-        for (const order of (result.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
-          merged.set(order.id, order)
-        }
-      }
+    const queries = [collectOrdersForQuery(supabase, filters, false, ids)]
+    if (keyword) queries.push(collectOrdersForQuery(supabase, filters, true, ids))
+    for (const orders of await Promise.all(queries)) {
+      for (const order of orders) merged.set(order.id, order)
     }
-    return filterBusinessOrdersByShippingDateRange(
-      [...merged.values()],
-      filters.shippingDateFrom,
-      filters.shippingDateTo,
-    )
-      .sort(compareOrders)
-      .slice(0, limit)
-  }
-
-  if (!keyword) {
-    const { data, error } = await buildBaseQuery(supabase, filters, offset, limit, false)
-    if (error) throw new Error(`订单成本订单读取失败：${error.message}`)
-    return filterBusinessOrdersByShippingDateRange(
-      (data ?? []) as unknown as BusinessDailyLedgerOrder[],
-      filters.shippingDateFrom,
-      filters.shippingDateTo,
-    )
-  }
-
-  const [headResult, itemResult] = await Promise.all([
-    buildBaseQuery(supabase, filters, offset, limit, false),
-    buildBaseQuery(supabase, filters, offset, limit, true),
-  ])
-  const error = headResult.error || itemResult.error
-  if (error) throw new Error(`订单成本订单读取失败：${error.message}`)
-
-  const merged = new Map<string, BusinessDailyLedgerOrder>()
-  for (const order of (headResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
-    merged.set(order.id, order)
-  }
-  for (const order of (itemResult.data ?? []) as unknown as BusinessDailyLedgerOrder[]) {
-    if (merged.size >= limit) break
-    if (!merged.has(order.id)) merged.set(order.id, order)
+  } else if (!keyword) {
+    for (const order of await collectOrdersForQuery(supabase, filters, false)) {
+      merged.set(order.id, order)
+    }
+  } else {
+    const [headOrders, itemOrders] = await Promise.all([
+      collectOrdersForQuery(supabase, filters, false),
+      collectOrdersForQuery(supabase, filters, true),
+    ])
+    for (const order of headOrders) merged.set(order.id, order)
+    for (const order of itemOrders) {
+      if (!merged.has(order.id)) merged.set(order.id, order)
+    }
   }
 
   return filterBusinessOrdersByShippingDateRange(
     [...merged.values()],
     filters.shippingDateFrom,
     filters.shippingDateTo,
-  )
-    .sort(compareOrders)
-    .slice(0, limit)
+  ).sort(compareOrders)
 }
 
 async function fetchAllProductFinancials(supabase: SupabaseClient) {
@@ -262,7 +278,7 @@ export async function fetchBusinessOrderProductCosts(
 ): Promise<{ rows: BusinessOrderProductCost[]; totalCount: number }> {
   const effectiveLimit = Math.min(pageSize, BUSINESS_DAILY_EXPORT_LIMIT)
   const [allOrders, financialRows, overrideRows, settledIds] = await Promise.all([
-    fetchMatchingOrders(supabase, filters, 0, 1000, options.ids),
+    fetchMatchingOrders(supabase, filters, options.ids),
     fetchAllProductFinancials(supabase),
     fetchAllCostOverrides(supabase),
     fetchAllSettledItemIds(supabase),

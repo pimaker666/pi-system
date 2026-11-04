@@ -158,6 +158,17 @@ function revalidateCommission() {
 
 type CommissionSupabase = Awaited<ReturnType<typeof createClient>>
 
+// Kong 网关 URI 上限约 8k，PostgREST 的 .in() 每批最多 100 个 UUID。
+const ID_CHUNK = 100
+
+function chunkIds(ids: readonly string[]): string[][] {
+  const chunks: string[][] = []
+  for (let index = 0; index < ids.length; index += ID_CHUNK) {
+    chunks.push(ids.slice(index, index + ID_CHUNK))
+  }
+  return chunks
+}
+
 const ACTIVE_CLEARANCE_STATUSES = ['pending', 'confirmed'] as const
 
 /**
@@ -169,11 +180,11 @@ async function findLockedClearanceItemIds(
   itemIds: string[],
 ): Promise<{ locked: Set<string>; error: string | null }> {
   const locked = new Set<string>()
-  for (let index = 0; index < itemIds.length; index += 100) {
+  for (const chunk of chunkIds(itemIds)) {
     const { data, error } = await supabase
       .from('finance_business_order_item_commission_clearances')
       .select('business_order_item_id')
-      .in('business_order_item_id', itemIds.slice(index, index + 100))
+      .in('business_order_item_id', chunk)
       .in('status', [...ACTIVE_CLEARANCE_STATUSES])
     if (error) return { locked, error: `提成结清状态读取失败：${error.message}` }
     for (const row of (data ?? []) as { business_order_item_id: string }[]) {
@@ -188,11 +199,11 @@ async function findLockedOrderIds(
   orderIds: string[],
 ): Promise<{ locked: Set<string>; error: string | null }> {
   const locked = new Set<string>()
-  for (let index = 0; index < orderIds.length; index += 100) {
+  for (const chunk of chunkIds(orderIds)) {
     const { data, error } = await supabase
       .from('business_order_items')
       .select('id, order_id')
-      .in('order_id', orderIds.slice(index, index + 100))
+      .in('order_id', chunk)
     if (error) return { locked, error: `订单明细读取失败：${error.message}` }
     const items = (data ?? []) as { id: string; order_id: string }[]
     const itemLock = await findLockedClearanceItemIds(supabase, items.map((item) => item.id))
@@ -216,12 +227,23 @@ export async function saveBusinessOrderItemCommission(input: {
 
   const supabase = await createClient()
   const itemIds = parsed.data.business_order_item_ids
-  const { data: itemOrders, error: itemOrderError } = await supabase
-    .from('business_order_items')
-    .select('id, order:business_orders!inner(customer_id, voided_at, salesperson_id)')
-    .in('id', itemIds)
-  if (itemOrderError) return { ok: false, error: itemOrderError.message }
-  if (!itemOrders || itemOrders.length !== itemIds.length) {
+  const itemOrders: Array<{
+    id: string
+    order: {
+      customer_id: string | null
+      voided_at: string | null
+      salesperson_id: string | null
+    }
+  }> = []
+  for (const chunk of chunkIds(itemIds)) {
+    const { data, error } = await supabase
+      .from('business_order_items')
+      .select('id, order:business_orders!inner(customer_id, voided_at, salesperson_id)')
+      .in('id', chunk)
+    if (error) return { ok: false, error: error.message }
+    itemOrders.push(...((data ?? []) as unknown as typeof itemOrders))
+  }
+  if (itemOrders.length !== itemIds.length) {
     return { ok: false, error: '部分订单明细行不存在' }
   }
   const orderMeta = itemOrders.map((item) => item.order as unknown as {
@@ -246,11 +268,13 @@ export async function saveBusinessOrderItemCommission(input: {
   }
 
   if (parsed.data.rate === null) {
-    const { error } = await supabase
-      .from('finance_business_order_item_commissions')
-      .delete()
-      .in('business_order_item_id', itemIds)
-    if (error) return { ok: false, error: error.message }
+    for (const chunk of chunkIds(itemIds)) {
+      const { error } = await supabase
+        .from('finance_business_order_item_commissions')
+        .delete()
+        .in('business_order_item_id', chunk)
+      if (error) return { ok: false, error: error.message }
+    }
     revalidateCommission()
     return { ok: true }
   }
@@ -353,13 +377,21 @@ export async function saveBusinessOrderCommissionExchangeRate(input: {
     }
   }
 
-  const { data: existing, error: selectError } = await supabase
-    .from('finance_business_order_commissions')
-    .select('business_order_id, freight_cost, freight_commission_rate')
-    .in('business_order_id', parsed.data.business_order_ids)
-  if (selectError) return { ok: false, error: selectError.message }
+  const existing: Array<{
+    business_order_id: string
+    freight_cost: number
+    freight_commission_rate: number
+  }> = []
+  for (const chunk of chunkIds(parsed.data.business_order_ids)) {
+    const { data, error } = await supabase
+      .from('finance_business_order_commissions')
+      .select('business_order_id, freight_cost, freight_commission_rate')
+      .in('business_order_id', chunk)
+    if (error) return { ok: false, error: error.message }
+    existing.push(...((data ?? []) as typeof existing))
+  }
 
-  const existingMap = new Map((existing ?? []).map((row) => [row.business_order_id, row]))
+  const existingMap = new Map(existing.map((row) => [row.business_order_id, row]))
   const rows = parsed.data.business_order_ids.map((businessOrderId) => {
     const commission = existingMap.get(businessOrderId)
     return {
@@ -410,15 +442,17 @@ export async function saveBusinessOrderFreightCommissionRate(input: {
     .eq('id', 1)
   if (settingsError) return { ok: false, error: settingsError.message }
 
-  const { error } = await supabase
-    .from('finance_business_order_commissions')
-    .update({
-      freight_commission_rate: parsed.data.freight_commission_rate,
-      updated_by: profile.id,
-    })
-    .in('business_order_id', parsed.data.business_order_ids)
-    .gt('freight_cost', 0)
-  if (error) return { ok: false, error: error.message }
+  for (const chunk of chunkIds(parsed.data.business_order_ids)) {
+    const { error } = await supabase
+      .from('finance_business_order_commissions')
+      .update({
+        freight_commission_rate: parsed.data.freight_commission_rate,
+        updated_by: profile.id,
+      })
+      .in('business_order_id', chunk)
+      .gt('freight_cost', 0)
+    if (error) return { ok: false, error: error.message }
+  }
 
   revalidateCommission()
   revalidatePath('/finance/profit')
@@ -545,35 +579,47 @@ export async function submitBusinessOrderCommissionClearance(input: {
   const supabase = await createClient()
   const itemIds = parsed.data.business_order_item_ids
 
-  const { data: items, error: itemError } = await supabase
-    .from('business_order_items')
-    .select('id, order_id')
-    .in('id', itemIds)
-  if (itemError) return { ok: false, error: itemError.message }
-  if (!items || items.length !== itemIds.length) {
+  const items = []
+  for (const chunk of chunkIds(itemIds)) {
+    const { data, error } = await supabase
+      .from('business_order_items')
+      .select('id, order_id')
+      .in('id', chunk)
+    if (error) return { ok: false, error: error.message }
+    items.push(...(data ?? []))
+  }
+  if (items.length !== itemIds.length) {
     return { ok: false, error: '部分订单明细行不存在' }
   }
 
   const orderIds = [...new Set(items.map((item) => item.order_id))]
-  const { data: orders, error: orderError } = await supabase
-    .from('business_orders')
-    .select(
-      'id, currency, status, voided_at, salesperson_id, customer_id, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))',
-    )
-    .in('id', orderIds)
-  if (orderError) return { ok: false, error: orderError.message }
+  const orders = []
+  for (const chunk of chunkIds(orderIds)) {
+    const { data, error } = await supabase
+      .from('business_orders')
+      .select(
+        'id, currency, status, voided_at, salesperson_id, customer_id, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))',
+      )
+      .in('id', chunk)
+    if (error) return { ok: false, error: error.message }
+    orders.push(...(data ?? []))
+  }
 
-  const orderMap = new Map((orders ?? []).map((order) => [order.id, order]))
-  const usdOrderIds = (orders ?? []).filter((order) => order.currency === 'USD').map((order) => order.id)
+  const orderMap = new Map(orders.map((order) => [order.id, order]))
+  const usdOrderIds = orders.filter((order) => order.currency === 'USD').map((order) => order.id)
   if (usdOrderIds.length > 0) {
-    const { data: commissions, error: commissionError } = await supabase
-      .from('finance_business_order_commissions')
-      .select('business_order_id, settlement_exchange_rate_to_cny')
-      .in('business_order_id', usdOrderIds)
-    if (commissionError) return { ok: false, error: commissionError.message }
+    const commissions = []
+    for (const chunk of chunkIds(usdOrderIds)) {
+      const { data, error } = await supabase
+        .from('finance_business_order_commissions')
+        .select('business_order_id, settlement_exchange_rate_to_cny')
+        .in('business_order_id', chunk)
+      if (error) return { ok: false, error: error.message }
+      commissions.push(...(data ?? []))
+    }
 
     const exchangeRates = new Map(
-      (commissions ?? []).map((commission) => [
+      commissions.map((commission) => [
         commission.business_order_id,
         commission.settlement_exchange_rate_to_cny,
       ]),
@@ -651,23 +697,31 @@ async function assertClearanceActorPermission(
   const isFinanceOrAdmin = profile.role === 'admin' || profile.role === 'finance'
   if (isFinanceOrAdmin) return null
 
-  const { data: items, error: itemError } = await supabase
-    .from('business_order_items')
-    .select('id, order_id')
-    .in('id', itemIds)
-  if (itemError) return { ok: false, error: itemError.message }
-  if (!items || items.length !== itemIds.length) {
+  const items: { id: string; order_id: string }[] = []
+  for (const chunk of chunkIds(itemIds)) {
+    const { data, error } = await supabase
+      .from('business_order_items')
+      .select('id, order_id')
+      .in('id', chunk)
+    if (error) return { ok: false, error: error.message }
+    items.push(...(data ?? []))
+  }
+  if (items.length !== itemIds.length) {
     return { ok: false, error: '部分订单明细行不存在' }
   }
 
   const orderIds = [...new Set(items.map((item) => item.order_id))]
-  const { data: orders, error: orderError } = await supabase
-    .from('business_orders')
-    .select('id, salesperson_id')
-    .in('id', orderIds)
-  if (orderError) return { ok: false, error: orderError.message }
+  const orders: { id: string; salesperson_id: string }[] = []
+  for (const chunk of chunkIds(orderIds)) {
+    const { data, error } = await supabase
+      .from('business_orders')
+      .select('id, salesperson_id')
+      .in('id', chunk)
+    if (error) return { ok: false, error: error.message }
+    orders.push(...(data ?? []))
+  }
 
-  const orderSalespeople = new Map((orders ?? []).map((order) => [order.id, order.salesperson_id]))
+  const orderSalespeople = new Map(orders.map((order) => [order.id, order.salesperson_id]))
   for (const item of items) {
     if (orderSalespeople.get(item.order_id) !== profile.id) {
       return { ok: false, error: '只能处理自己订单的提成结清' }
@@ -688,31 +742,38 @@ export async function confirmBusinessOrderCommissionClearance(input: {
   const supabase = await createClient()
   const itemIds = parsed.data.business_order_item_ids
 
-  const { data: rows, error: selectError } = await supabase
-    .from('finance_business_order_item_commission_clearances')
-    .select('business_order_item_id, status')
-    .in('business_order_item_id', itemIds)
-    .eq('status', 'pending')
-  if (selectError) return { ok: false, error: selectError.message }
-  if (!rows || rows.length !== itemIds.length) {
+  const chunkedItemIds = chunkIds(itemIds)
+  let pendingRowCount = 0
+  for (const chunk of chunkedItemIds) {
+    const { data, error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .select('business_order_item_id')
+      .in('business_order_item_id', chunk)
+      .eq('status', 'pending')
+    if (error) return { ok: false, error: error.message }
+    pendingRowCount += data?.length ?? 0
+  }
+  if (pendingRowCount !== itemIds.length) {
     return { ok: false, error: '部分提成结清记录不存在或已处理' }
   }
 
   const permissionError = await assertClearanceActorPermission(supabase, itemIds, profile)
   if (permissionError) return permissionError
 
-  const { error } = await supabase
-    .from('finance_business_order_item_commission_clearances')
-    .update({
-      status: 'confirmed',
-      confirmed_by: profile.id,
-      confirmed_at: new Date().toISOString(),
-      rejected_reason: null,
-      rejected_read_at: null,
-    })
-    .in('business_order_item_id', itemIds)
-    .eq('status', 'pending')
-  if (error) return { ok: false, error: error.message }
+  for (const chunk of chunkedItemIds) {
+    const { error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .update({
+        status: 'confirmed',
+        confirmed_by: profile.id,
+        confirmed_at: new Date().toISOString(),
+        rejected_reason: null,
+        rejected_read_at: null,
+      })
+      .in('business_order_item_id', chunk)
+      .eq('status', 'pending')
+    if (error) return { ok: false, error: error.message }
+  }
 
   revalidateClearance()
   return { ok: true }
@@ -729,22 +790,29 @@ export async function withdrawBusinessOrderCommissionClearance(input: {
 
   const supabase = await createClient()
   const itemIds = parsed.data.business_order_item_ids
-  const { data: rows, error: selectError } = await supabase
-    .from('finance_business_order_item_commission_clearances')
-    .select('business_order_item_id')
-    .in('business_order_item_id', itemIds)
-    .eq('status', 'pending')
-  if (selectError) return { ok: false, error: selectError.message }
-  if (!rows || rows.length !== itemIds.length) {
+  const chunkedItemIds = chunkIds(itemIds)
+  let pendingRowCount = 0
+  for (const chunk of chunkedItemIds) {
+    const { data, error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .select('business_order_item_id')
+      .in('business_order_item_id', chunk)
+      .eq('status', 'pending')
+    if (error) return { ok: false, error: error.message }
+    pendingRowCount += data?.length ?? 0
+  }
+  if (pendingRowCount !== itemIds.length) {
     return { ok: false, error: '部分待确认结清记录不存在或已处理' }
   }
 
-  const { error } = await supabase
-    .from('finance_business_order_item_commission_clearances')
-    .delete()
-    .in('business_order_item_id', itemIds)
-    .eq('status', 'pending')
-  if (error) return { ok: false, error: error.message }
+  for (const chunk of chunkedItemIds) {
+    const { error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .delete()
+      .in('business_order_item_id', chunk)
+      .eq('status', 'pending')
+    if (error) return { ok: false, error: error.message }
+  }
 
   revalidateClearance()
   return { ok: true }
@@ -761,22 +829,29 @@ export async function cancelBusinessOrderCommissionClearance(input: {
 
   const supabase = await createClient()
   const itemIds = parsed.data.business_order_item_ids
-  const { data: rows, error: selectError } = await supabase
-    .from('finance_business_order_item_commission_clearances')
-    .select('business_order_item_id')
-    .in('business_order_item_id', itemIds)
-    .eq('status', 'confirmed')
-  if (selectError) return { ok: false, error: selectError.message }
-  if (!rows || rows.length !== itemIds.length) {
+  const chunkedItemIds = chunkIds(itemIds)
+  let confirmedRowCount = 0
+  for (const chunk of chunkedItemIds) {
+    const { data, error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .select('business_order_item_id')
+      .in('business_order_item_id', chunk)
+      .eq('status', 'confirmed')
+    if (error) return { ok: false, error: error.message }
+    confirmedRowCount += data?.length ?? 0
+  }
+  if (confirmedRowCount !== itemIds.length) {
     return { ok: false, error: '部分已结清记录不存在或状态已变更' }
   }
 
-  const { error } = await supabase
-    .from('finance_business_order_item_commission_clearances')
-    .delete()
-    .in('business_order_item_id', itemIds)
-    .eq('status', 'confirmed')
-  if (error) return { ok: false, error: error.message }
+  for (const chunk of chunkedItemIds) {
+    const { error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .delete()
+      .in('business_order_item_id', chunk)
+      .eq('status', 'confirmed')
+    if (error) return { ok: false, error: error.message }
+  }
 
   revalidateClearance()
   return { ok: true }
@@ -809,31 +884,38 @@ export async function rejectBusinessOrderCommissionClearance(input: {
   const supabase = await createClient()
   const itemIds = parsed.data.business_order_item_ids
 
-  const { data: rows, error: selectError } = await supabase
-    .from('finance_business_order_item_commission_clearances')
-    .select('business_order_item_id, status')
-    .in('business_order_item_id', itemIds)
-    .eq('status', 'pending')
-  if (selectError) return { ok: false, error: selectError.message }
-  if (!rows || rows.length !== itemIds.length) {
+  const chunkedItemIds = chunkIds(itemIds)
+  let pendingRowCount = 0
+  for (const chunk of chunkedItemIds) {
+    const { data, error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .select('business_order_item_id')
+      .in('business_order_item_id', chunk)
+      .eq('status', 'pending')
+    if (error) return { ok: false, error: error.message }
+    pendingRowCount += data?.length ?? 0
+  }
+  if (pendingRowCount !== itemIds.length) {
     return { ok: false, error: '部分提成结清记录不存在或已处理' }
   }
 
   const permissionError = await assertClearanceActorPermission(supabase, itemIds, profile)
   if (permissionError) return permissionError
 
-  const { error } = await supabase
-    .from('finance_business_order_item_commission_clearances')
-    .update({
-      status: 'rejected',
-      rejected_reason: parsed.data.reason,
-      rejected_read_at: null,
-      confirmed_by: null,
-      confirmed_at: null,
-    })
-    .in('business_order_item_id', itemIds)
-    .eq('status', 'pending')
-  if (error) return { ok: false, error: error.message }
+  for (const chunk of chunkedItemIds) {
+    const { error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .update({
+        status: 'rejected',
+        rejected_reason: parsed.data.reason,
+        rejected_read_at: null,
+        confirmed_by: null,
+        confirmed_at: null,
+      })
+      .in('business_order_item_id', chunk)
+      .eq('status', 'pending')
+    if (error) return { ok: false, error: error.message }
+  }
 
   revalidateClearance()
   return { ok: true }

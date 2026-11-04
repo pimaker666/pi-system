@@ -482,15 +482,25 @@ export async function updatePayrollItems(input: {
   if (lock.published.size > 0) {
     return { ok: false, error: '工资表已推送员工确认，请先撤回发布再修改金额' }
   }
-  for (const row of parsed.data.rows) {
-    const { id, remark, ...fields } = row
-    const normalized = {
-      ...fields,
-      remark: remark && remark.trim() ? remark.trim() : null,
-    }
-    const { error } = await supabase.from('payroll_items').update(normalized).eq('id', id)
-    if (error) return { ok: false, error: `保存失败：${error.message}` }
-  }
+  const normalizedRows = parsed.data.rows.map(({ id, remark, ...fields }) => ({
+    id,
+    values: { ...fields, remark: remark && remark.trim() ? remark.trim() : null },
+  }))
+  let failure: string | null = null
+  let cursor = 0
+  const workerCount = Math.min(4, normalizedRows.length)
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (failure === null) {
+        const index = cursor++
+        if (index >= normalizedRows.length) return
+        const { id, values } = normalizedRows[index]
+        const { error } = await supabase.from('payroll_items').update(values).eq('id', id)
+        if (error && failure === null) failure = `保存失败：${error.message}`
+      }
+    }),
+  )
+  if (failure) return { ok: false, error: failure }
   revalidatePayroll()
   return { ok: true }
 }
