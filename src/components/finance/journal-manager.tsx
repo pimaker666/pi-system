@@ -131,9 +131,10 @@ export function JournalManager({
   const [entryAccount, setEntryAccount] = useState('')
   const [entryKind, setEntryKind] = useState<FinanceTransactionType>('expense')
   const [entryCategory, setEntryCategory] = useState('')
+  const [entryAmount, setEntryAmount] = useState('')
   const [entryCurrency, setEntryCurrency] = useState<CurrencyCode>('CNY')
   const [entryRate, setEntryRate] = useState('1')
-  // 拆分模式：一笔银行流水按费用性质拆成多条分录，共享账户/日期/摘要/流水号等（仅新建可用）
+  // 拆分模式：一笔银行流水按费用性质拆成多条分录，共享账户/日期/摘要/流水号等（新建与编辑均可用）
   const [splitEnabled, setSplitEnabled] = useState(false)
   const [splitLines, setSplitLines] = useState<Array<{ category_id: string; amount: string }>>([])
 
@@ -236,6 +237,7 @@ export function JournalManager({
     setEntryAccount(activeAccounts[0]?.id ?? '')
     setEntryKind('expense')
     setEntryCategory('')
+    setEntryAmount('')
     setEntryCurrency(activeAccounts[0]?.currency ?? 'CNY')
     setEntryRate(!activeAccounts[0] || activeAccounts[0].currency === 'CNY' ? '1' : '')
     setSplitEnabled(false)
@@ -248,6 +250,7 @@ export function JournalManager({
       setEntryAccount(entry.account_id)
       setEntryKind(entry.kind)
       setEntryCategory(entry.category_id)
+      setEntryAmount(String(Number(entry.amount_original)))
       setEntryCurrency(entry.currency)
       setEntryRate(String(entry.exchange_rate_to_cny))
     } else {
@@ -267,11 +270,13 @@ export function JournalManager({
 
   function toggleSplitMode() {
     if (splitEnabled) {
+      setEntryCategory(splitLines[0]?.category_id ?? entryCategory)
+      setEntryAmount(splitLines[0]?.amount ?? '')
       setSplitEnabled(false)
       return
     }
     setSplitEnabled(true)
-    setSplitLines(entryCategory ? [{ category_id: entryCategory, amount: '' }] : [{ category_id: '', amount: '' }])
+    setSplitLines([{ category_id: entryCategory, amount: entryAmount }])
   }
 
   function patchSplitLine(index: number, patch: Partial<{ category_id: string; amount: string }>) {
@@ -307,7 +312,9 @@ export function JournalManager({
       }
       toast.success(
         editingEntry
-          ? '分录已更新'
+          ? result.saved && result.saved > 1
+            ? `已更新并拆分为 ${result.saved} 条分录`
+            : '分录已更新'
           : result.saved && result.saved > 1
             ? `已登记 ${result.saved} 条分录（同一笔流水）`
             : '分录已登记',
@@ -1235,7 +1242,7 @@ export function JournalManager({
           <DialogHeader>
             <DialogTitle>{editingEntry ? '编辑分录' : '记一笔'}</DialogTitle>
             <DialogDescription>
-              登记银行账户的收入或支出；账户与分类可在「账户管理」「分类管理」中维护。一笔流水含多种费用性质时可开拆分模式，按行各记一个分类。
+              登记银行账户的收入或支出；账户与分类可在「账户管理」「分类管理」中维护。一笔流水含多种费用性质时可开拆分模式，按行各记一个分类；编辑导入的分录时同样可拆分。
             </DialogDescription>
           </DialogHeader>
           <form key={editingEntry?.id ?? 'new'} className="grid gap-4 sm:grid-cols-2" onSubmit={handleEntrySubmit}>
@@ -1261,18 +1268,20 @@ export function JournalManager({
                 </SelectContent>
               </Select>
             </div>
-            {!editingEntry && (
-              <div className="sm:col-span-2">
-                <Button
-                  type="button"
-                  variant={splitEnabled ? 'secondary' : 'outline'}
-                  size="sm"
-                  onClick={toggleSplitMode}
-                >
-                  {splitEnabled ? '退出拆分模式' : '拆分模式：一笔流水按费用性质记多条分录'}
-                </Button>
-              </div>
-            )}
+            <div className="sm:col-span-2">
+              <Button
+                type="button"
+                variant={splitEnabled ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={toggleSplitMode}
+              >
+                {splitEnabled
+                  ? '退出拆分模式'
+                  : editingEntry
+                    ? '拆分模式：把这条分录拆成多条（按费用性质）'
+                    : '拆分模式：一笔流水按费用性质记多条分录'}
+              </Button>
+            </div>
             {splitEnabled ? (
               <div className="space-y-2 sm:col-span-2">
                 <div className="flex items-center justify-between gap-2">
@@ -1352,7 +1361,8 @@ export function JournalManager({
                     type="number"
                     min="0.0001"
                     step="0.0001"
-                    defaultValue={editingEntry ? String(Number(editingEntry.amount_original)) : ''}
+                    value={entryAmount}
+                    onChange={(event) => setEntryAmount(event.target.value)}
                     required
                   />
                 </div>

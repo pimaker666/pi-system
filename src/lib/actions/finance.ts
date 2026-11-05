@@ -545,9 +545,6 @@ export async function saveJournalEntry(
   // 拆分模式下表单含多组同名 category_id / amount_original；单笔记一笔时各只有 1 个。
   const lineCategories = formData.getAll('category_id')
   const lineAmounts = formData.getAll('amount_original')
-  if (editingId && lineCategories.length > 1) {
-    return { ok: false, error: '编辑分录时不支持拆分，请逐条修改' }
-  }
   if (lineCategories.length === 0 || lineCategories.length !== lineAmounts.length) {
     return { ok: false, error: '分录明细数据不完整，请重新填写' }
   }
@@ -628,7 +625,9 @@ export async function saveJournalEntry(
   if (editingId) {
     const { data: existing, error: loadError } = await supabase
       .from('finance_journal_entries')
-      .select('id')
+      .select(
+        'id, account_id, category_id, entry_date, kind, amount_original, currency, exchange_rate_to_cny, summary, counterparty, reference_no, reimbursee, shop, remark, created_by, created_at',
+      )
       .eq('id', editingId)
       .is('voided_at', null)
       .maybeSingle()
@@ -639,8 +638,39 @@ export async function saveJournalEntry(
       .update(rows[0])
       .eq('id', editingId)
     if (error) return { ok: false, error: error.message }
+    const splitRows = rows.slice(1).map((row) => ({
+      ...row,
+      created_by: existing.created_by ?? profile.id,
+      created_at: existing.created_at,
+    }))
+    if (splitRows.length > 0) {
+      const { error: splitError } = await supabase
+        .from('finance_journal_entries')
+        .insert(splitRows)
+      if (splitError) {
+        await supabase
+          .from('finance_journal_entries')
+          .update({
+            account_id: existing.account_id,
+            category_id: existing.category_id,
+            entry_date: existing.entry_date,
+            kind: existing.kind,
+            amount_original: existing.amount_original,
+            currency: existing.currency,
+            exchange_rate_to_cny: existing.exchange_rate_to_cny,
+            summary: existing.summary,
+            counterparty: existing.counterparty,
+            reference_no: existing.reference_no,
+            reimbursee: existing.reimbursee,
+            shop: existing.shop,
+            remark: existing.remark,
+          })
+          .eq('id', editingId)
+        return { ok: false, error: `拆分保存失败，已恢复原分录：${splitError.message}` }
+      }
+    }
     revalidateFinance()
-    return { ok: true, saved: 1 }
+    return { ok: true, saved: rows.length }
   }
   const { error } = await supabase
     .from('finance_journal_entries')
