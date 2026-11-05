@@ -1369,18 +1369,6 @@ export function JournalManager({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="journal-amount">金额</Label>
-              <Input
-                id="journal-amount"
-                name="amount_original"
-                type="number"
-                min="0.0001"
-                step="0.0001"
-                defaultValue={editingEntry ? String(Number(editingEntry.amount_original)) : ''}
-                required
-              />
-            </div>
-            <div className="space-y-2">
               <Label htmlFor="journal-currency">账户币种</Label>
               <Input id="journal-currency" name="currency" value={entryCurrency} readOnly />
               <p className="text-xs text-muted-foreground">随银行账户确定，不混加不同币种的流水。</p>
