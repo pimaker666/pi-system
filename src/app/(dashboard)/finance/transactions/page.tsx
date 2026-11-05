@@ -1,10 +1,10 @@
 import { TransactionManager } from '@/components/finance/transaction-manager'
-import { requireFinanceView } from '@/lib/auth'
+import { requireFinancePage } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import type { FinanceOrder, FinanceTransaction, Profile } from '@/types'
 
 export default async function FinanceTransactionsPage() {
-  await requireFinanceView()
+  await requireFinancePage('overview')
   const supabase = await createClient()
 
   // 流水与可选订单都按时间倒序展示，宽裕上限只用于兜底，正常业务量不会触顶。

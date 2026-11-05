@@ -25,7 +25,12 @@ export const permissionGroups: { title: string; description: string; items: Perm
     title: '财务与资料',
     description: '财务数据、产品、客户与 PI 的日常维护权限。',
     items: [
-      { path: 'finance.view', label: '查看财务', description: '查看财务台账与收款信息' },
+      { path: 'finance.page.overview', label: '财务总览', description: '查看财务汇总与最近订单' },
+      { path: 'finance.page.journal', label: '财务日记账', description: '查看日记账、收支总览并导出流水' },
+      { path: 'finance.page.costs', label: '订单成本', description: '查看订单成本并登记结算' },
+      { path: 'finance.page.settled_orders', label: '已结算订单', description: '查看已结算订单列表' },
+      { path: 'finance.page.profit', label: '利润核算', description: '查看订单利润与手续费' },
+      { path: 'finance.page.commission_settled', label: '已结清订单', description: '查看已结清提成订单' },
       { path: 'finance.financial_number', label: '查看财务编号', description: '显示订单财务编号' },
       { path: 'finance.cost', label: '查看成本', description: '显示成本相关金额' },
       { path: 'finance.profit', label: '查看利润', description: '显示利润核算数据' },

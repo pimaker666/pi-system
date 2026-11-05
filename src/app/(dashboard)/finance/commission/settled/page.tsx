@@ -1,6 +1,6 @@
 import { CommissionManager } from '@/components/finance/commission-manager'
 import { CommissionSummary } from '@/components/finance/commission-summary'
-import { requireFinanceView } from '@/lib/auth'
+import { requireFinancePage } from '@/lib/auth'
 import { fetchBusinessOrderCommissions } from '@/lib/business-order-commissions-server'
 import { parseBusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
@@ -11,7 +11,7 @@ export default async function SettledCommissionPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const profile = await requireFinanceView()
+  const profile = await requireFinancePage('commissionSettled')
   const filters = parseBusinessOrderCommissionFilters(await searchParams)
   const supabase = await createClient()
   const [options, commissions] = await Promise.all([

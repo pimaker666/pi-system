@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
-import { requireFinanceView } from '@/lib/auth'
+import { requireFinancePage } from '@/lib/auth'
 import { chinaToday } from '@/lib/daily-order-costs-server'
 import { FINANCE_TRANSACTION_LABELS } from '@/lib/finance'
 import { DEFAULT_JOURNAL_FILTERS, filterJournalEntries, journalFiltersSchema, journalMonthRange, journalTotals } from '@/lib/finance-journal'
@@ -129,7 +129,7 @@ async function buildXlsxResponse(input: unknown) {
 }
 
 export async function GET(request: Request) {
-  await requireFinanceView()
+  await requireFinancePage('journal')
   const params = new URL(request.url).searchParams
   if (params.has('ids')) {
     if ([...params.keys()].some((key) => key !== 'ids')) {
@@ -150,7 +150,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  await requireFinanceView()
+  await requireFinancePage('journal')
   const body: unknown = await request.json().catch(() => null)
   return buildXlsxResponse(body)
 }

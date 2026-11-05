@@ -13,25 +13,26 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { filterNavItems, NAV_GROUPS } from '@/components/layout/nav-config'
+import type { FinancePageAccess } from '@/lib/finance-permissions'
 import type { UserRole } from '@/types'
 
 export function CommandPalette({
   role,
-  canViewFinance,
+  financeAccess,
 }: {
   role: UserRole
-  canViewFinance: boolean
+  financeAccess: FinancePageAccess
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
 
   const groups = useMemo(() => {
-    const items = filterNavItems(role, canViewFinance)
+    const items = filterNavItems(role, financeAccess)
     return NAV_GROUPS.map((group) => ({
       label: group.label,
       items: items.filter((item) => group.hrefs.includes(item.href)),
     })).filter((group) => group.items.length > 0)
-  }, [role, canViewFinance])
+  }, [role, financeAccess])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

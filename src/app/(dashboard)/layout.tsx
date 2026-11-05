@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers'
-import { hasFinanceViewFor, requireApproved } from '@/lib/auth'
+import { getFinancePageAccess, requireApproved } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
 import { Sidebar, type SidebarMode } from '@/components/layout/sidebar'
@@ -17,8 +17,8 @@ export default async function DashboardLayout({
     cookieMode === 'expanded' || cookieMode === 'collapsed' ? cookieMode : 'auto'
   const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
   const supabase = isSalesperson ? await createClient() : null
-  const [canViewFinance, commissionAttentionCount] = await Promise.all([
-    hasFinanceViewFor(profile),
+  const [financeAccess, commissionAttentionCount] = await Promise.all([
+    getFinancePageAccess(),
     supabase
       ? supabase
         .from('finance_business_order_item_commission_clearances')
@@ -36,7 +36,7 @@ export default async function DashboardLayout({
       <Sidebar
         role={profile.role}
         fullName={displayProfileName(profile)}
-        canViewFinance={canViewFinance}
+        financeAccess={financeAccess}
         commissionAttentionCount={commissionAttentionCount}
         mode={sidebarMode}
       />
@@ -47,7 +47,7 @@ export default async function DashboardLayout({
             <p className="hidden text-xs text-muted-foreground sm:block">订单 · 产品 · 客户 · 财务</p>
           </div>
           <div className="flex items-center gap-2">
-            <CommandPalette role={profile.role} canViewFinance={canViewFinance} />
+            <CommandPalette role={profile.role} financeAccess={financeAccess} />
             <LogoutButton />
           </div>
         </header>

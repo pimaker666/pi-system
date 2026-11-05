@@ -22,6 +22,7 @@ import {
   UsersRound,
   Wallet,
 } from 'lucide-react'
+import type { FinancePage, FinancePageAccess } from '@/lib/finance-permissions'
 import type { UserRole } from '@/types'
 
 export interface NavItem {
@@ -29,7 +30,7 @@ export interface NavItem {
   label: string
   icon: React.ComponentType<{ className?: string }>
   allowedRoles?: UserRole[]
-  requiresFinanceView?: boolean
+  requiredFinancePage?: FinancePage
   attentionBadge?: boolean
   match?: (pathname: string) => boolean
 }
@@ -40,8 +41,7 @@ export const NAV: NavItem[] = [
     href: '/finance',
     label: '财务总览',
     icon: BarChart3,
-    allowedRoles: ['admin', 'finance'],
-    requiresFinanceView: true,
+    requiredFinancePage: 'overview',
   },
   { href: '/pi/create', label: '开具 PI', icon: FilePlus2 },
   {
@@ -62,15 +62,13 @@ export const NAV: NavItem[] = [
     href: '/finance/costs',
     label: '订单成本',
     icon: CreditCard,
-    allowedRoles: ['admin', 'finance'],
-    requiresFinanceView: true,
+    requiredFinancePage: 'costs',
   },
   {
     href: '/finance/settled-orders',
     label: '已结算订单',
     icon: Check,
-    allowedRoles: ['admin', 'finance'],
-    requiresFinanceView: true,
+    requiredFinancePage: 'settledOrders',
   },
   {
     href: '/finance/payroll',
@@ -91,16 +89,14 @@ export const NAV: NavItem[] = [
     href: '/finance/journal',
     label: '财务日记账',
     icon: NotebookText,
-    allowedRoles: ['admin', 'finance'],
-    requiresFinanceView: true,
+    requiredFinancePage: 'journal',
   },
   { href: '/finance/performance', label: '业务业绩', icon: BarChart3 },
   {
     href: '/finance/profit',
     label: '利润核算',
     icon: Landmark,
-    allowedRoles: ['admin', 'finance'],
-    requiresFinanceView: true,
+    requiredFinancePage: 'profit',
   },
   {
     href: '/finance/commission',
@@ -118,8 +114,7 @@ export const NAV: NavItem[] = [
     href: '/finance/commission/settled',
     label: '已结清订单',
     icon: Check,
-    allowedRoles: ['admin', 'finance'],
-    requiresFinanceView: true,
+    requiredFinancePage: 'commissionSettled',
   },
   {
     href: '/products',
@@ -189,9 +184,9 @@ export const NAV_GROUPS = [
   { label: '系统', hrefs: ['/settings', '/users', '/users/permissions'] },
 ]
 
-export function filterNavItems(role: UserRole, canViewFinance: boolean): NavItem[] {
+export function filterNavItems(role: UserRole, financeAccess: FinancePageAccess): NavItem[] {
   return NAV.filter((item) => {
-    if (item.requiresFinanceView) return canViewFinance
+    if (item.requiredFinancePage) return financeAccess[item.requiredFinancePage]
     return !item.allowedRoles || item.allowedRoles.includes(role)
   })
 }

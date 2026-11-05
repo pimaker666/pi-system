@@ -1,6 +1,12 @@
 import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import {
+  FINANCE_PAGE_KEYS,
+  FINANCE_PAGE_PERMISSION_LIST,
+  type FinancePage,
+  type FinancePageAccess,
+} from '@/lib/finance-permissions'
 import type { Profile } from '@/types'
 
 /** Current authenticated user's profile, or null. Deduped per request. */
@@ -53,21 +59,30 @@ export async function requireFinanceAccess(): Promise<Profile> {
   return profile
 }
 
-/** 财务查看准入：admin/finance 角色，或被授予 finance.view 权限的账号。同请求内只查一次。 */
-export const hasFinanceViewFor = cache(async (profile: Profile): Promise<boolean> => {
-  if (profile.role === 'admin' || profile.role === 'finance') return true
+/** 当前账号的财务页面访问权：逐个权限点解析角色模板与账号例外。同请求内只查一次。 */
+export const getFinancePageAccess = cache(async (): Promise<FinancePageAccess> => {
+  await requireApproved()
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('has_current_permission', {
-    p_permission: 'finance.view',
+  const { data, error } = await supabase.rpc('current_permission_map', {
+    p_permissions: [...FINANCE_PAGE_PERMISSION_LIST],
   })
-  if (error) throw new Error(`读取账号权限失败：${error.message}`)
-  return data === true
+  if (error) throw new Error(`读取财务页面权限失败：${error.message}`)
+  const granted = (data ?? {}) as Record<string, boolean>
+  return {
+    overview: granted[FINANCE_PAGE_KEYS.overview] === true,
+    journal: granted[FINANCE_PAGE_KEYS.journal] === true,
+    costs: granted[FINANCE_PAGE_KEYS.costs] === true,
+    settledOrders: granted[FINANCE_PAGE_KEYS.settledOrders] === true,
+    profit: granted[FINANCE_PAGE_KEYS.profit] === true,
+    commissionSettled: granted[FINANCE_PAGE_KEYS.commissionSettled] === true,
+  }
 })
 
-/** 财务页面只读守卫：角色或 finance.view 例外放行；写操作仍走 requireFinanceAccess。 */
-export async function requireFinanceView(): Promise<Profile> {
+/** 财务页面只读守卫：无该页面权限时退回业务业绩页；写操作仍走 requireFinanceAccess。 */
+export async function requireFinancePage(page: FinancePage): Promise<Profile> {
   const profile = await requireApproved()
-  if (!(await hasFinanceViewFor(profile))) {
+  const access = await getFinancePageAccess()
+  if (!access[page]) {
     redirect('/finance/performance')
   }
   return profile

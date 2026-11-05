@@ -11,7 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { BUSINESS_ORDER_STATUS_LABELS, BUSINESS_ORDER_STATUS_VARIANTS } from '@/lib/business-orders'
-import { requireFinanceView } from '@/lib/auth'
+import { requireFinancePage } from '@/lib/auth'
 import { formatCny } from '@/lib/finance'
 import { createClient } from '@/lib/supabase/server'
 import { formatDate, displayProfileName } from '@/lib/utils'
@@ -38,7 +38,7 @@ interface RecentOrder {
 }
 
 export default async function FinanceOverviewPage() {
-  await requireFinanceView()
+  await requireFinancePage('overview')
   const supabase = await createClient()
 
   const [summaryResult, legacyOrdersResult, businessOrdersResult] = await Promise.all([

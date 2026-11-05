@@ -1,10 +1,10 @@
 import { JournalOverview } from '@/components/finance/journal-overview'
-import { requireFinanceView } from '@/lib/auth'
+import { requireFinancePage } from '@/lib/auth'
 import { fetchJournalData } from '@/lib/finance-journal-server'
 import { createClient } from '@/lib/supabase/server'
 
 export default async function FinanceJournalOverviewPage() {
-  await requireFinanceView()
+  await requireFinancePage('journal')
   let data
   try {
     data = await fetchJournalData(await createClient())

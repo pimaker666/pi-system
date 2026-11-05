@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { filterNavItems, NAV_GROUPS } from '@/components/layout/nav-config'
+import { NO_FINANCE_PAGE_ACCESS, type FinancePageAccess } from '@/lib/finance-permissions'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/types'
 
@@ -75,13 +76,13 @@ const EXPAND_BTN_CLASS: Record<SidebarMode, string> = {
 export function Sidebar({
   role,
   fullName,
-  canViewFinance = false,
+  financeAccess = NO_FINANCE_PAGE_ACCESS,
   commissionAttentionCount = 0,
   mode: initialMode = 'auto',
 }: {
   role: UserRole
   fullName: string | null
-  canViewFinance?: boolean
+  financeAccess?: FinancePageAccess
   commissionAttentionCount?: number
   mode?: SidebarMode
 }) {
@@ -92,7 +93,7 @@ export function Sidebar({
   }
   const pathname = usePathname()
   const attentionBadge = commissionAttentionCount > 99 ? '99+' : commissionAttentionCount
-  const items = filterNavItems(role, canViewFinance)
+  const items = filterNavItems(role, financeAccess)
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
     items: items.filter((item) => group.hrefs.includes(item.href)),

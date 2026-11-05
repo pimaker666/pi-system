@@ -1,5 +1,5 @@
 import { SettledOrderTable } from '@/components/finance/settled-order-table'
-import { requireFinanceView } from '@/lib/auth'
+import { requireFinancePage } from '@/lib/auth'
 import {
   fetchSettledOrders,
   parseSettledOrderFilters,
@@ -11,7 +11,7 @@ export default async function FinanceSettledOrdersPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  await requireFinanceView()
+  await requireFinancePage('settledOrders')
   const filters = parseSettledOrderFilters(await searchParams)
   const supabase = await createClient()
 

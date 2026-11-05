@@ -1,5 +1,5 @@
 import { JournalManager } from '@/components/finance/journal-manager'
-import { requireFinanceView } from '@/lib/auth'
+import { requireFinancePage } from '@/lib/auth'
 import { chinaToday } from '@/lib/daily-order-costs-server'
 import { fetchAllJournalRows, fetchJournalData } from '@/lib/finance-journal-server'
 import { journalMonthRange } from '@/lib/finance-journal'
@@ -12,7 +12,7 @@ import type {
 } from '@/types'
 
 export default async function FinanceJournalPage() {
-  await requireFinanceView()
+  await requireFinancePage('journal')
   const supabase = await createClient()
   const month = journalMonthRange(chinaToday().slice(0, 7))!
 

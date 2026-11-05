@@ -63,7 +63,6 @@ const STATUS_FILTERS: Array<{ value: FinanceReimbursementStatus | 'all'; label: 
 
 interface ReimbursementManagerProps {
   requests: FinanceReimbursementRequest[]
-  canViewAll: boolean
   canReview: boolean
   currentUserId: string
   today: string
@@ -71,7 +70,6 @@ interface ReimbursementManagerProps {
 
 export function ReimbursementManager({
   requests,
-  canViewAll,
   canReview,
   currentUserId,
   today,

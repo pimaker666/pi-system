@@ -1,5 +1,5 @@
 import { ReimbursementManager } from '@/components/reimbursement/reimbursement-manager'
-import { hasFinanceViewFor, requireApproved } from '@/lib/auth'
+import { requireApproved } from '@/lib/auth'
 import { chinaToday } from '@/lib/daily-order-costs-server'
 import { createClient } from '@/lib/supabase/server'
 import type { FinanceReimbursementRequest } from '@/types'
@@ -10,16 +10,13 @@ export default async function ReimbursementPage() {
   const profile = await requireApproved()
   const supabase = await createClient()
 
-  const [requestsResult, canViewAll] = await Promise.all([
-    supabase
-      .from('finance_reimbursement_requests')
-      .select(
-        '*, applicant:profiles!finance_reimbursement_requests_applicant_id_fkey(id, chinese_name, full_name, email), reviewer:profiles!finance_reimbursement_requests_reviewed_by_fkey(id, chinese_name, full_name, email), completer:profiles!finance_reimbursement_requests_completed_by_fkey(id, chinese_name, full_name, email), items:finance_reimbursement_items(*)',
-      )
-      .order('created_at', { ascending: false })
-      .limit(LIST_LIMIT),
-    hasFinanceViewFor(profile),
-  ])
+  const requestsResult = await supabase
+    .from('finance_reimbursement_requests')
+    .select(
+      '*, applicant:profiles!finance_reimbursement_requests_applicant_id_fkey(id, chinese_name, full_name, email), reviewer:profiles!finance_reimbursement_requests_reviewed_by_fkey(id, chinese_name, full_name, email), completer:profiles!finance_reimbursement_requests_completed_by_fkey(id, chinese_name, full_name, email), items:finance_reimbursement_items(*)',
+    )
+    .order('created_at', { ascending: false })
+    .limit(LIST_LIMIT)
 
   const requests = (requestsResult.data ?? []) as FinanceReimbursementRequest[]
 
@@ -33,7 +30,6 @@ export default async function ReimbursementPage() {
       </div>
       <ReimbursementManager
         requests={requests}
-        canViewAll={canViewAll}
         canReview={profile.role === 'admin'}
         currentUserId={profile.id}
         today={chinaToday()}

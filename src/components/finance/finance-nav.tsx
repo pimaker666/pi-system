@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import type { FinancePageAccess } from '@/lib/finance-permissions'
 import { cn } from '@/lib/utils'
 import type { UserRole } from '@/types'
 
@@ -37,31 +38,31 @@ function PrefetchOnIntentLink({
 const financeNavGroups = [
   {
     items: [
-      { href: '/finance', label: '财务总览', financeOnly: true },
-      { href: '/finance/journal', label: '日记账', financeOnly: true },
-      { href: '/finance/journal/overview', label: '收支总览', financeOnly: true },
-      { href: '/finance/daily-orders', label: '每日订单', financeOnly: false },
+      { href: '/finance', label: '财务总览', financePage: 'overview' },
+      { href: '/finance/journal', label: '日记账', financePage: 'journal' },
+      { href: '/finance/journal/overview', label: '收支总览', financePage: 'journal' },
+      { href: '/finance/daily-orders', label: '每日订单' },
     ],
   },
   {
     borderClass: 'bg-red-50',
     items: [
-      { href: '/finance/costs', label: '订单成本', financeOnly: true },
-      { href: '/finance/settled-orders', label: '已结算订单', financeOnly: true },
+      { href: '/finance/costs', label: '订单成本', financePage: 'costs' },
+      { href: '/finance/settled-orders', label: '已结算订单', financePage: 'settledOrders' },
     ],
   },
   {
     borderClass: 'bg-sky-50',
     items: [
-      { href: '/finance/commission', label: '提成计算', financeOnly: false },
+      { href: '/finance/commission', label: '提成计算' },
       { href: '/finance/my-commission', label: '我的提成', salesOnly: true },
-      { href: '/finance/commission/settled', label: '已结清订单', financeOnly: true },
+      { href: '/finance/commission/settled', label: '已结清订单', financePage: 'commissionSettled' },
     ],
   },
   {
     items: [
-      { href: '/finance/performance', label: '业务业绩', financeOnly: false },
-      { href: '/finance/profit', label: '利润核算', financeOnly: true },
+      { href: '/finance/performance', label: '业务业绩' },
+      { href: '/finance/profit', label: '利润核算', financePage: 'profit' },
     ],
   },
 ] as const
@@ -69,15 +70,16 @@ const financeNavGroups = [
 export function FinanceNav({
   role,
   commissionAttentionCount,
-  canManageFinance,
+  financeAccess,
 }: {
   role: UserRole
   commissionAttentionCount: number
-  /** 财务专属 tab 可见性：admin/finance 角色，或被授予 finance.view 的账号。 */
-  canManageFinance: boolean
+  /** 财务页面 tab 可见性：按账号的页面级权限逐项放行。 */
+  financeAccess: FinancePageAccess
 }) {
   const pathname = usePathname()
   const commissionBadge = commissionAttentionCount > 99 ? '99+' : commissionAttentionCount
+  const showCommissionBadge = role === 'sales' || role === 'supervisor'
   const groups = financeNavGroups
     .map((group) => ({
       ...group,
@@ -86,7 +88,7 @@ export function FinanceNav({
           return role === 'supervisor'
         if ('salesOnly' in item && item.salesOnly)
           return role === 'sales' || role === 'supervisor'
-        if ('financeOnly' in item && item.financeOnly) return canManageFinance
+        if ('financePage' in item && item.financePage) return financeAccess[item.financePage]
         return true
       }),
     }))
@@ -133,7 +135,7 @@ export function FinanceNav({
                   )}
                 >
                   {item.label}
-                  {!canManageFinance && item.href === '/finance/commission' && commissionAttentionCount > 0 && (
+                  {showCommissionBadge && item.href === '/finance/commission' && commissionAttentionCount > 0 && (
                     <span className="absolute -right-2 -top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold leading-5 text-destructive-foreground">
                       {commissionBadge}
                     </span>
