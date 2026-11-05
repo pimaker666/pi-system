@@ -16,10 +16,10 @@ export default async function DashboardLayout({
   const sidebarMode: SidebarMode =
     cookieMode === 'expanded' || cookieMode === 'collapsed' ? cookieMode : 'auto'
   const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
-  const supabase = isSalesperson ? await createClient() : null
-  const [financeAccess, commissionAttentionCount] = await Promise.all([
+  const supabase = await createClient()
+  const [financeAccess, commissionAttentionCount, approvalPendingCount] = await Promise.all([
     getFinancePageAccess(),
-    supabase
+    isSalesperson
       ? supabase
         .from('finance_business_order_item_commission_clearances')
         .select('business_order_item_id', { count: 'exact', head: true })
@@ -29,6 +29,10 @@ export default async function DashboardLayout({
           return count ?? 0
         })
       : Promise.resolve(0),
+    supabase.rpc('approval_pending_count').then(({ data, error }) => {
+      if (error) return 0
+      return Number(data ?? 0)
+    }),
   ])
 
   return (
@@ -38,6 +42,7 @@ export default async function DashboardLayout({
         fullName={displayProfileName(profile)}
         financeAccess={financeAccess}
         commissionAttentionCount={commissionAttentionCount}
+        approvalPendingCount={approvalPendingCount}
         mode={sidebarMode}
       />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">

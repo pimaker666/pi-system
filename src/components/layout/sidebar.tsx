@@ -78,12 +78,14 @@ export function Sidebar({
   fullName,
   financeAccess = NO_FINANCE_PAGE_ACCESS,
   commissionAttentionCount = 0,
+  approvalPendingCount = 0,
   mode: initialMode = 'auto',
 }: {
   role: UserRole
   fullName: string | null
   financeAccess?: FinancePageAccess
   commissionAttentionCount?: number
+  approvalPendingCount?: number
   mode?: SidebarMode
 }) {
   const [mode, setMode] = useState<SidebarMode>(initialMode)
@@ -92,7 +94,6 @@ export function Sidebar({
     document.cookie = `${MODE_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax`
   }
   const pathname = usePathname()
-  const attentionBadge = commissionAttentionCount > 99 ? '99+' : commissionAttentionCount
   const items = filterNavItems(role, financeAccess)
   const groups = NAV_GROUPS.map((group) => ({
     ...group,
@@ -121,6 +122,12 @@ export function Sidebar({
             {group.items.map((item) => {
               const active = item.href === activeHref
               const Icon = item.icon
+              const badgeCount =
+                item.attentionBadge === 'approval'
+                  ? approvalPendingCount
+                  : item.attentionBadge === 'commission'
+                    ? commissionAttentionCount
+                    : 0
               return (
                 <Link
                   key={item.href}
@@ -140,8 +147,8 @@ export function Sidebar({
                 >
                   <Icon className="h-5 w-5 shrink-0 text-slate-400 transition-colors group-hover:text-slate-200 md:h-6 md:w-6" aria-hidden="true" />
                   <span className={LABEL_CLASS[mode]}>{item.label}</span>
-                  {item.attentionBadge && commissionAttentionCount > 0 && (
-                    <span className={BADGE_CLASS[mode]}>{attentionBadge}</span>
+                  {badgeCount > 0 && (
+                    <span className={BADGE_CLASS[mode]}>{badgeCount > 99 ? '99+' : badgeCount}</span>
                   )}
                 </Link>
               )

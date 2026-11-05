@@ -6,7 +6,6 @@ import { createClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth'
 import type { ActionResult } from './products'
 import type {
-  OrderEditApprovalRule,
   PermissionAuditLog,
   PermissionTemplate,
   ProfilePermissionOverride,
@@ -15,9 +14,6 @@ import type {
 
 // 校验 schema 为本文件私有（原 @/schemas/permission 只有一个消费者，已并入）。
 const permissionDataScopes = ['self', 'self_and_subordinates', 'team', 'all'] as const
-const approvalTargets = ['business_order', 'daily_order'] as const
-const approvalTriggerActions = ['order_edit', 'amount_or_rate_change', 'shipment_change', 'void_order'] as const
-const approvalModes = ['any', 'sequential'] as const
 
 const jsonObject = z.record(z.unknown()).default({})
 const permissionPathList = z.array(z.string().trim().regex(/^[a-z_]+(?:\.[a-z_]+)*$/, '权限标识格式无效').max(120)).max(100).default([])
@@ -51,25 +47,8 @@ const profilePermissionOverrideSchema = z.object({
   }
 })
 
-const orderEditApprovalRuleSchema = z.object({
-  id: z.string().uuid().nullable().default(null),
-  name: z.string().trim().min(1, '请输入规则名称').max(120),
-  enabled: z.boolean(),
-  target: z.enum(approvalTargets),
-  trigger_actions: z.array(z.enum(approvalTriggerActions)).min(1, '请选择至少一项触发操作'),
-  conditions: jsonObject,
-  reviewer_roles: z.array(z.enum(['admin', 'finance', 'sales', 'supervisor'])).max(4).default([]),
-  reviewer_ids: z.array(z.string().uuid()).max(100).default([]),
-  approval_mode: z.enum(approvalModes),
-}).strict().superRefine((value, ctx) => {
-  if (value.enabled && value.reviewer_roles.length === 0 && value.reviewer_ids.length === 0) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['reviewer_roles'], message: '启用规则时必须指定至少一位审核人' })
-  }
-})
-
 export type PermissionTemplateInput = z.infer<typeof permissionTemplateSchema>
 export type ProfilePermissionOverrideInput = z.infer<typeof profilePermissionOverrideSchema>
-export type OrderEditApprovalRuleInput = z.infer<typeof orderEditApprovalRuleSchema>
 
 function permissionError(message: string, fallback: string) {
   if (message.includes('Only approved administrators')) return '只有已通过审核的管理员可以配置权限'
@@ -93,14 +72,6 @@ export async function getPermissionTemplates(): Promise<PermissionTemplate[]> {
   const { data, error } = await supabase.from('permission_templates').select('*').order('system_role')
   if (error) throw new Error(`读取权限模板失败：${error.message}`)
   return (data ?? []) as PermissionTemplate[]
-}
-
-export async function getOrderEditApprovalRules(): Promise<OrderEditApprovalRule[]> {
-  await requireAdmin()
-  const supabase = await createClient()
-  const { data, error } = await supabase.from('order_edit_approval_rules').select('*').order('updated_at', { ascending: false })
-  if (error) throw new Error(`读取审批规则失败：${error.message}`)
-  return (data ?? []) as OrderEditApprovalRule[]
 }
 
 export async function getProfilePermissionOverride(profileId: string): Promise<ProfilePermissionOverride | null> {
@@ -167,23 +138,3 @@ export async function saveProfilePermissionOverride(input: ProfilePermissionOver
   return { ok: true }
 }
 
-export async function saveOrderEditApprovalRule(input: OrderEditApprovalRuleInput): Promise<ActionResult> {
-  await requireAdmin()
-  const parsed = orderEditApprovalRuleSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '审批规则无效' }
-  const supabase = await createClient()
-  const { error } = await supabase.rpc('admin_save_order_edit_approval_rule', {
-    p_id: parsed.data.id,
-    p_name: parsed.data.name,
-    p_enabled: parsed.data.enabled,
-    p_target: parsed.data.target,
-    p_trigger_actions: parsed.data.trigger_actions,
-    p_conditions: parsed.data.conditions,
-    p_reviewer_roles: parsed.data.reviewer_roles,
-    p_reviewer_ids: parsed.data.reviewer_ids,
-    p_approval_mode: parsed.data.approval_mode,
-  })
-  if (error) return { ok: false, error: permissionError(error.message, '保存审批规则失败') }
-  invalidatePermissionPaths()
-  return { ok: true }
-}

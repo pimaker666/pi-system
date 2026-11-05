@@ -1,5 +1,5 @@
 import { ReimbursementManager } from '@/components/reimbursement/reimbursement-manager'
-import { requireApproved } from '@/lib/auth'
+import { hasCurrentPermission, requireApproved } from '@/lib/auth'
 import { chinaToday } from '@/lib/daily-order-costs-server'
 import { createClient } from '@/lib/supabase/server'
 import type { FinanceReimbursementRequest } from '@/types'
@@ -8,6 +8,7 @@ const LIST_LIMIT = 500
 
 export default async function ReimbursementPage() {
   const profile = await requireApproved()
+  const canReview = await hasCurrentPermission('reimbursement.review')
   const supabase = await createClient()
 
   const requestsResult = await supabase
@@ -30,7 +31,7 @@ export default async function ReimbursementPage() {
       </div>
       <ReimbursementManager
         requests={requests}
-        canReview={profile.role === 'admin'}
+        canReview={canReview}
         currentUserId={profile.id}
         today={chinaToday()}
       />

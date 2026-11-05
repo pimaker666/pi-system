@@ -29,9 +29,15 @@ import {
   businessOrderVoidReasonSchema,
 } from '@/schemas/business-order'
 import { getBusinessOrderItemRemainingQuantity } from '@/lib/business-daily-orders'
+import {
+  approvalRequiredKey,
+  requestApprovalForAction,
+  type RequestApprovalResult,
+} from '@/lib/approval-gate'
 import type { BusinessDailyLedgerOrder } from '@/lib/business-daily-orders'
 import type { BusinessOrderAppendItemEditInput } from '@/schemas/business-order'
 import type {
+  ApprovalActionKey,
   BusinessCustomerPrepayment,
   BusinessCustomerTransfer,
   BusinessCustomProduct,
@@ -486,6 +492,37 @@ function orderItemsPayload(
   )
 }
 
+function approvalPayload(rpcArgs: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(rpcArgs).map(([key, value]) => [key.replace(/^p_/, ''), value]),
+  )
+}
+
+async function submitApprovalForOrder(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  actionKey: ApprovalActionKey,
+  orderId: string,
+  rpcArgs: Record<string, unknown>,
+  label: string,
+): Promise<RequestApprovalResult> {
+  const { data } = await supabase
+    .from('business_orders')
+    .select('order_number, total_sales_amount')
+    .eq('id', orderId)
+    .maybeSingle()
+  const order = data as {
+    order_number?: string
+    total_sales_amount?: string | number | null
+  } | null
+  return requestApprovalForAction(supabase, {
+    actionKey,
+    entityId: orderId,
+    payload: approvalPayload(rpcArgs),
+    summary: `${label} ${order?.order_number ?? orderId.slice(0, 8)}`,
+    amount: Number(order?.total_sales_amount ?? 0),
+  })
+}
+
 export async function createBusinessOrder(rawInput: unknown): Promise<BusinessOrderActionResult> {
   const profile = await requireApproved()
   if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
@@ -560,7 +597,7 @@ export async function updateBusinessOrder(
 
   const input = parsed.data
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('update_business_order_v6', {
+  const rpcArgs = {
     p_order_id: id,
     p_expected_version: expectedVersion,
     p_customer_id: input.customer_id,
@@ -593,9 +630,23 @@ export async function updateBusinessOrder(
       input.receivable_received_difference_reason,
     ),
     p_payment_account: nullableText(input.payment_account),
-  })
+  }
+  const { data, error } = await supabase.rpc('update_business_order_v6', rpcArgs)
 
-  if (error) return { ok: false, error: businessOrderError(error.message, '更新业务订单失败') }
+  if (error) {
+    if (approvalRequiredKey(error.message)) {
+      const approval = await submitApprovalForOrder(
+        supabase,
+        'order_edit',
+        id,
+        rpcArgs,
+        '编辑订单',
+      )
+      if (!approval.ok) return { ok: false, error: approval.error }
+      return { ok: true, pendingApproval: approval.pendingApproval }
+    }
+    return { ok: false, error: businessOrderError(error.message, '更新业务订单失败') }
+  }
   const order = parseRpcOrder(data)
   if (!order) return { ok: false, error: '数据库未返回订单信息' }
 
@@ -1697,13 +1748,27 @@ export async function voidBusinessOrder(
   if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('void_business_order', {
+  const rpcArgs = {
     p_order_id: parsed.data.order_id,
     p_expected_version: parsed.data.expected_version,
     p_reason: parsed.data.reason,
     p_idempotency_key: parsed.data.idempotency_key,
-  })
-  if (error) return { ok: false, error: businessOrderError(error.message, '作废订单失败') }
+  }
+  const { data, error } = await supabase.rpc('void_business_order', rpcArgs)
+  if (error) {
+    if (approvalRequiredKey(error.message)) {
+      const approval = await submitApprovalForOrder(
+        supabase,
+        'void_order',
+        parsed.data.order_id,
+        rpcArgs,
+        '作废订单',
+      )
+      if (!approval.ok) return { ok: false, error: approval.error }
+      return { ok: true, pendingApproval: approval.pendingApproval }
+    }
+    return { ok: false, error: businessOrderError(error.message, '作废订单失败') }
+  }
 
   const order = parseRpcOrder(data)
   if (!order) return { ok: false, error: '数据库未返回作废后的订单信息' }
@@ -1740,12 +1805,12 @@ export async function submitBusinessOrder(id: string, note = ''): Promise<Action
 }
 
 export async function approveBusinessOrder(id: string, note = ''): Promise<ActionResult> {
-  await requireAdmin()
+  await requireApproved()
   return transitionBusinessOrder(id, 'approved', note)
 }
 
 export async function rejectBusinessOrder(id: string, note: string): Promise<ActionResult> {
-  await requireAdmin()
+  await requireApproved()
   if (!note.trim()) return { ok: false, error: '驳回时必须填写原因' }
   return transitionBusinessOrder(id, 'rejected', note)
 }
@@ -1820,15 +1885,29 @@ export async function appendBusinessOrderItems(rawInput: unknown): Promise<Actio
   if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('adjust_business_order_items', {
+  const rpcArgs = {
     p_order_id: parsed.data.order_id,
     p_expected_version: parsed.data.expected_version,
     p_items: parsed.data.items,
     p_reason_type: 'add_on',
     p_reason: nullableText(parsed.data.reason),
     p_idempotency_key: crypto.randomUUID(),
-  })
-  if (error) return { ok: false, error: businessOrderError(error.message, '追加产品失败') }
+  }
+  const { error } = await supabase.rpc('adjust_business_order_items', rpcArgs)
+  if (error) {
+    if (approvalRequiredKey(error.message)) {
+      const approval = await submitApprovalForOrder(
+        supabase,
+        'item_adjust',
+        parsed.data.order_id,
+        rpcArgs,
+        '追加产品',
+      )
+      if (!approval.ok) return { ok: false, error: approval.error }
+      return { ok: true, pendingApproval: approval.pendingApproval }
+    }
+    return { ok: false, error: businessOrderError(error.message, '追加产品失败') }
+  }
   revalidateBusinessOrders(parsed.data.order_id)
   return { ok: true }
 }
@@ -1839,7 +1918,7 @@ export async function editBusinessOrderAppendedItem(rawInput: unknown): Promise<
   if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('adjust_business_order_items', {
+  const rpcArgs = {
     p_order_id: parsed.data.order_id,
     p_expected_version: parsed.data.expected_version,
     p_items: [
@@ -1853,8 +1932,22 @@ export async function editBusinessOrderAppendedItem(rawInput: unknown): Promise<
     p_reason_type: 'quantity_fix',
     p_reason: nullableText(parsed.data.reason),
     p_idempotency_key: crypto.randomUUID(),
-  })
-  if (error) return { ok: false, error: businessOrderError(error.message, '修改追加明细失败') }
+  }
+  const { error } = await supabase.rpc('adjust_business_order_items', rpcArgs)
+  if (error) {
+    if (approvalRequiredKey(error.message)) {
+      const approval = await submitApprovalForOrder(
+        supabase,
+        'item_adjust',
+        parsed.data.order_id,
+        rpcArgs,
+        '修改订单明细',
+      )
+      if (!approval.ok) return { ok: false, error: approval.error }
+      return { ok: true, pendingApproval: approval.pendingApproval }
+    }
+    return { ok: false, error: businessOrderError(error.message, '修改追加明细失败') }
+  }
   revalidateBusinessOrders(parsed.data.order_id)
   return { ok: true }
 }
@@ -1865,15 +1958,29 @@ export async function deleteBusinessOrderAppendedItem(rawInput: unknown): Promis
   if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
 
   const supabase = await createClient()
-  const { error } = await supabase.rpc('adjust_business_order_items', {
+  const rpcArgs = {
     p_order_id: parsed.data.order_id,
     p_expected_version: parsed.data.expected_version,
     p_items: [{ id: parsed.data.item_id, action: 'delete' }],
     p_reason_type: 'quantity_fix',
     p_reason: nullableText(parsed.data.reason),
     p_idempotency_key: crypto.randomUUID(),
-  })
-  if (error) return { ok: false, error: businessOrderError(error.message, '删除追加明细失败') }
+  }
+  const { error } = await supabase.rpc('adjust_business_order_items', rpcArgs)
+  if (error) {
+    if (approvalRequiredKey(error.message)) {
+      const approval = await submitApprovalForOrder(
+        supabase,
+        'item_adjust',
+        parsed.data.order_id,
+        rpcArgs,
+        '删除订单明细',
+      )
+      if (!approval.ok) return { ok: false, error: approval.error }
+      return { ok: true, pendingApproval: approval.pendingApproval }
+    }
+    return { ok: false, error: businessOrderError(error.message, '删除追加明细失败') }
+  }
   revalidateBusinessOrders(parsed.data.order_id)
   return { ok: true }
 }

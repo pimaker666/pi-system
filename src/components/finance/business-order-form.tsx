@@ -23,6 +23,7 @@ import { ImagePreview } from '@/components/ui/image-preview'
 import { BusinessOrderProductDialog } from '@/components/finance/business-order-product-dialog'
 import { PaymentAccountCombobox } from '@/components/finance/payment-account-combobox'
 import type { DailyOrderShopOption } from '@/lib/daily-orders'
+import { pendingApprovalMessage } from '@/lib/approval-gate'
 import { ProductCombobox } from '@/components/products/product-combobox'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -997,6 +998,13 @@ export function BusinessOrderForm({
 
       if (!result.ok) {
         toast.error(result.error ?? '保存业务订单失败')
+        return
+      }
+
+      if (result.pendingApproval) {
+        toast.info(pendingApprovalMessage(result.pendingApproval))
+        if (initialOrder) router.push(`/finance/daily-orders/${initialOrder.id}`)
+        router.refresh()
         return
       }
 

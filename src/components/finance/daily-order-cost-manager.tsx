@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { pendingApprovalMessage } from '@/lib/approval-gate'
 import { getBusinessOrderAttachmentUrl, setBusinessOrderCostMarks } from '@/lib/actions/business-orders'
 import {
   settleBusinessOrderItems,
@@ -83,6 +84,12 @@ function CostEditor({ row }: { row: BusinessOrderProductCost }) {
       if (!result.ok) {
         const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
         toast.error(firstFieldError ?? result.error ?? '成本保存失败')
+        return
+      }
+      if (result.pendingApproval) {
+        toast.info(pendingApprovalMessage(result.pendingApproval))
+        setDraft(initialValue)
+        router.refresh()
         return
       }
       toast.success(cost === null ? '已恢复产品库成本' : '订单行成本已保存')

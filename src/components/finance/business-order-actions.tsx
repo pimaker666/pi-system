@@ -28,10 +28,12 @@ import {
   voidBusinessOrder,
 } from '@/lib/actions/business-orders'
 import { canAdjustBusinessOrderItems } from '@/lib/business-orders'
+import { pendingApprovalMessage } from '@/lib/approval-gate'
 import type {
   BusinessOrder,
   BusinessOrderFinanceDetail,
   BusinessOrderItem,
+  PendingApproval,
   Profile,
 } from '@/types'
 import { BusinessOrderAppendDialog } from './business-order-append-dialog'
@@ -60,6 +62,7 @@ interface BusinessOrderActionsProps {
   profile: Pick<Profile, 'id' | 'role'>
   financeReady: boolean
   canEditOrder?: boolean
+  canReview?: boolean
   hasDailyFields: boolean
 }
 
@@ -68,6 +71,7 @@ export function BusinessOrderActions({
   profile,
   financeReady,
   canEditOrder,
+  canReview,
   hasDailyFields,
 }: BusinessOrderActionsProps) {
   const router = useRouter()
@@ -122,7 +126,11 @@ export function BusinessOrderActions({
   }
 
   function runAction(
-    action: () => Promise<{ ok: boolean; error?: string }>,
+    action: () => Promise<{
+      ok: boolean
+      error?: string
+      pendingApproval?: PendingApproval
+    }>,
     success: string,
     onSuccess?: () => void,
   ) {
@@ -132,7 +140,11 @@ export function BusinessOrderActions({
         toast.error(result.error ?? '操作失败')
         return
       }
-      toast.success(success)
+      if (result.pendingApproval) {
+        toast.info(pendingApprovalMessage(result.pendingApproval))
+      } else {
+        toast.success(success)
+      }
       setRejectOpen(false)
       setRejectNote('')
       onSuccess?.()
@@ -169,7 +181,7 @@ export function BusinessOrderActions({
               <Send className="h-4 w-4" />提交审核
             </Button>
           )}
-          {profile.role === 'admin' && order.status === 'submitted' && (
+          {canReview && order.status === 'submitted' && (
             <>
               <Button
                 disabled={pending}
@@ -328,7 +340,11 @@ export function BusinessOrderActions({
                     toast.error(result.error ?? '作废订单失败')
                     return
                   }
-                  toast.success('订单已作废')
+                  if (result.pendingApproval) {
+                    toast.info(pendingApprovalMessage(result.pendingApproval))
+                  } else {
+                    toast.success('订单已作废')
+                  }
                   closeVoidDialog()
                   router.refresh()
                 })

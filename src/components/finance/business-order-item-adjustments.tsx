@@ -28,6 +28,7 @@ import {
   editBusinessOrderAppendedItem,
 } from '@/lib/actions/business-orders'
 import { businessOrderItemDisplayName } from '@/lib/business-order-financials'
+import { pendingApprovalMessage } from '@/lib/approval-gate'
 import type { BusinessOrderItem, CurrencyCode, DailyOrderShippingCategory } from '@/types'
 
 const SHIPPING_OPTIONS: Array<{ value: DailyOrderShippingCategory; label: string }> = [
@@ -139,7 +140,11 @@ export function BusinessOrderItemAdjustments({
         toast.error(result.error ?? '修改追加明细失败')
         return
       }
-      toast.success('追加明细已修改')
+      if (result.pendingApproval) {
+        toast.info(pendingApprovalMessage(result.pendingApproval))
+      } else {
+        toast.success('追加明细已修改')
+      }
       setEditOpen(false)
       router.refresh()
     })
@@ -157,7 +162,11 @@ export function BusinessOrderItemAdjustments({
         toast.error(result.error ?? '删除追加明细失败')
         return
       }
-      toast.success('追加明细已删除')
+      if (result.pendingApproval) {
+        toast.info(pendingApprovalMessage(result.pendingApproval))
+      } else {
+        toast.success('追加明细已删除')
+      }
       setDeleteOpen(false)
       setReason('')
       router.refresh()

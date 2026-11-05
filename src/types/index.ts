@@ -14,6 +14,80 @@ export type OrderEditApprovalTrigger =
   | 'commission_clearance_cancel'
   | 'item_settlement_cancel'
 export type ApprovalMode = 'any' | 'sequential'
+export type ApprovalActionKey =
+  | 'business_order.review'
+  | 'order_edit'
+  | 'item_adjust'
+  | 'void_order'
+  | 'cost_override'
+export type ApprovalRequestStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'cancelled'
+  | 'applied'
+  | 'apply_failed'
+export type ApprovalInboxScope = 'pending' | 'mine' | 'done'
+export interface ApprovalApprover {
+  id: string
+  name: string
+  role: UserRole
+}
+export interface PendingApproval {
+  requestId: string
+  actionKey: ApprovalActionKey
+  actionName: string
+  mode: ApprovalMode
+  approvers: ApprovalApprover[]
+}
+export interface ApprovalRule {
+  id: string
+  action_key: ApprovalActionKey
+  name: string
+  enabled: boolean
+  conditions: Record<string, unknown>
+  approver_roles: UserRole[]
+  approver_ids: string[]
+  mode: ApprovalMode
+  allow_self_approval: boolean
+  updated_at: string
+  approvers: ApprovalApprover[]
+}
+export interface ApprovalStepView {
+  step_no: number
+  status: 'pending' | 'approved' | 'rejected' | 'skipped'
+  approver_roles: UserRole[]
+  approver_ids: string[]
+  decided_by: string | null
+  decided_at: string | null
+  note: string | null
+}
+export interface ApprovalInboxItem {
+  id: string
+  action_key: ApprovalActionKey
+  action_name: string
+  entity_type: string
+  entity_id: string
+  summary: string
+  status: ApprovalRequestStatus
+  requested_by: string
+  requester_name: string
+  requested_at: string
+  decided_at: string | null
+  applied_at: string | null
+  note: string | null
+  apply_error: string | null
+  current_step: number
+  order_number: string | null
+  can_decide: boolean
+  steps: ApprovalStepView[]
+}
+export interface ApprovalSideTodo {
+  id: string
+  title: string
+  detail: string
+  href: string
+}
 export type CurrencyCode = 'USD' | 'EUR' | 'CNY' | 'GBP' | 'JPY'
 export type PiStatus = 'active' | 'void'
 export type FinanceRecordStatus = 'active' | 'void'

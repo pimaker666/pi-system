@@ -197,7 +197,7 @@ export default async function BusinessOrderDetailPage({
   )
   // 结算 RPC、收款分摊、编辑约束、附件签名、实时国旗互不依赖，一次并行取回，
   // 避免串行等待五个同主机往返。
-  const [settlementResult, allocationRowsResult, editConstraintsResult, attachmentUrlMap, countryById] =
+  const [settlementResult, allocationRowsResult, editConstraintsResult, attachmentUrlMap, countryById, canReviewResult] =
     await Promise.all([
       getBusinessOrderSettlementSummary(order.id),
       supabase
@@ -212,7 +212,9 @@ export default async function BusinessOrderDetailPage({
         64,
       ),
       fetchCurrentCustomerCountries(supabase, [order.id]),
+      supabase.rpc('can_review_business_order', { p_order_id: order.id }),
     ])
+  const canReview = !canReviewResult.error && canReviewResult.data === true
   if (!settlementResult.ok || !settlementResult.data) {
     throw new Error(settlementResult.error ?? '订单结算汇总读取失败')
   }
@@ -412,6 +414,7 @@ export default async function BusinessOrderDetailPage({
               profile={profile}
               financeReady={financeReady}
               canEditOrder={canEditOrder}
+              canReview={canReview}
               hasDailyFields={hasDailyFields}
             />
           </div>

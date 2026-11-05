@@ -35,6 +35,7 @@ import {
   type FinanceJournalImportRowInput,
 } from '@/schemas/finance'
 import { z } from 'zod'
+import { approvalRequiredKey, requestApprovalForAction } from '@/lib/approval-gate'
 import type { ActionResult } from './products'
 import type { CurrencyCode } from '@/types'
 
@@ -232,26 +233,34 @@ export async function updateBusinessOrderItemCostOverride(input: {
   const supabase = await createClient()
   const itemIds = parsed.data.business_order_item_ids
 
-  if (parsed.data.cost === null) {
-    const { error } = await supabase
-      .from('finance_business_order_item_cost_overrides')
-      .delete()
-      .in('business_order_item_id', itemIds)
-    if (error) return { ok: false, error: error.message }
-    revalidatePath('/finance/costs')
-    return { ok: true }
-  }
-
   const { data: items, error: itemError } = await supabase
     .from('business_order_items')
     .select('id, order_id')
     .in('id', itemIds)
   if (itemError) return { ok: false, error: itemError.message }
+
+  const orderIds = new Set((items ?? []).map((item) => item.order_id))
+  const resolvedOrderId = items && items.length > 0 && orderIds.size === 1 ? items[0].order_id : null
+
+  if (parsed.data.cost === null) {
+    const { error } = await supabase
+      .from('finance_business_order_item_cost_overrides')
+      .delete()
+      .in('business_order_item_id', itemIds)
+    if (error) {
+      if (approvalRequiredKey(error.message)) {
+        if (!resolvedOrderId) return { ok: false, error: '订单明细行不存在，无法提交审批' }
+        return submitCostOverrideApproval(supabase, resolvedOrderId, itemIds, null)
+      }
+      return { ok: false, error: error.message }
+    }
+    revalidatePath('/finance/costs')
+    return { ok: true }
+  }
+
   if (!items || items.length !== itemIds.length) {
     return { ok: false, error: '部分订单明细行不存在' }
   }
-
-  const orderIds = new Set(items.map((item) => item.order_id))
   if (orderIds.size !== 1) {
     return { ok: false, error: '合并行的明细必须属于同一订单' }
   }
@@ -292,10 +301,38 @@ export async function updateBusinessOrderItemCostOverride(input: {
   const { error } = await supabase
     .from('finance_business_order_item_cost_overrides')
     .upsert(rows, { onConflict: 'business_order_item_id' })
-  if (error) return { ok: false, error: error.message }
+  if (error) {
+    if (approvalRequiredKey(error.message)) {
+      return submitCostOverrideApproval(supabase, orderId, itemIds, parsed.data.cost)
+    }
+    return { ok: false, error: error.message }
+  }
 
   revalidatePath('/finance/costs')
   return { ok: true }
+}
+
+async function submitCostOverrideApproval(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orderId: string,
+  itemIds: string[],
+  cost: number | null,
+): Promise<ActionResult> {
+  const { data } = await supabase
+    .from('business_orders')
+    .select('order_number')
+    .eq('id', orderId)
+    .maybeSingle()
+  const orderNumber = (data as { order_number?: string } | null)?.order_number
+  const approval = await requestApprovalForAction(supabase, {
+    actionKey: 'cost_override',
+    entityId: orderId,
+    payload: { order_id: orderId, item_ids: itemIds, cost },
+    summary: `成本覆盖 ${orderNumber ?? orderId.slice(0, 8)}（${itemIds.length} 行）`,
+    amount: cost,
+  })
+  if (!approval.ok) return { ok: false, error: approval.error }
+  return { ok: true, pendingApproval: approval.pendingApproval }
 }
 
 function revalidateSettlement() {

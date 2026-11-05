@@ -5,6 +5,7 @@ import {
   CalendarCheck,
   CalendarPlus,
   Check,
+  ClipboardCheck,
   CreditCard,
   FilePlus2,
   FileText,
@@ -31,12 +32,18 @@ export interface NavItem {
   icon: React.ComponentType<{ className?: string }>
   allowedRoles?: UserRole[]
   requiredFinancePage?: FinancePage
-  attentionBadge?: boolean
+  attentionBadge?: 'commission' | 'approval'
   match?: (pathname: string) => boolean
 }
 
 export const NAV: NavItem[] = [
   { href: '/dashboard', label: '工作台', icon: LayoutDashboard },
+  {
+    href: '/approvals',
+    label: '审批中心',
+    icon: ClipboardCheck,
+    attentionBadge: 'approval',
+  },
   {
     href: '/finance',
     label: '财务总览',
@@ -102,7 +109,7 @@ export const NAV: NavItem[] = [
     href: '/finance/commission',
     label: '提成计算',
     icon: BadgeDollarSign,
-    attentionBadge: true,
+    attentionBadge: 'commission',
   },
   {
     href: '/finance/my-commission',
@@ -159,7 +166,7 @@ export const NAV: NavItem[] = [
 ]
 
 export const NAV_GROUPS = [
-  { label: null, hrefs: ['/dashboard', '/finance'] },
+  { label: null, hrefs: ['/dashboard', '/approvals', '/finance'] },
   { label: 'PI 与工具', hrefs: ['/pi/create', '/pi/history', '/weight-calc'] },
   {
     label: '订单与收款',

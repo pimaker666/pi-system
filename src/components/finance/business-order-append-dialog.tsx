@@ -43,6 +43,7 @@ import {
   listBusinessOrderAppendCatalog,
 } from '@/lib/actions/business-orders'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
+import { pendingApprovalMessage } from '@/lib/approval-gate'
 import { registerPasteZone } from '@/lib/hooks/use-file-drop'
 import {
   businessOrderItemDisplayName,
@@ -850,6 +851,15 @@ export function BusinessOrderAppendDialog({
         })
         if (!result.ok) {
           toast.error(result.error ?? '追加产品失败')
+          return
+        }
+        if (result.pendingApproval) {
+          // 审批通过后要重放这份 payload，定制品图片必须保留，不能清理。
+          toast.info(pendingApprovalMessage(result.pendingApproval))
+          setOpen(false)
+          setRows([emptyRow('catalog', currency)])
+          setReason('')
+          router.refresh()
           return
         }
         toast.success(

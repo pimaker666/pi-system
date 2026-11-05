@@ -38,6 +38,7 @@ interface WriteOutcome {
   orderNumber: string
   productName: string
   ok: boolean
+  pending?: boolean
   message: string
 }
 
@@ -164,20 +165,29 @@ export function BusinessOrderCostImporter() {
           orderNumber: entry.orderNumber,
           productName: entry.productName,
           ok: result.ok,
+          pending: Boolean(result.pendingApproval),
           message: result.ok
-            ? `已写入 ${formatCostValue(cost)}`
+            ? result.pendingApproval
+              ? '已提交成本覆盖审批，通过后自动写入'
+              : `已写入 ${formatCostValue(cost)}`
             : Object.values(result.fieldErrors ?? {}).flat()[0] ?? result.error ?? '写入失败',
         })
       }
       setResults(outcomes)
-      const succeeded = outcomes.filter((outcome) => outcome.ok).length
+      const succeeded = outcomes.filter((outcome) => outcome.ok && !outcome.pending).length
+      const pendingCount = outcomes.filter((outcome) => outcome.pending).length
+      const failed = outcomes.length - succeeded - pendingCount
       router.refresh()
-      if (succeeded === outcomes.length) {
+      if (failed === 0 && pendingCount === 0) {
         toast.success(`已写入 ${succeeded} 条成本`)
         handleOpenChange(false)
         return
       }
-      toast.error(`${succeeded} 条成功，${outcomes.length - succeeded} 条失败，详见结果`)
+      if (failed === 0) {
+        toast.info(`已写入 ${succeeded} 条成本，${pendingCount} 条已提交审批`)
+        return
+      }
+      toast.error(`${succeeded} 条成功，${pendingCount} 条待审批，${failed} 条失败，详见结果`)
     })
   }
 

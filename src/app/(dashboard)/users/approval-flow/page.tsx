@@ -1,19 +1,21 @@
-import { ApprovalFlowOverview } from '@/components/users/approval-flow-overview'
+import { ApprovalRuleSettings } from '@/components/users/approval-rule-settings'
 import { PermissionPageNav } from '@/components/users/permission-page-nav'
 import { requireAdmin } from '@/lib/auth'
-import { getOrderEditApprovalRules } from '@/lib/actions/permissions'
+import { fetchApprovalApprovers, fetchApprovalRules } from '@/lib/approvals-server'
 
 export default async function ApprovalFlowPage() {
   await requireAdmin()
-  const rules = await getOrderEditApprovalRules()
+  const [rules, approvers] = await Promise.all([fetchApprovalRules(), fetchApprovalApprovers()])
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">订单编辑审批流</h1>
-        <p className="text-sm text-muted-foreground">查看当前订单审批流程，并为后续自定义审核规则预留配置入口。</p>
+        <h1 className="text-2xl font-semibold">审批流</h1>
+        <p className="text-sm text-muted-foreground">
+          为订单审核、订单编辑、加单改行、作废与成本覆盖配置开关、金额条件与审核人；审批通过后业务动作自动执行。
+        </p>
       </div>
       <PermissionPageNav active="/users/approval-flow" />
-      <ApprovalFlowOverview rules={rules} />
+      <ApprovalRuleSettings rules={rules} approvers={approvers} />
     </div>
   )
 }

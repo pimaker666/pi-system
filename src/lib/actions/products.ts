@@ -5,12 +5,13 @@ import { createClient } from '@/lib/supabase/server'
 import { hasCurrentPermission, requireApproved, requireFinanceAccess, requireProfile } from '@/lib/auth'
 import { productFinancialSchema, orderScopedProductSchema, productSchema } from '@/schemas/product'
 import type { OrderScopedProductInput, ProductFinancialInput } from '@/schemas/product'
-import type { Product } from '@/types'
+import type { PendingApproval, Product } from '@/types'
 
 export interface ActionResult {
   ok: boolean
   error?: string
   fieldErrors?: Record<string, string[]>
+  pendingApproval?: PendingApproval
 }
 
 export interface CreateOrderProductResult extends ActionResult {
