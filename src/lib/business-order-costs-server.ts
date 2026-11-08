@@ -269,6 +269,28 @@ function eligibleCostRows(
   )
 }
 
+function resolveMergedCost(
+  item: MergedBusinessDailyItem | null,
+  financials: Map<string, ProductFinancialRow>,
+  overrides: Map<string, number>,
+): { cost: number | null; overridden: boolean; catalogCost: number | null } {
+  if (!item) return { cost: null, overridden: false, catalogCost: null }
+  const isCustom = item.daily_shipping_category === 'custom'
+  const financial = !isCustom && item.product_id ? financials.get(item.product_id) : undefined
+  const catalogCost = financial?.cost == null ? null : Number(financial.cost)
+  const overrideCosts = item.item_ids
+    .map((id) => overrides.get(id))
+    .filter((value): value is number => value !== undefined)
+  const uniqueOverrides = new Set(overrideCosts)
+  const overriddenCost =
+    overrideCosts.length > 0 && uniqueOverrides.size === 1 ? overrideCosts[0] : undefined
+  return {
+    catalogCost,
+    cost: overriddenCost ?? catalogCost,
+    overridden: overriddenCost !== undefined,
+  }
+}
+
 export async function fetchBusinessOrderProductCosts(
   supabase: SupabaseClient,
   filters: BusinessOrderCostFilters,
@@ -322,24 +344,6 @@ export async function fetchBusinessOrderProductCosts(
   const financials = new Map(financialRows.map((row) => [row.product_id, row]))
   const overrides = new Map(overrideRows.map((row) => [row.business_order_item_id, Number(row.cost)]))
 
-  function resolveMergedCost(
-    item: MergedBusinessDailyItem | null,
-  ): { cost: number | null; overridden: boolean; catalogCost: number | null } {
-    if (!item) return { cost: null, overridden: false, catalogCost: null }
-    const isCustom = item.daily_shipping_category === 'custom'
-    const financial = !isCustom && item.product_id ? financials.get(item.product_id) : undefined
-    const catalogCost = financial?.cost == null ? null : Number(financial.cost)
-    const overrideCosts = item.item_ids.map((id) => overrides.get(id)).filter((value): value is number => value !== undefined)
-    const uniqueOverrides = new Set(overrideCosts)
-    const overriddenCost =
-      overrideCosts.length > 0 && uniqueOverrides.size === 1 ? overrideCosts[0] : undefined
-    return {
-      catalogCost,
-      cost: overriddenCost ?? catalogCost,
-      overridden: overriddenCost !== undefined,
-    }
-  }
-
   const result: BusinessOrderProductCost[] = []
 
   for (const { order, rows: mergedItems } of pagedOrders) {
@@ -353,7 +357,7 @@ export async function fetchBusinessOrderProductCosts(
     const orderTotals = businessDailyOrderTotals(order)
 
     for (const item of mergedItems) {
-      const { cost: effectiveCost, overridden, catalogCost } = resolveMergedCost(item)
+      const { cost: effectiveCost, overridden, catalogCost } = resolveMergedCost(item, financials, overrides)
       const quantity = Number(item.quantity)
       const representativeItemId = item.item_ids[0] ?? order.id
       // 与台账展示口径一致：财务维护了产品名称才整套换成财务名+财务编号，定制行始终用快照。
@@ -413,6 +417,92 @@ export async function fetchBusinessOrderProductCosts(
   }
 
   return { rows: result, totalCount }
+}
+
+export interface BusinessOrderCostTodoSummary {
+  pendingOrderCount: number
+  pendingRowCount: number
+  missingCostOrderCount: number
+  missingCostRowCount: number
+}
+
+const COST_TODO_TTL_MS = 60_000
+const COST_TODO_PAGE_SIZE = 500
+const COST_TODO_MAX_ORDERS = 20000
+const costTodoCache = new Map<string, { summary: BusinessOrderCostTodoSummary; expiresAt: number }>()
+
+// 工作台只算数不展示，跳过附件与客户快照，避免把截图路径等大字段拉回内存。
+const COST_TODO_ORDER_SELECT = `*, business_order_items(*), business_order_shipments(*, business_order_shipment_items(*)), business_order_returns(*, business_order_return_items(*)), business_order_payment_allocations(order_item_id, allocation_target, amount, voided_at, transfer:business_customer_transfers(voided_at))`
+
+async function fetchCostTodoOrders(supabase: SupabaseClient): Promise<BusinessDailyLedgerOrder[]> {
+  const rows: BusinessDailyLedgerOrder[] = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('business_orders')
+      .select(COST_TODO_ORDER_SELECT)
+      .is('voided_at', null)
+      .in('fulfillment_status', ['partially_shipped', 'fully_shipped'])
+      .order('id')
+      .range(offset, offset + COST_TODO_PAGE_SIZE - 1)
+    if (error) throw new Error(`工作台成本待办读取失败：${error.message}`)
+    const page = (data ?? []) as unknown as BusinessDailyLedgerOrder[]
+    rows.push(...page)
+    if (page.length < COST_TODO_PAGE_SIZE) return rows
+    if (rows.length >= COST_TODO_MAX_ORDERS) {
+      throw new Error(`工作台成本待办达到 ${COST_TODO_MAX_ORDERS} 单上限`)
+    }
+    offset += COST_TODO_PAGE_SIZE
+  }
+}
+
+/**
+ * 工作台「待填成本 / 待结算」：与成本页同一入选口径（分类完结 + 未结算），
+ * 但不构建展示行；结果按账号缓存 60 秒，避免每次进工作台都全量重算。
+ */
+export async function fetchBusinessOrderCostTodoSummary(
+  supabase: SupabaseClient,
+  cacheKey: string,
+): Promise<BusinessOrderCostTodoSummary> {
+  const cached = costTodoCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) return cached.summary
+
+  const [orders, financialRows, overrideRows, settledIds] = await Promise.all([
+    fetchCostTodoOrders(supabase),
+    fetchAllProductFinancials(supabase),
+    fetchAllCostOverrides(supabase),
+    fetchAllSettledItemIds(supabase),
+  ])
+  const financials = new Map(financialRows.map((row) => [row.product_id, row]))
+  const overrides = new Map(overrideRows.map((row) => [row.business_order_item_id, Number(row.cost)]))
+
+  let pendingOrderCount = 0
+  let pendingRowCount = 0
+  let missingCostRowCount = 0
+  const missingCostOrders = new Set<string>()
+
+  for (const order of orders) {
+    const rows = eligibleCostRows(order, settledIds, [])
+    if (rows.length === 0) continue
+    pendingOrderCount += 1
+    pendingRowCount += rows.length
+    for (const item of rows) {
+      const { cost } = resolveMergedCost(item, financials, overrides)
+      if (cost === null) {
+        missingCostRowCount += 1
+        missingCostOrders.add(order.id)
+      }
+    }
+  }
+
+  const summary: BusinessOrderCostTodoSummary = {
+    pendingOrderCount,
+    pendingRowCount,
+    missingCostOrderCount: missingCostOrders.size,
+    missingCostRowCount,
+  }
+  costTodoCache.set(cacheKey, { summary, expiresAt: Date.now() + COST_TODO_TTL_MS })
+  return summary
 }
 
 export function formatCostMoney(amount: number | null, currency: CurrencyCode) {

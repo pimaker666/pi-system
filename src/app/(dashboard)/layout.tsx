@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
 import { Sidebar, type SidebarMode } from '@/components/layout/sidebar'
 import { CommandPalette } from '@/components/layout/command-palette'
+import { NavigationProgress } from '@/components/layout/navigation-progress'
 import { LogoutButton } from '@/components/auth/logout-button'
 
 export default async function DashboardLayout({
@@ -37,6 +38,7 @@ export default async function DashboardLayout({
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      <NavigationProgress />
       <Sidebar
         role={profile.role}
         fullName={displayProfileName(profile)}
