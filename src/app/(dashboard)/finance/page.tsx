@@ -457,6 +457,11 @@ export default async function FinanceOverviewPage({
             <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
               进行中金额：{inProgressTotals || '暂无'}
             </div>
+            {summary.completedOrderCount === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                订单需在详情页点「完成订单」后，才计入业绩与毛利
+              </p>
+            ) : null}
             {summary.unpricedCompletedOrderCount > 0 ? (
               <p className="flex items-start gap-1.5 text-xs text-amber-700">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
