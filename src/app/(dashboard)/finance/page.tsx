@@ -367,7 +367,7 @@ export default async function FinanceOverviewPage({
         <div>
           <h1 className="text-2xl font-semibold">财务总览</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            订单业绩与毛利只统计已完成订单；现金收支来自财务日记账与客户转账。
+            订单业绩与毛利统计已完成订单（发货完成且尾款收齐，或已手动完成）；现金收支只取财务日记账。
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -421,7 +421,7 @@ export default async function FinanceOverviewPage({
             <div>
               <CardTitle className="text-base">近 6 个月现金收支</CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">
-                收入含财务日记账与客户转账，支出取财务日记账
+                收入与支出均取财务日记账
               </p>
             </div>
           </CardHeader>
@@ -434,7 +434,9 @@ export default async function FinanceOverviewPage({
           <CardHeader className="flex flex-row items-start justify-between space-y-0">
             <div>
               <CardTitle className="text-base">订单完成情况</CardTitle>
-              <p className="mt-1 text-xs text-muted-foreground">业绩与毛利仅统计已完成订单</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                已完成 = 发货完成且尾款收齐（含手动完成）
+              </p>
             </div>
             <Badge variant="outline">{label}</Badge>
           </CardHeader>
@@ -459,7 +461,7 @@ export default async function FinanceOverviewPage({
             </div>
             {summary.completedOrderCount === 0 ? (
               <p className="text-xs text-muted-foreground">
-                订单需在详情页点「完成订单」后，才计入业绩与毛利
+                完成全部发货并收齐尾款后，订单才计入业绩与毛利
               </p>
             ) : null}
             {summary.unpricedCompletedOrderCount > 0 ? (
