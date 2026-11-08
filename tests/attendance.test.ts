@@ -67,3 +67,19 @@ test('isAttendanceSymbol 校验', () => {
   assert.equal(isAttendanceSymbol('?'), false)
   assert.equal(isAttendanceSymbol(''), false)
 })
+
+test('小时假只统计 √ 格上的小时数，并按 0.1 小时取整', () => {
+  const { counts, hourlyLeaveHours } = summarizeAttendance([
+    { day: 1, morning: '√', afternoon: '', morning_leave_hours: 1 },
+    { day: 2, morning: '√', afternoon: '√', morning_leave_hours: 0.5, afternoon_leave_hours: 3.5 },
+    { day: 3, morning: '○', afternoon: '', morning_leave_hours: 2 },
+  ])
+  assert.equal(hourlyLeaveHours, 5)
+  assert.equal(counts['√'], 1.5)
+  assert.equal(counts['○'], 0.5)
+})
+
+test('没有小时数字段时不产生小时假合计', () => {
+  const { hourlyLeaveHours } = summarizeAttendance([{ day: 1, morning: '√', afternoon: '√' }])
+  assert.equal(hourlyLeaveHours, 0)
+})

@@ -1731,6 +1731,12 @@ export interface AttendanceEntry {
   day: number
   morning: string
   afternoon: string
+  /** 上午小时假时长（小时），>0 时 morning 为 √。 */
+  morning_leave_hours: number
+  /** 下午小时假时长（小时），>0 时 afternoon 为 √。 */
+  afternoon_leave_hours: number
+  morning_leave_type: LeaveType | null
+  afternoon_leave_type: LeaveType | null
 }
 
 // ---------------- 请假申请（Leave Request）----------------
@@ -1746,6 +1752,8 @@ export interface LeaveRequest {
   start_date: string
   end_date: string
   day_part: LeaveDayPart
+  /** 小时假时长；null 表示按天/半天请假。 */
+  hours: number | null
   reason: string | null
   status: LeaveStatus
   reject_reason: string | null

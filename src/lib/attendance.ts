@@ -25,13 +25,22 @@ export function isAttendanceSymbol(value: string): value is AttendanceSymbol {
 export interface AttendanceSummary {
   /** symbol -> 天数（day 类）或次数（times 类） */
   counts: Record<string, number>
+  /** 小时假合计（小时），来自 √ 格上的小时数标注。 */
+  hourlyLeaveHours: number
 }
 
-export function summarizeAttendance(
-  entries: { day: number; morning: string; afternoon: string }[],
-): AttendanceSummary {
+export interface AttendanceEntryLike {
+  day: number
+  morning: string
+  afternoon: string
+  morning_leave_hours?: number | null
+  afternoon_leave_hours?: number | null
+}
+
+export function summarizeAttendance(entries: AttendanceEntryLike[]): AttendanceSummary {
   const counts: Record<string, number> = {}
   for (const { symbol } of ATTENDANCE_SYMBOLS) counts[symbol] = 0
+  let hourlyLeaveHours = 0
 
   for (const entry of entries) {
     const halfDays: Record<string, number> = {}
@@ -45,9 +54,11 @@ export function summarizeAttendance(
         halfDays[value] = (halfDays[value] ?? 0) + 0.5
       }
     }
+    if (entry.morning === '√') hourlyLeaveHours += Number(entry.morning_leave_hours ?? 0)
+    if (entry.afternoon === '√') hourlyLeaveHours += Number(entry.afternoon_leave_hours ?? 0)
     for (const [symbol, amount] of Object.entries(halfDays)) {
       counts[symbol] += Math.min(amount, 1)
     }
   }
-  return { counts }
+  return { counts, hourlyLeaveHours: Math.round(hourlyLeaveHours * 10) / 10 }
 }

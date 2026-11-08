@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireApproved, hasCurrentPermission } from '@/lib/auth'
 import { fetchConfirmedCommissionBySalesperson } from '@/lib/business-order-commissions-server'
 import { calcAttendanceDeduction, countWeekdays } from '@/lib/payroll'
+import { WORKDAY_HOURS } from '@/lib/leave'
 import type { ActionResult } from './products'
 
 const monthSchema = z
@@ -134,22 +135,26 @@ async function loadPayrollAutofill(
   if (attendanceSheetIds.length > 0) {
     const { data: presentEntries, error: entryError } = await supabase
       .from('attendance_entries')
-      .select('profile_id, day, morning, afternoon')
+      .select('profile_id, day, morning, afternoon, morning_leave_hours, afternoon_leave_hours')
       .in('sheet_id', attendanceSheetIds)
       .or('morning.eq.√,afternoon.eq.√')
     if (entryError) throw new Error(`考勤记录读取失败：${entryError.message}`)
-    // 与考勤表汇总同口径：√ 按上/下午各 0.5 天累计，半日出勤不凑整
+    // 与考勤表汇总同口径：√ 按上/下午各 0.5 天累计；小时假按 1h = 1/7.5 天从 √ 里扣减
     for (const row of (presentEntries ?? []) as Array<{
       profile_id: string | null
       morning: string
       afternoon: string
+      morning_leave_hours: number | null
+      afternoon_leave_hours: number | null
     }>) {
       if (!row.profile_id) continue
       const halves = Number(row.morning === '√') + Number(row.afternoon === '√')
       if (halves === 0) continue
+      const hourlyHours = Number(row.morning_leave_hours ?? 0) + Number(row.afternoon_leave_hours ?? 0)
+      const days = Math.max(0, halves * 0.5 - hourlyHours / WORKDAY_HOURS)
       attendanceDaysByProfile.set(
         row.profile_id,
-        (attendanceDaysByProfile.get(row.profile_id) ?? 0) + halves * 0.5,
+        Math.round(((attendanceDaysByProfile.get(row.profile_id) ?? 0) + days) * 100) / 100,
       )
     }
   }

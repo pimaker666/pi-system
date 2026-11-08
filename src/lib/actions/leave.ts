@@ -7,11 +7,11 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { requireApproved, hasCurrentPermission } from '@/lib/auth'
-import { daysBetweenInclusive } from '@/lib/leave'
+import { daysBetweenInclusive, isValidHourlyLeave } from '@/lib/leave'
 import type { ActionResult } from './products'
 import type { LeaveDayPart, LeaveType } from '@/types'
 
-const createSchema = z.object({
+const leaveFieldsSchema = z.object({
   leave_type: z.enum(['personal', 'sick', 'vacation']),
   start_date: z
     .string()
@@ -20,12 +20,41 @@ const createSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, '日期格式不合法'),
   day_part: z.enum(['full', 'morning', 'afternoon']),
+  hours: z
+    .number({ invalid_type_error: '小时数须为数字' })
+    .min(0.5, '小时数至少 0.5 小时')
+    .max(3.5, '小时数超出范围')
+    .nullable()
+    .optional(),
   reason: z.string().trim().min(1, '请填写请假事由').max(500, '事由最长 500 字'),
 })
 
-const updateSchema = createSchema.extend({
-  request_id: z.string().uuid(),
-})
+type LeaveFields = z.infer<typeof leaveFieldsSchema>
+
+// 小时假仅限单日的上午/下午，0.5 小时步进，且不超过该半天工时上限
+function refineHourlyLeave(value: LeaveFields, ctx: z.RefinementCtx) {
+  if (value.hours == null) return
+  if (value.start_date !== value.end_date) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['end_date'], message: '按小时请假只能选择同一天' })
+  }
+  if (value.day_part === 'full') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['day_part'], message: '按小时请假须选择上午或下午' })
+    return
+  }
+  if (!isValidHourlyLeave(value.hours, value.day_part)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['hours'],
+      message: '小时假须为 0.5 小时步进，上午不超过 3 小时、下午不超过 3.5 小时',
+    })
+  }
+}
+
+const createSchema = leaveFieldsSchema.superRefine(refineHourlyLeave)
+
+const updateSchema = leaveFieldsSchema
+  .extend({ request_id: z.string().uuid() })
+  .superRefine(refineHourlyLeave)
 
 const requestIdSchema = z.object({
   request_id: z.string().uuid(),
@@ -68,6 +97,7 @@ export async function createLeaveRequest(input: {
   start_date: string
   end_date: string
   day_part: LeaveDayPart
+  hours?: number | null
   reason: string
 }): Promise<ActionResult> {
   const profile = await requireApproved()
@@ -85,6 +115,7 @@ export async function createLeaveRequest(input: {
     start_date: parsed.data.start_date,
     end_date: parsed.data.end_date,
     day_part: parsed.data.day_part,
+    hours: parsed.data.hours ?? null,
     reason: parsed.data.reason,
   })
   if (error) return { ok: false, error: `提交失败：${error.message}` }
@@ -98,6 +129,7 @@ export async function updateLeaveRequest(input: {
   start_date: string
   end_date: string
   day_part: LeaveDayPart
+  hours?: number | null
   reason: string
 }): Promise<ActionResult> {
   await requireApproved()
@@ -109,10 +141,10 @@ export async function updateLeaveRequest(input: {
   if (rangeError) return { ok: false, error: rangeError }
 
   const supabase = await createClient()
-  const { request_id, ...fields } = parsed.data
+  const { request_id, hours, ...fields } = parsed.data
   const { error } = await supabase
     .from('leave_requests')
-    .update(fields)
+    .update({ ...fields, hours: hours ?? null })
     .eq('id', request_id)
     .eq('status', 'pending')
   if (error) return { ok: false, error: `保存失败：${error.message}` }

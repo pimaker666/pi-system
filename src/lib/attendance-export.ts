@@ -3,6 +3,7 @@
 
 import type { Workbook, Worksheet } from 'exceljs'
 import { ATTENDANCE_SYMBOLS, summarizeAttendance } from '@/lib/attendance'
+import { formatLeaveHours } from '@/lib/leave'
 import type { AttendanceEntry, AttendanceMember } from '@/types'
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六']
@@ -123,13 +124,14 @@ function buildWorkbook(workbook: Workbook, input: Parameters<typeof exportAttend
   const days = daysInMonth(input.month)
   const dayColumns = days
   const summaryColumns = ATTENDANCE_SYMBOLS.length
-  const lastColumn = 2 + dayColumns + summaryColumns
+  const lastColumn = 2 + dayColumns + summaryColumns + 1
 
   sheet.columns = [
     { key: 'name', width: 10 },
     { key: 'half', width: 7 },
     ...Array.from({ length: dayColumns }, (_, index) => ({ key: `d${index + 1}`, width: 3.4 })),
     ...ATTENDANCE_SYMBOLS.map(({ symbol }) => ({ key: `s${symbol}`, width: 6.8 })),
+    { key: 'hourly', width: 7.4 },
   ]
 
   sheet.mergeCells(1, 1, 1, lastColumn)
@@ -201,11 +203,29 @@ function buildWorkbook(workbook: Workbook, input: Parameters<typeof exportAttend
     cell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
     cell.border = {
       left: index === 0 ? mediumBorder : thinBorder,
-      right: index === summaryColumns - 1 ? mediumBorder : thinBorder,
+      right: thinBorder,
       top: thinBorder,
       bottom: headerBottomBorder,
     }
   })
+  const hourlyHeaderColumn = 2 + dayColumns + summaryColumns + 1
+  sheet.mergeCells(4, hourlyHeaderColumn, 5, hourlyHeaderColumn)
+  const hourlyHeader = sheet.getCell(4, hourlyHeaderColumn)
+  hourlyHeader.value = '小时假\n小时'
+  hourlyHeader.font = {
+    name: FONT,
+    size: 9,
+    bold: true,
+    color: { argb: 'FFFDE68A' },
+  }
+  hourlyHeader.fill = solidFill(COLOR.headerSummary)
+  hourlyHeader.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }
+  hourlyHeader.border = {
+    left: thinBorder,
+    right: mediumBorder,
+    top: thinBorder,
+    bottom: headerBottomBorder,
+  }
   sheet.getRow(4).height = 20
   sheet.getRow(5).height = 20
 
@@ -217,7 +237,13 @@ function buildWorkbook(workbook: Workbook, input: Parameters<typeof exportAttend
     const summary = summarizeAttendance(
       Array.from({ length: days }, (_, index) => {
         const entry = entryOf(member.id, index + 1)
-        return { day: index + 1, morning: entry?.morning ?? '', afternoon: entry?.afternoon ?? '' }
+        return {
+          day: index + 1,
+          morning: entry?.morning ?? '',
+          afternoon: entry?.afternoon ?? '',
+          morning_leave_hours: Number(entry?.morning_leave_hours ?? 0),
+          afternoon_leave_hours: Number(entry?.afternoon_leave_hours ?? 0),
+        }
       }),
     )
     const top = rowIndex
@@ -252,14 +278,19 @@ function buildWorkbook(workbook: Workbook, input: Parameters<typeof exportAttend
 
       for (let day = 1; day <= days; day += 1) {
         const entry = entryOf(member.id, day)
-        const value = (halfIndex === 0 ? entry?.morning : entry?.afternoon) ?? ''
+        const rawValue = (halfIndex === 0 ? entry?.morning : entry?.afternoon) ?? ''
+        const hours =
+          halfIndex === 0
+            ? Number(entry?.morning_leave_hours ?? 0)
+            : Number(entry?.afternoon_leave_hours ?? 0)
+        const value = rawValue === '√' && hours > 0 ? `√${formatLeaveHours(hours)}` : rawValue
         const cell = sheet.getCell(row, 2 + day)
         cell.value = value
         cell.font = {
           name: FONT,
           size: 10,
-          bold: Boolean(value && !['√', '●'].includes(value)),
-          color: { argb: value ? (SYMBOL_COLORS[value] ?? COLOR.ink) : 'FFCBD5E1' },
+          bold: Boolean(rawValue && !['√', '●'].includes(rawValue)),
+          color: { argb: rawValue ? (SYMBOL_COLORS[rawValue] ?? COLOR.ink) : 'FFCBD5E1' },
         }
         cell.alignment = { horizontal: 'center', vertical: 'middle' }
         cell.fill = solidFill(isWeekend(input.month, day) ? COLOR.weekendCell : COLOR.white)
@@ -287,11 +318,29 @@ function buildWorkbook(workbook: Workbook, input: Parameters<typeof exportAttend
       cell.fill = solidFill(COLOR.white)
       cell.border = {
         left: index === 0 ? mediumBorder : thinBorder,
-        right: index === summaryColumns - 1 ? mediumBorder : thinBorder,
+        right: thinBorder,
         top: thinBorder,
         bottom: mediumBorder,
       }
     })
+
+    sheet.mergeCells(top, hourlyHeaderColumn, bottom, hourlyHeaderColumn)
+    const hourlyCell = sheet.getCell(top, hourlyHeaderColumn)
+    hourlyCell.value =
+      summary.hourlyLeaveHours > 0 ? formatLeaveHours(summary.hourlyLeaveHours) : ''
+    hourlyCell.font = {
+      name: FONT,
+      size: 10,
+      color: { argb: summary.hourlyLeaveHours > 0 ? 'FFB45309' : 'FFCBD5E1' },
+    }
+    hourlyCell.alignment = { horizontal: 'center', vertical: 'middle' }
+    hourlyCell.fill = solidFill(COLOR.white)
+    hourlyCell.border = {
+      left: thinBorder,
+      right: mediumBorder,
+      top: thinBorder,
+      bottom: mediumBorder,
+    }
 
     rowIndex += 2
   }
@@ -314,7 +363,8 @@ function buildWorkbook(workbook: Workbook, input: Parameters<typeof exportAttend
 
   sheet.mergeCells(legendRow + 1, 1, legendRow + 1, lastColumn)
   const note = sheet.getCell(legendRow + 1, 1)
-  note.value = '说明：天数字段按上午/下午各计 0.5 天；空白表示未标记。'
+  note.value =
+    '说明：天数字段按上午/下午各计 0.5 天；√ 后带小时数（如 √1h）表示该半天有小时假，1 小时 = 1/7.5 天；空白表示未标记。'
   note.font = { name: FONT, size: 9, color: { argb: COLOR.subtle } }
   note.alignment = { horizontal: 'left', vertical: 'middle' }
 }
@@ -323,7 +373,10 @@ export async function exportAttendanceSheet(input: {
   month: string
   note: string
   members: Pick<AttendanceMember, 'id' | 'name' | 'profile_id'>[]
-  entries: Pick<AttendanceEntry, 'member_id' | 'day' | 'morning' | 'afternoon'>[]
+  entries: Pick<
+    AttendanceEntry,
+    'member_id' | 'day' | 'morning' | 'afternoon' | 'morning_leave_hours' | 'afternoon_leave_hours'
+  >[]
 }): Promise<void> {
   const ExcelJS = (await import('exceljs')).default
   const workbook = new ExcelJS.Workbook()

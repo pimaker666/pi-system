@@ -38,14 +38,24 @@ import {
 } from '@/lib/actions/leave'
 import {
   daysBetweenInclusive,
+  formatLeaveHours,
+  isValidHourlyLeave,
   LEAVE_DAY_PART_LABELS,
   LEAVE_STATUS_LABELS,
   LEAVE_TYPE_META,
+  MAX_HOURLY_LEAVE,
+  type LeaveHalf,
 } from '@/lib/leave'
 import { displayProfileName } from '@/lib/utils'
 import type { LeaveDayPart, LeaveRequestWithProfile, LeaveType } from '@/types'
 
+const HOURS_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5]
+
 function durationLabel(request: LeaveRequestWithProfile) {
+  if (request.hours != null) {
+    const half = request.day_part === 'afternoon' ? '下午' : '上午'
+    return `${request.start_date}（${half} ${formatLeaveHours(request.hours)}）`
+  }
   const days = daysBetweenInclusive(request.start_date, request.end_date)
   const range =
     request.start_date === request.end_date
@@ -74,16 +84,20 @@ export function LeaveManager({
   const [reviewApprove, setReviewApprove] = useState(true)
   const [rejectReason, setRejectReason] = useState('')
   const [leaveType, setLeaveType] = useState<LeaveType>('personal')
+  const [leaveUnit, setLeaveUnit] = useState<'day' | 'hour'>('day')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [dayPart, setDayPart] = useState<LeaveDayPart>('full')
+  const [hourlyHours, setHourlyHours] = useState(1)
   const [reason, setReason] = useState('')
 
   function openCreate() {
     setLeaveType('personal')
+    setLeaveUnit('day')
     setStartDate('')
     setEndDate('')
     setDayPart('full')
+    setHourlyHours(1)
     setReason('')
     setEditTarget(null)
     setCreateOpen(true)
@@ -91,20 +105,53 @@ export function LeaveManager({
 
   function openEdit(target: LeaveRequestWithProfile) {
     setLeaveType(target.leave_type)
+    setLeaveUnit(target.hours != null ? 'hour' : 'day')
     setStartDate(target.start_date)
     setEndDate(target.end_date)
     setDayPart(target.day_part)
+    setHourlyHours(target.hours ?? 1)
     setReason(target.reason ?? '')
     setEditTarget(target)
     setCreateOpen(true)
   }
 
+  function handleUnitChange(unit: 'day' | 'hour') {
+    setLeaveUnit(unit)
+    if (unit === 'hour') {
+      if (dayPart === 'full') setDayPart('morning')
+      if (startDate) setEndDate(startDate)
+      setHourlyHours((prev) => Math.min(prev, MAX_HOURLY_LEAVE[dayPart === 'afternoon' ? 'afternoon' : 'morning']))
+    }
+  }
+
+  function handleDayPartChange(value: LeaveDayPart) {
+    setDayPart(value)
+    if (leaveUnit === 'hour' && value !== 'full') {
+      setHourlyHours((prev) => Math.min(prev, MAX_HOURLY_LEAVE[value]))
+    }
+  }
+
+  function handleStartDateChange(value: string) {
+    setStartDate(value)
+    if (leaveUnit === 'hour') setEndDate(value)
+  }
+
   function handleSubmit() {
-    if (!startDate || !endDate) {
+    if (!startDate || (leaveUnit === 'day' && !endDate)) {
       toast.error('请选择开始和结束日期')
       return
     }
-    if (endDate < startDate) {
+    if (leaveUnit === 'hour') {
+      if (dayPart === 'full') {
+        toast.error('按小时请假请选择上午或下午')
+        return
+      }
+      if (!isValidHourlyLeave(hourlyHours, dayPart)) {
+        toast.error('小时假须为 0.5 小时步进，上午不超过 3 小时、下午不超过 3.5 小时')
+        return
+      }
+    }
+    if (leaveUnit === 'day' && endDate < startDate) {
       toast.error('结束日期不能早于开始日期')
       return
     }
@@ -115,8 +162,9 @@ export function LeaveManager({
     const payload = {
       leave_type: leaveType,
       start_date: startDate,
-      end_date: endDate,
+      end_date: leaveUnit === 'hour' ? startDate : endDate,
       day_part: dayPart,
+      hours: leaveUnit === 'hour' ? hourlyHours : null,
       reason: reason.trim(),
     }
     startTransition(async () => {
@@ -166,6 +214,9 @@ export function LeaveManager({
       }
     })
   }
+
+  const hourlyHalf: LeaveHalf = dayPart === 'afternoon' ? 'afternoon' : 'morning'
+  const maxHourlyHours = MAX_HOURLY_LEAVE[hourlyHalf]
 
   return (
     <div className="space-y-4">
@@ -294,7 +345,7 @@ export function LeaveManager({
           <DialogHeader>
             <DialogTitle>{editTarget ? '修改请假申请' : '提交请假申请'}</DialogTitle>
             <DialogDescription>
-              审批通过后自动写入考勤表（事假○ / 病假☆ / 年假调休●），不覆盖已标记的考勤格。
+              审批通过后自动写入考勤表（事假○ / 病假☆ / 年假调休●），不覆盖已标记的考勤格。按小时请假记为 √ 并标注时长，工资按 1 小时 = 1/7.5 天自动扣减。
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -316,6 +367,21 @@ export function LeaveManager({
                 </SelectContent>
               </Select>
             </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="leave_unit">请假单位</Label>
+              <Select
+                value={leaveUnit}
+                onValueChange={(value) => handleUnitChange(value as 'day' | 'hour')}
+              >
+                <SelectTrigger id="leave_unit">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="day">按天 / 半天</SelectItem>
+                  <SelectItem value="hour">按小时</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="grid gap-1.5 sm:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="leave_start">开始日期</Label>
@@ -323,7 +389,7 @@ export function LeaveManager({
                   id="leave_start"
                   type="date"
                   value={startDate}
-                  onChange={(event) => setStartDate(event.target.value)}
+                  onChange={(event) => handleStartDateChange(event.target.value)}
                 />
               </div>
               <div className="grid gap-1.5">
@@ -331,29 +397,55 @@ export function LeaveManager({
                 <Input
                   id="leave_end"
                   type="date"
-                  value={endDate}
+                  value={leaveUnit === 'hour' ? startDate : endDate}
                   min={startDate || undefined}
+                  disabled={leaveUnit === 'hour'}
                   onChange={(event) => setEndDate(event.target.value)}
                 />
               </div>
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="leave_day_part">时段</Label>
-              <Select
-                value={dayPart}
-                onValueChange={(value) => setDayPart(value as LeaveDayPart)}
-              >
-                <SelectTrigger id="leave_day_part">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(LEAVE_DAY_PART_LABELS) as LeaveDayPart[]).map((part) => (
-                    <SelectItem key={part} value={part}>
-                      {LEAVE_DAY_PART_LABELS[part]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              <div className="grid gap-1.5">
+                <Label htmlFor="leave_day_part">时段</Label>
+                <Select
+                  value={dayPart}
+                  onValueChange={(value) => handleDayPartChange(value as LeaveDayPart)}
+                >
+                  <SelectTrigger id="leave_day_part">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {leaveUnit === 'day' && (
+                      <SelectItem value="full">{LEAVE_DAY_PART_LABELS.full}</SelectItem>
+                    )}
+                    <SelectItem value="morning">{LEAVE_DAY_PART_LABELS.morning}</SelectItem>
+                    <SelectItem value="afternoon">{LEAVE_DAY_PART_LABELS.afternoon}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {leaveUnit === 'hour' && (
+                <div className="grid gap-1.5">
+                  <Label htmlFor="leave_hours">请假时长</Label>
+                  <Select
+                    value={String(hourlyHours)}
+                    onValueChange={(value) => setHourlyHours(Number(value))}
+                  >
+                    <SelectTrigger id="leave_hours">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HOURS_OPTIONS.filter((hours) => hours <= maxHourlyHours).map((hours) => (
+                        <SelectItem key={hours} value={String(hours)}>
+                          {formatLeaveHours(hours)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    上午上班 3.5 小时、下午上班 4 小时，最多可请 {formatLeaveHours(maxHourlyHours)}。
+                  </p>
+                </div>
+              )}
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="leave_reason">请假事由</Label>

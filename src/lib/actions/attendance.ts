@@ -7,6 +7,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { requireApproved, hasCurrentPermission } from '@/lib/auth'
 import { ATTENDANCE_SYMBOL_SET } from '@/lib/attendance'
+import { isValidHourlyLeave } from '@/lib/leave'
 import type { ActionResult } from './products'
 
 const monthSchema = z.string().regex(/^\d{4}-\d{2}-01$/, '月份格式须为 yyyy-mm')
@@ -34,28 +35,95 @@ const memberIdSchema = z.object({
   member_id: z.string().uuid(),
 })
 
-const upsertEntrySchema = z.object({
-  sheet_id: z.string().uuid(),
+const leaveTypeSchema = z.enum(['personal', 'sick', 'vacation']).nullable().optional()
+const leaveHoursSchema = z
+  .number({ invalid_type_error: '小时数须为数字' })
+  .min(0, '小时数不能为负')
+  .max(3.5, '小时数超出范围')
+  .nullable()
+  .optional()
+
+// 小时假挂在 √ 出勤格上：0.5 小时步进，上午最多 3h、下午最多 3.5h。
+const attendanceCellFields = z.object({
   member_id: z.string().uuid(),
   day: z.coerce.number().int('日期须为整数').min(1, '日期不合法').max(31, '日期不合法'),
   morning: symbolOrEmpty,
   afternoon: symbolOrEmpty,
+  morning_leave_hours: leaveHoursSchema,
+  afternoon_leave_hours: leaveHoursSchema,
+  morning_leave_type: leaveTypeSchema,
+  afternoon_leave_type: leaveTypeSchema,
 })
+
+type AttendanceCellInput = z.infer<typeof attendanceCellFields>
+
+function refineHourlyLeave(value: AttendanceCellInput, ctx: z.RefinementCtx) {
+  for (const half of ['morning', 'afternoon'] as const) {
+    const hours = Number(value[`${half}_leave_hours`] ?? 0)
+    const type = value[`${half}_leave_type`] ?? null
+    if (hours === 0) {
+      if (type) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [`${half}_leave_type`],
+          message: '小时数为 0 时不能指定请假类型',
+        })
+      }
+      continue
+    }
+    if (value[half] !== '√') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [`${half}_leave_hours`],
+        message: '小时假必须记录在 √ 出勤格上',
+      })
+      continue
+    }
+    if (!type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [`${half}_leave_type`],
+        message: '请选择小时假类型',
+      })
+    }
+    if (!isValidHourlyLeave(hours, half)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [`${half}_leave_hours`],
+        message: '小时假须为 0.5 小时步进，上午不超过 3 小时、下午不超过 3.5 小时',
+      })
+    }
+  }
+}
+
+const attendanceCellSchema = attendanceCellFields.superRefine(refineHourlyLeave)
+
+const upsertEntrySchema = attendanceCellFields
+  .extend({ sheet_id: z.string().uuid() })
+  .superRefine(refineHourlyLeave)
 
 const batchUpsertSchema = z.object({
   sheet_id: z.string().uuid(),
-  items: z
-    .array(
-      z.object({
-        member_id: z.string().uuid(),
-        day: z.coerce.number().int('日期须为整数').min(1, '日期不合法').max(31, '日期不合法'),
-        morning: symbolOrEmpty,
-        afternoon: symbolOrEmpty,
-      }),
-    )
-    .min(1, '没有需要保存的考勤格')
-    .max(31 * 200, '单次批量范围过大'),
+  items: z.array(attendanceCellSchema).min(1, '没有需要保存的考勤格').max(31 * 200, '单次批量范围过大'),
 })
+
+// 清除符号时一并把小时假归零，避免残留小时数挡住删除
+function normalizeCell<T extends {
+  morning: string
+  afternoon: string
+  morning_leave_hours?: number | null
+  afternoon_leave_hours?: number | null
+  morning_leave_type?: 'personal' | 'sick' | 'vacation' | null
+  afternoon_leave_type?: 'personal' | 'sick' | 'vacation' | null
+}>(item: T) {
+  return {
+    ...item,
+    morning_leave_hours: item.morning === '√' ? (item.morning_leave_hours ?? 0) : 0,
+    afternoon_leave_hours: item.afternoon === '√' ? (item.afternoon_leave_hours ?? 0) : 0,
+    morning_leave_type: item.morning === '√' ? (item.morning_leave_type ?? null) : null,
+    afternoon_leave_type: item.afternoon === '√' ? (item.afternoon_leave_type ?? null) : null,
+  }
+}
 
 const updateNoteSchema = z.object({
   sheet_id: z.string().uuid(),
@@ -208,13 +276,17 @@ export async function upsertAttendanceEntry(input: {
   day: number
   morning: string
   afternoon: string
+  morning_leave_hours?: number | null
+  afternoon_leave_hours?: number | null
+  morning_leave_type?: 'personal' | 'sick' | 'vacation' | null
+  afternoon_leave_type?: 'personal' | 'sick' | 'vacation' | null
 }): Promise<ActionResult> {
   await requireFinanceManager()
-  const parsed = upsertEntrySchema.safeParse(input)
+  const parsed = upsertEntrySchema.safeParse(normalizeCell(input))
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? '参数不合法' }
   }
-  const { sheet_id, member_id, day, morning, afternoon } = parsed.data
+  const { sheet_id, member_id, day, morning, afternoon, ...hourly } = parsed.data
   const supabase = await createClient()
 
   if (!morning && !afternoon) {
@@ -230,7 +302,7 @@ export async function upsertAttendanceEntry(input: {
   }
 
   const { error } = await supabase.from('attendance_entries').upsert(
-    { sheet_id, member_id, profile_id: null, day, morning, afternoon },
+    { sheet_id, member_id, profile_id: null, day, morning, afternoon, ...hourly },
     { onConflict: 'sheet_id,member_id,day' },
   )
   if (error) return { ok: false, error: `保存考勤格失败：${error.message}` }
@@ -244,10 +316,22 @@ const ATTENDANCE_UPSERT_BATCH = 500
 
 export async function batchUpsertAttendanceEntries(input: {
   sheet_id: string
-  items: { member_id: string; day: number; morning: string; afternoon: string }[]
+  items: {
+    member_id: string
+    day: number
+    morning: string
+    afternoon: string
+    morning_leave_hours?: number | null
+    afternoon_leave_hours?: number | null
+    morning_leave_type?: 'personal' | 'sick' | 'vacation' | null
+    afternoon_leave_type?: 'personal' | 'sick' | 'vacation' | null
+  }[]
 }): Promise<ActionResult> {
   await requireFinanceManager()
-  const parsed = batchUpsertSchema.safeParse(input)
+  const parsed = batchUpsertSchema.safeParse({
+    ...input,
+    items: input.items.map(normalizeCell),
+  })
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? '参数不合法' }
   }
@@ -262,6 +346,10 @@ export async function batchUpsertAttendanceEntries(input: {
       day: item.day,
       morning: item.morning,
       afternoon: item.afternoon,
+      morning_leave_hours: item.morning_leave_hours ?? 0,
+      afternoon_leave_hours: item.afternoon_leave_hours ?? 0,
+      morning_leave_type: item.morning_leave_type ?? null,
+      afternoon_leave_type: item.afternoon_leave_type ?? null,
     }))
   const clearsByMember = new Map<string, number[]>()
   for (const item of parsed.data.items) {

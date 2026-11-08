@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Download, Eraser, Users } from 'lucide-react'
+import { Download, Eraser, Clock, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -42,7 +42,14 @@ import {
 } from '@/lib/actions/attendance'
 import { exportAttendanceSheet } from '@/lib/attendance-export'
 import { ATTENDANCE_SYMBOLS, summarizeAttendance } from '@/lib/attendance'
-import type { AttendanceEntry, AttendanceMember, AttendanceSheet, Profile } from '@/types'
+import {
+  formatLeaveHours,
+  isValidHourlyLeave,
+  LEAVE_TYPE_META,
+  MAX_HOURLY_LEAVE,
+  type LeaveHalf,
+} from '@/lib/leave'
+import type { AttendanceEntry, AttendanceMember, AttendanceSheet, Profile, LeaveType } from '@/types'
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六']
 
@@ -65,7 +72,64 @@ function entryKey(memberId: string, day: number) {
   return `${memberId}:${day}`
 }
 
-const EMPTY_CELL = { morning: '', afternoon: '' }
+const EMPTY_CELL: GridCell = {
+  morning: '',
+  afternoon: '',
+  morning_leave_hours: 0,
+  afternoon_leave_hours: 0,
+  morning_leave_type: null,
+  afternoon_leave_type: null,
+}
+
+interface GridCell {
+  morning: string
+  afternoon: string
+  morning_leave_hours: number
+  afternoon_leave_hours: number
+  morning_leave_type: LeaveType | null
+  afternoon_leave_type: LeaveType | null
+}
+
+const HOURS_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3, 3.5]
+
+function cellWithSymbol(cell: GridCell, half: LeaveHalf, value: string): GridCell {
+  if (half === 'morning') {
+    return {
+      ...cell,
+      morning: value,
+      morning_leave_hours: value === '√' ? cell.morning_leave_hours : 0,
+      morning_leave_type: value === '√' ? cell.morning_leave_type : null,
+    }
+  }
+  return {
+    ...cell,
+    afternoon: value,
+    afternoon_leave_hours: value === '√' ? cell.afternoon_leave_hours : 0,
+    afternoon_leave_type: value === '√' ? cell.afternoon_leave_type : null,
+  }
+}
+
+function sameCell(a: GridCell, b: GridCell): boolean {
+  return (
+    a.morning === b.morning &&
+    a.afternoon === b.afternoon &&
+    a.morning_leave_hours === b.morning_leave_hours &&
+    a.afternoon_leave_hours === b.afternoon_leave_hours &&
+    a.morning_leave_type === b.morning_leave_type &&
+    a.afternoon_leave_type === b.afternoon_leave_type
+  )
+}
+
+function cellFromEntry(entry: AttendanceEntry): GridCell {
+  return {
+    morning: entry.morning,
+    afternoon: entry.afternoon,
+    morning_leave_hours: Number(entry.morning_leave_hours ?? 0),
+    afternoon_leave_hours: Number(entry.afternoon_leave_hours ?? 0),
+    morning_leave_type: entry.morning_leave_type ?? null,
+    afternoon_leave_type: entry.afternoon_leave_type ?? null,
+  }
+}
 
 // 表格内滚动时表头吸顶；corner 版给同时也左吸的两列，层级高于普通表头
 const STICKY_HEAD = 'sticky top-0 z-20 bg-background shadow-[inset_0_-1px_0_hsl(var(--border))]'
@@ -111,7 +175,7 @@ export function AttendanceManager({
 }) {
   const router = useRouter()
   const [currentMonth, setCurrentMonth] = useState(selectedMonth)
-  const [grid, setGrid] = useState<Record<string, { morning: string; afternoon: string }>>({})
+  const [grid, setGrid] = useState<Record<string, GridCell>>({})
   const [note, setNote] = useState(initialNote)
   const [pending, startTransition] = useTransition()
   const [createOpen, setCreateOpen] = useState(false)
@@ -126,6 +190,11 @@ export function AttendanceManager({
   const [editing, setEditing] = useState(false)
   // 框选范围：row 为「成员序号 × 2 + 上午/下午」，用于矩形批量填充
   const [selection, setSelection] = useState<{ anchor: CellPos; focus: CellPos } | null>(null)
+  // 小时假批量填写：只作用于框选中指定半天的格子
+  const [hourlyOpen, setHourlyOpen] = useState(false)
+  const [hourlyHalf, setHourlyHalf] = useState<LeaveHalf>('morning')
+  const [hourlyType, setHourlyType] = useState<LeaveType>('personal')
+  const [hourlyHours, setHourlyHours] = useState(1)
   const selectingRef = useRef(false)
   const tableWrapRef = useRef<HTMLDivElement | null>(null)
   const scrollerRef = useRef<HTMLElement | null>(null)
@@ -143,12 +212,9 @@ export function AttendanceManager({
   }, [selectedMonth, selectedSheetId])
 
   useEffect(() => {
-    const next: Record<string, { morning: string; afternoon: string }> = {}
+    const next: Record<string, GridCell> = {}
     for (const entry of entries) {
-      next[entryKey(entry.member_id, entry.day)] = {
-        morning: entry.morning,
-        afternoon: entry.afternoon,
-      }
+      next[entryKey(entry.member_id, entry.day)] = cellFromEntry(entry)
     }
     setGrid(next)
     setNote(initialNote)
@@ -263,8 +329,14 @@ export function AttendanceManager({
     const result: Record<string, ReturnType<typeof summarizeAttendance>> = {}
     for (const member of visibleMembers) {
       const memberEntries = dayNumbers.map((day) => {
-        const cell = grid[entryKey(member.id, day)]
-        return { day, morning: cell?.morning ?? '', afternoon: cell?.afternoon ?? '' }
+        const cell = grid[entryKey(member.id, day)] ?? EMPTY_CELL
+        return {
+          day,
+          morning: cell.morning,
+          afternoon: cell.afternoon,
+          morning_leave_hours: cell.morning_leave_hours,
+          afternoon_leave_hours: cell.afternoon_leave_hours,
+        }
       })
       result[member.id] = summarizeAttendance(memberEntries)
     }
@@ -278,12 +350,9 @@ export function AttendanceManager({
 
   // 已落库的基线，用于统计改动量和放弃修改时还原
   const baseCells = useMemo(() => {
-    const map: Record<string, { morning: string; afternoon: string }> = {}
+    const map: Record<string, GridCell> = {}
     for (const entry of entries) {
-      map[entryKey(entry.member_id, entry.day)] = {
-        morning: entry.morning,
-        afternoon: entry.afternoon,
-      }
+      map[entryKey(entry.member_id, entry.day)] = cellFromEntry(entry)
     }
     return map
   }, [entries])
@@ -304,14 +373,14 @@ export function AttendanceManager({
     : 0
 
   function collectChanges() {
-    const items: { member_id: string; day: number; morning: string; afternoon: string }[] = []
+    const items: (GridCell & { member_id: string; day: number })[] = []
     for (const member of visibleMembers) {
       for (const day of dayNumbers) {
         const key = entryKey(member.id, day)
         const cell = grid[key] ?? EMPTY_CELL
         const base = baseCells[key] ?? EMPTY_CELL
-        if (cell.morning === base.morning && cell.afternoon === base.afternoon) continue
-        items.push({ member_id: member.id, day, morning: cell.morning, afternoon: cell.afternoon })
+        if (sameCell(cell, base)) continue
+        items.push({ member_id: member.id, day, ...cell })
       }
     }
     return items
@@ -490,11 +559,59 @@ export function AttendanceManager({
         const half = row % 2 === 0 ? 'morning' : 'afternoon'
         for (let day = dayStart; day <= dayEnd; day += 1) {
           const key = entryKey(member.id, day)
-          next[key] = { ...(next[key] ?? EMPTY_CELL), [half]: value }
+          next[key] = cellWithSymbol(next[key] ?? EMPTY_CELL, half, value)
         }
       }
       return next
     })
+  }
+
+  // 小时假只写入选中的、与所选半天一致的格子；空白或纯 √ 才写入，其他符号不覆盖。
+  function applyHourlyLeave() {
+    if (!selectionBounds) {
+      toast.error('请先在表格中框选要填写的单元格')
+      return
+    }
+    if (!isValidHourlyLeave(hourlyHours, hourlyHalf)) {
+      toast.error('小时假须为 0.5 小时步进，上午不超过 3 小时、下午不超过 3.5 小时')
+      return
+    }
+    const targetParity = hourlyHalf === 'morning' ? 0 : 1
+    const patch: Partial<GridCell> =
+      hourlyHalf === 'morning'
+        ? { morning: '√', morning_leave_hours: hourlyHours, morning_leave_type: hourlyType }
+        : { afternoon: '√', afternoon_leave_hours: hourlyHours, afternoon_leave_type: hourlyType }
+    const { rowStart, rowEnd, dayStart, dayEnd } = selectionBounds
+    let applied = 0
+    let skipped = 0
+    setGrid((current) => {
+      const next = { ...current }
+      for (let row = rowStart; row <= rowEnd; row += 1) {
+        if (row % 2 !== targetParity) continue
+        const member = visibleMembers[Math.floor(row / 2)]
+        if (!member) continue
+        for (let day = dayStart; day <= dayEnd; day += 1) {
+          const key = entryKey(member.id, day)
+          const cell = next[key] ?? EMPTY_CELL
+          const value = cell[hourlyHalf]
+          if (value !== '' && value !== '√') {
+            skipped += 1
+            continue
+          }
+          next[key] = { ...cell, ...patch }
+          applied += 1
+        }
+      }
+      return next
+    })
+    setHourlyOpen(false)
+    if (applied === 0) {
+      toast.error('选区内没有可写入小时假的格子')
+    } else {
+      toast.success(
+        `已填写 ${applied} 格小时假${skipped ? `，跳过已标记 ${skipped} 格` : ''}，记得点保存`,
+      )
+    }
   }
 
   const daySymbols = ATTENDANCE_SYMBOLS.filter(({ kind }) => kind === 'day')
@@ -586,6 +703,21 @@ export function AttendanceManager({
               )}
             </Button>
           ))}
+          <Button
+            size="sm"
+            variant="secondary"
+            className="px-2"
+            onClick={() => {
+              if (!selectionBounds) {
+                toast.error('请先在表格中框选要填写小时假的单元格')
+                return
+              }
+              setHourlyOpen(true)
+            }}
+          >
+            <Clock className="mr-1 h-3.5 w-3.5" />
+            小时假
+          </Button>
           <span className="text-xs text-muted-foreground">
             {selectedCount > 0
               ? `已选 ${selectedCount} 格，点击符号批量填充`
@@ -686,6 +818,12 @@ export function AttendanceManager({
                         <div className="text-[9px] font-normal">{label}</div>
                       </TableHead>
                     ))}
+                    <TableHead
+                      className={`${STICKY_HEAD} w-11 px-0.5 text-center text-[11px]`}
+                    >
+                      小时假
+                      <div className="text-[9px] font-normal">小时</div>
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -717,6 +855,7 @@ export function AttendanceManager({
             ))}
             <span>· 未标记</span>
             <span>天数字段按上/下午各计 0.5 天</span>
+            <span>√ 带小时数表示该半天有小时假（1h = 1/7.5 天）</span>
           </div>
           {!canManage && (
             <p className="text-xs text-muted-foreground">考勤由财务维护，如有疑问请联系财务核对。</p>
@@ -759,6 +898,88 @@ export function AttendanceManager({
             <Button disabled={pending || !createMonth} onClick={handleCreate}>
               创建
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={hourlyOpen} onOpenChange={setHourlyOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>填写小时假</DialogTitle>
+            <DialogDescription>
+              只填入选区中指定半天的格子：空白或 √ 会写成「√ + 小时数」，已标记其他符号的格子跳过。
+              上午上班 3.5 小时、下午上班 4 小时，1 小时 = 1/7.5 天。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-1.5">
+              <Label>半天</Label>
+              <Select
+                value={hourlyHalf}
+                onValueChange={(value) => {
+                  const next = value as LeaveHalf
+                  setHourlyHalf(next)
+                  setHourlyHours((current) => Math.min(current, MAX_HOURLY_LEAVE[next]))
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="morning">上午</SelectItem>
+                  <SelectItem value="afternoon">下午</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>类型</Label>
+              <Select
+                value={hourlyType}
+                onValueChange={(value) => setHourlyType(value as LeaveType)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(LEAVE_TYPE_META) as LeaveType[]).map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {LEAVE_TYPE_META[type].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label>时长</Label>
+              <Select
+                value={String(hourlyHours)}
+                onValueChange={(value) => setHourlyHours(Number(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {HOURS_OPTIONS.filter((hours) => hours <= MAX_HOURLY_LEAVE[hourlyHalf]).map(
+                    (hours) => (
+                      <SelectItem key={hours} value={String(hours)}>
+                        {formatLeaveHours(hours)}
+                      </SelectItem>
+                    ),
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {selectedCount > 0
+              ? `已框选 ${selectedCount} 格，只会填写其中${hourlyHalf === 'morning' ? '上午' : '下午'}的格子。`
+              : '请先在表格中框选日期范围。'}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setHourlyOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={applyHourlyLeave}>填写</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -903,6 +1124,19 @@ export function AttendanceManager({
   )
 }
 
+function CellValue({ value, hours }: { value: string; hours: number }) {
+  if (!value) return <span className="text-muted-foreground/40">·</span>
+  if (value === '√' && hours > 0) {
+    return (
+      <span className="inline-flex items-baseline leading-none">
+        √
+        <span className="text-[8px] font-medium text-amber-600">{formatLeaveHours(hours)}</span>
+      </span>
+    )
+  }
+  return <>{value}</>
+}
+
 function MemberRows({
   member,
   memberIndex,
@@ -916,7 +1150,7 @@ function MemberRows({
   member: Pick<AttendanceMember, 'id' | 'name' | 'profile_id'>
   memberIndex: number
   dayNumbers: number[]
-  grid: Record<string, { morning: string; afternoon: string }>
+  grid: Record<string, GridCell>
   editable: boolean
   selectionBounds: {
     rowStart: number
@@ -949,10 +1183,14 @@ function MemberRows({
             {dayNumbers.map((day) => {
               const cell = grid[entryKey(member.id, day)]
               const value = cell?.[half] ?? ''
+              const hours =
+                half === 'morning'
+                  ? Number(cell?.morning_leave_hours ?? 0)
+                  : Number(cell?.afternoon_leave_hours ?? 0)
               if (!editable) {
                 return (
                   <TableCell key={day} className="w-8 px-0.5 text-center text-xs">
-                    {value || <span className="text-muted-foreground">·</span>}
+                    <CellValue value={value} hours={hours} />
                   </TableCell>
                 )
               }
@@ -977,7 +1215,11 @@ function MemberRows({
                       onSelectStart(row, day)
                     }}
                   >
-                    {value || <span className="text-muted-foreground/40">·</span>}
+                    {value ? (
+                      <CellValue value={value} hours={hours} />
+                    ) : (
+                      <span className="text-muted-foreground/40">·</span>
+                    )}
                   </div>
                 </TableCell>
               )
@@ -993,6 +1235,15 @@ function MemberRows({
                   {kind === 'times' && <span className="text-[9px] font-normal"> 次</span>}
                 </TableCell>
               ))}
+            {halfIndex === 0 && (
+              <TableCell rowSpan={2} className="w-11 px-0.5 text-center text-sm font-medium">
+                {summary.hourlyLeaveHours > 0 ? (
+                  formatLeaveHours(summary.hourlyLeaveHours)
+                ) : (
+                  <span className="text-muted-foreground">—</span>
+                )}
+              </TableCell>
+            )}
           </TableRow>
         )
       })}

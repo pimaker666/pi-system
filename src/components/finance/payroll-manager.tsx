@@ -751,7 +751,7 @@ export function PayrollManager({
                           type="number"
                           min="0"
                           max="62"
-                          step="0.5"
+                          step="0.01"
                           className="h-8 w-20 text-right"
                           disabled={locked}
                           value={draft?.attendance_days ?? ''}
