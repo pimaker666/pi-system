@@ -35,6 +35,7 @@ import {
   type FinanceJournalImportRowInput,
 } from '@/schemas/finance'
 import { z } from 'zod'
+import { randomUUID } from 'node:crypto'
 import { approvalRequiredKey, requestApprovalForAction } from '@/lib/approval-gate'
 import type { ActionResult } from './products'
 import type { CurrencyCode } from '@/types'
@@ -663,20 +664,58 @@ export async function saveJournalEntry(
     const { data: existing, error: loadError } = await supabase
       .from('finance_journal_entries')
       .select(
-        'id, account_id, category_id, entry_date, kind, amount_original, currency, exchange_rate_to_cny, summary, counterparty, reference_no, reimbursee, shop, remark, created_by, created_at',
+        'id, account_id, category_id, entry_date, kind, amount_original, currency, exchange_rate_to_cny, summary, counterparty, reference_no, reimbursee, shop, remark, created_by, created_at, split_group_id',
       )
       .eq('id', editingId)
       .is('voided_at', null)
       .maybeSingle()
     if (loadError) return { ok: false, error: loadError.message }
     if (!existing) return { ok: false, error: '分录不存在或已作废，不能编辑' }
+
+    const { data: siblings, error: siblingError } = existing.split_group_id
+      ? await supabase
+          .from('finance_journal_entries')
+          .select('id, created_by, created_at')
+          .eq('split_group_id', existing.split_group_id)
+          .neq('id', editingId)
+          .is('voided_at', null)
+          .order('created_at')
+          .order('id')
+      : { data: [], error: null }
+    if (siblingError) return { ok: false, error: siblingError.message }
+    const siblingRows = siblings ?? []
+    const batchSize = 1 + siblingRows.length
+    if (rows.length > 1 && rows.length < batchSize) {
+      return {
+        ok: false,
+        error: `该笔已拆分为 ${batchSize} 条明细，不能减少条数；如需减少请先作废对应分录`,
+      }
+    }
+    const splitGroupId =
+      rows.length > 1 ? existing.split_group_id ?? randomUUID() : existing.split_group_id
+
     const { error } = await supabase
       .from('finance_journal_entries')
-      .update(rows[0])
+      .update({ ...rows[0], split_group_id: splitGroupId })
       .eq('id', editingId)
     if (error) return { ok: false, error: error.message }
-    const splitRows = rows.slice(1).map((row) => ({
+
+    for (let index = 1; index < Math.min(rows.length, batchSize); index += 1) {
+      const { error: updateError } = await supabase
+        .from('finance_journal_entries')
+        .update({ ...rows[index], split_group_id: splitGroupId })
+        .eq('id', siblingRows[index - 1].id)
+      if (updateError) {
+        return {
+          ok: false,
+          error: `拆分批次更新失败，请刷新后核对：${updateError.message}`,
+        }
+      }
+    }
+
+    const splitRows = rows.slice(batchSize).map((row) => ({
       ...row,
+      split_group_id: splitGroupId,
       created_by: existing.created_by ?? profile.id,
       created_at: existing.created_at,
     }))
@@ -701,17 +740,19 @@ export async function saveJournalEntry(
             reimbursee: existing.reimbursee,
             shop: existing.shop,
             remark: existing.remark,
+            split_group_id: existing.split_group_id,
           })
           .eq('id', editingId)
-        return { ok: false, error: `拆分保存失败，已恢复原分录：${splitError.message}` }
+        return { ok: false, error: `拆分保存失败，请刷新后核对：${splitError.message}` }
       }
     }
     revalidateFinance()
     return { ok: true, saved: rows.length }
   }
+  const splitGroupId = rows.length > 1 ? randomUUID() : null
   const { error } = await supabase
     .from('finance_journal_entries')
-    .insert(rows.map((row) => ({ ...row, created_by: profile.id })))
+    .insert(rows.map((row) => ({ ...row, split_group_id: splitGroupId, created_by: profile.id })))
   if (error) return { ok: false, error: error.message }
   revalidateFinance()
   return { ok: true, saved: rows.length }

@@ -339,6 +339,7 @@ export interface FinanceJournalEntry {
   voided_at: string | null
   voided_by: string | null
   void_reason: string | null
+  split_group_id: string | null
   /** Live-joined account/category/creator via PostgREST embeds. */
   account?: Pick<FinanceJournalAccount, 'id' | 'name' | 'currency'> | null
   category?: Pick<FinanceJournalCategory, 'id' | 'name' | 'kind'> | null

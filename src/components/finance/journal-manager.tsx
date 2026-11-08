@@ -1,9 +1,9 @@
 'use client'
 
-import { FormEvent, useMemo, useRef, useState, useTransition } from 'react'
+import { Fragment, FormEvent, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BarChart3, Download, FileUp, Pencil, Plus, Settings2, Tags, Trash2, Ban } from 'lucide-react'
+import { BarChart3, ChevronDown, ChevronRight, Download, FileUp, Pencil, Plus, Settings2, Tags, Trash2, Ban } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -137,6 +137,7 @@ export function JournalManager({
   // 拆分模式：一笔银行流水按费用性质拆成多条分录，共享账户/日期/摘要/流水号等（新建与编辑均可用）
   const [splitEnabled, setSplitEnabled] = useState(false)
   const [splitLines, setSplitLines] = useState<Array<{ category_id: string; amount: string }>>([])
+  const [collapsedSplits, setCollapsedSplits] = useState<Set<string>>(new Set())
 
   // 作废
   const [voidTarget, setVoidTarget] = useState<FinanceJournalEntry | null>(null)
@@ -187,6 +188,7 @@ export function JournalManager({
     () => splitLines.reduce((sum, line) => sum + (Number(line.amount) > 0 ? Number(line.amount) : 0), 0),
     [splitLines],
   )
+  const groupedEdit = Boolean(editingEntry?.split_group_id)
 
   const shopOptions = useMemo(
     () => [...new Set(entries.map((row) => row.shop).filter((shop): shop is string => Boolean(shop)))].sort(),
@@ -202,6 +204,47 @@ export function JournalManager({
   const pageCount = Math.max(1, Math.ceil(filteredEntries.length / 100))
   const currentPage = Math.min(page, pageCount)
   const visibleEntries = filteredEntries.slice((currentPage - 1) * 100, currentPage * 100)
+
+  // 拆分批次：同 split_group_id 的分录共享账户/日期/摘要等，页面按组展示并汇总整笔金额
+  const splitGroupTotals = useMemo(() => {
+    const map = new Map<string, { count: number; aliveCount: number; original: number; cny: number }>()
+    for (const row of entries) {
+      if (!row.split_group_id) continue
+      const info = map.get(row.split_group_id) ?? { count: 0, aliveCount: 0, original: 0, cny: 0 }
+      info.count += 1
+      if (!row.voided_at) {
+        info.aliveCount += 1
+        info.original += Number(row.amount_original)
+        info.cny += Number(row.amount_cny)
+      }
+      map.set(row.split_group_id, info)
+    }
+    return map
+  }, [entries])
+  const splitFirstIds = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const row of filteredEntries) {
+      if (row.split_group_id && !map.has(row.split_group_id)) {
+        map.set(row.split_group_id, row.id)
+      }
+    }
+    return map
+  }, [filteredEntries])
+  const visibleGroups = useMemo(() => {
+    const groups: Array<{ key: string; splitId: string | null; rows: FinanceJournalEntry[] }> = []
+    const indexByKey = new Map<string, number>()
+    for (const row of visibleEntries) {
+      const key = row.split_group_id ?? row.id
+      const existing = indexByKey.get(key)
+      if (existing === undefined) {
+        indexByKey.set(key, groups.length)
+        groups.push({ key, splitId: row.split_group_id, rows: [row] })
+      } else {
+        groups[existing].rows.push(row)
+      }
+    }
+    return groups
+  }, [visibleEntries])
   const selectableEntries = visibleEntries.filter((row) => !row.voided_at)
   const allVisibleSelected =
     selectableEntries.length > 0 && selectableEntries.every((row) => selectedIds.has(row.id))
@@ -253,11 +296,27 @@ export function JournalManager({
       setEntryAmount(String(Number(entry.amount_original)))
       setEntryCurrency(entry.currency)
       setEntryRate(String(entry.exchange_rate_to_cny))
+      const siblings = entry.split_group_id
+        ? entries
+            .filter((row) => row.split_group_id === entry.split_group_id && !row.voided_at && row.id !== entry.id)
+            .sort((a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id))
+        : []
+      if (siblings.length > 0) {
+        setSplitEnabled(true)
+        setSplitLines([
+          { category_id: entry.category_id, amount: String(Number(entry.amount_original)) },
+          ...siblings.map((row) => ({
+            category_id: row.category_id,
+            amount: String(Number(row.amount_original)),
+          })),
+        ])
+      } else {
+        setSplitEnabled(false)
+        setSplitLines([])
+      }
     } else {
       resetEntryForm()
     }
-    setSplitEnabled(false)
-    setSplitLines([])
     setEntryDialogOpen(true)
   }
 
@@ -269,6 +328,7 @@ export function JournalManager({
   }
 
   function toggleSplitMode() {
+    if (groupedEdit) return
     if (splitEnabled) {
       setEntryCategory(splitLines[0]?.category_id ?? entryCategory)
       setEntryAmount(splitLines[0]?.amount ?? '')
@@ -312,9 +372,11 @@ export function JournalManager({
       }
       toast.success(
         editingEntry
-          ? result.saved && result.saved > 1
-            ? `已更新并拆分为 ${result.saved} 条分录`
-            : '分录已更新'
+          ? editingEntry.split_group_id && result.saved && result.saved > 1
+            ? `已更新拆分批次（${result.saved} 条）`
+            : result.saved && result.saved > 1
+              ? `已更新并拆分为 ${result.saved} 条分录`
+              : '分录已更新'
           : result.saved && result.saved > 1
             ? `已登记 ${result.saved} 条分录（同一笔流水）`
             : '分录已登记',
@@ -349,6 +411,15 @@ export function JournalManager({
       const next = new Set(current)
       if (next.has(id)) next.delete(id)
       else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSplitCollapse(splitId: string) {
+    setCollapsedSplits((current) => {
+      const next = new Set(current)
+      if (next.has(splitId)) next.delete(splitId)
+      else next.add(splitId)
       return next
     })
   }
@@ -662,6 +733,155 @@ export function JournalManager({
     }
   }
 
+  function renderEntryRow(
+    row: FinanceJournalEntry,
+    shared: {
+      rowSpan: number
+      splitId: string
+      totalCount: number
+      chunkCount: number
+      voidedCount: number
+      collapsed: boolean
+    } | null,
+    first: boolean,
+  ) {
+    const showShared = shared === null || first
+    return (
+      <TableRow key={row.id} className={cn(row.voided_at && 'opacity-50')}>
+        <TableCell>
+          {row.voided_at ? null : (
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-primary"
+              checked={selectedIds.has(row.id)}
+              onChange={() => toggleRow(row.id)}
+              aria-label="选择分录"
+            />
+          )}
+        </TableCell>
+        {showShared && (
+          <>
+            <TableCell
+              rowSpan={shared?.rowSpan}
+              className={cn('whitespace-nowrap align-top', !shared && row.voided_at && 'line-through')}
+            >
+              {formatDate(row.entry_date)}
+            </TableCell>
+            <TableCell rowSpan={shared?.rowSpan} className="align-top">
+              {row.account?.name ?? '—'}
+            </TableCell>
+            <TableCell rowSpan={shared?.rowSpan} className="align-top">
+              <Badge variant={row.kind === 'income' ? 'success' : 'secondary'}>
+                {FINANCE_TRANSACTION_LABELS[row.kind]}
+              </Badge>
+            </TableCell>
+          </>
+        )}
+        <TableCell>{row.category?.name ?? '—'}</TableCell>
+        {showShared && (
+          <>
+            <TableCell rowSpan={shared?.rowSpan} className="align-top">
+              <div className={cn('font-medium', !shared && row.voided_at && 'line-through')}>
+                {row.summary}
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {shared === null && row.voided_at
+                  ? `已作废：${row.void_reason ?? ''}`
+                  : [
+                      row.counterparty ? `对方：${row.counterparty}` : '',
+                      row.reimbursee ? `报销：${row.reimbursee}` : '',
+                      row.reference_no ? `流水：${row.reference_no}` : '',
+                      row.remark ?? '',
+                    ]
+                      .filter(Boolean)
+                      .join(' · ') || '—'}
+              </div>
+              {shared ? (
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-100"
+                    onClick={() => toggleSplitCollapse(shared.splitId)}
+                    aria-expanded={!shared.collapsed}
+                  >
+                    {shared.collapsed ? (
+                      <ChevronRight className="h-3 w-3" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3" />
+                    )}
+                    拆分 {shared.totalCount} 条
+                  </button>
+                  {shared.chunkCount < shared.totalCount ? (
+                    <span className="text-[11px] text-muted-foreground">
+                      本页可见 {shared.chunkCount} 条
+                    </span>
+                  ) : null}
+                  {shared.voidedCount > 0 ? (
+                    <span className="text-[11px] text-muted-foreground">
+                      {shared.voidedCount} 条已作废
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+            </TableCell>
+            <TableCell rowSpan={shared?.rowSpan} className="align-top">
+              {row.shop ? <Badge variant="outline">{row.shop}</Badge> : '—'}
+            </TableCell>
+          </>
+        )}
+        <TableCell
+          className={cn(
+            'text-right',
+            row.kind === 'income' ? 'text-emerald-600' : 'text-destructive',
+            row.voided_at && 'line-through',
+          )}
+        >
+          {row.kind === 'income' ? '+' : '−'}
+          {formatCurrency(Number(row.amount_original), row.currency)}
+        </TableCell>
+        <TableCell className={cn('text-right font-medium', row.voided_at && 'line-through')}>
+          {formatCny(Number(row.amount_cny))}
+        </TableCell>
+        <TableCell className="text-right text-sm text-muted-foreground">
+          {row.voided_at
+            ? '—'
+            : formatCurrency(runningBalances[row.id] ?? 0, row.account?.currency ?? 'CNY')}
+        </TableCell>
+        {showShared && (
+          <TableCell rowSpan={shared?.rowSpan} className="align-top">
+            {displayProfileName(row.creator)}
+          </TableCell>
+        )}
+        <TableCell>
+          {row.voided_at ? (
+            <Badge variant="outline">已作废</Badge>
+          ) : (
+            <div className="flex items-center">
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={pending}
+                onClick={() => openEntryDialog(row)}
+                aria-label={row.split_group_id ? '编辑拆分批次' : '编辑分录'}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={pending}
+                onClick={() => { setVoidTarget(row); setVoidReason('') }}
+                aria-label="作废分录"
+              >
+                <Ban className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          )}
+        </TableCell>
+      </TableRow>
+    )
+  }
+
   const totalIncomeCny = balances.reduce((sum, b) => sum + Number(b.total_income_cny), 0)
   const totalExpenseCny = balances.reduce((sum, b) => sum + Number(b.total_expense_cny), 0)
 
@@ -906,94 +1126,56 @@ export function JournalManager({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {visibleEntries.map((row) => (
-              <TableRow key={row.id} className={cn(row.voided_at && 'opacity-50')}>
-                <TableCell>
-                  {row.voided_at ? null : (
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 accent-primary"
-                      checked={selectedIds.has(row.id)}
-                      onChange={() => toggleRow(row.id)}
-                      aria-label="选择分录"
-                    />
-                  )}
-                </TableCell>
-                <TableCell className={cn(row.voided_at && 'line-through')}>
-                  {formatDate(row.entry_date)}
-                </TableCell>
-                <TableCell>{row.account?.name ?? '—'}</TableCell>
-                <TableCell>
-                  <Badge variant={row.kind === 'income' ? 'success' : 'secondary'}>
-                    {FINANCE_TRANSACTION_LABELS[row.kind]}
-                  </Badge>
-                </TableCell>
-                <TableCell>{row.category?.name ?? '—'}</TableCell>
-                <TableCell>
-                  <div className={cn('font-medium', row.voided_at && 'line-through')}>{row.summary}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {row.voided_at
-                      ? `已作废：${row.void_reason ?? ''}`
-                      : [
-                          row.counterparty ? `对方：${row.counterparty}` : '',
-                          row.reimbursee ? `报销：${row.reimbursee}` : '',
-                          row.reference_no ? `流水：${row.reference_no}` : '',
-                          row.remark ?? '',
-                        ]
-                          .filter(Boolean)
-                          .join(' · ') || '—'}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {row.shop ? <Badge variant="outline">{row.shop}</Badge> : '—'}
-                </TableCell>
-                <TableCell
-                  className={cn(
-                    'text-right',
-                    row.kind === 'income' ? 'text-emerald-600' : 'text-destructive',
-                    row.voided_at && 'line-through',
-                  )}
-                >
-                  {row.kind === 'income' ? '+' : '−'}
-                  {formatCurrency(Number(row.amount_original), row.currency)}
-                </TableCell>
-                <TableCell className={cn('text-right font-medium', row.voided_at && 'line-through')}>
-                  {formatCny(Number(row.amount_cny))}
-                </TableCell>
-                <TableCell className="text-right text-sm text-muted-foreground">
-                  {row.voided_at
-                    ? '—'
-                    : formatCurrency(runningBalances[row.id] ?? 0, row.account?.currency ?? 'CNY')}
-                </TableCell>
-                <TableCell>{displayProfileName(row.creator)}</TableCell>
-                <TableCell>
-                  {row.voided_at ? (
-                    <Badge variant="outline">已作废</Badge>
-                  ) : (
-                    <div className="flex items-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={pending}
-                        onClick={() => openEntryDialog(row)}
-                        aria-label="编辑分录"
+            {visibleGroups.map((group) => {
+              const info = group.splitId ? splitGroupTotals.get(group.splitId) : undefined
+              const isSplit = Boolean(group.splitId && info && info.count > 1)
+              const collapsed = Boolean(group.splitId && collapsedSplits.has(group.splitId))
+              const rowsToRender = isSplit && collapsed ? group.rows.slice(0, 1) : group.rows
+              const shared =
+                isSplit && group.splitId && info
+                  ? {
+                      rowSpan: rowsToRender.length,
+                      splitId: group.splitId,
+                      totalCount: info.count,
+                      chunkCount: group.rows.length,
+                      voidedCount: info.count - info.aliveCount,
+                      collapsed,
+                    }
+                  : null
+              const showSubtotal = Boolean(
+                isSplit &&
+                  group.splitId &&
+                  info &&
+                  info.aliveCount > 0 &&
+                  group.rows[0].id === splitFirstIds.get(group.splitId),
+              )
+              return (
+                <Fragment key={group.key}>
+                  {rowsToRender.map((row, index) => renderEntryRow(row, shared, index === 0))}
+                  {showSubtotal && info ? (
+                    <TableRow key={`${group.key}-subtotal`} className="bg-sky-50/70 hover:bg-sky-50/70">
+                      <TableCell colSpan={5} />
+                      <TableCell colSpan={2} className="text-xs text-muted-foreground">
+                        本笔合计 · {info.aliveCount} 条未作废明细
+                      </TableCell>
+                      <TableCell
+                        className={cn(
+                          'text-right font-semibold',
+                          group.rows[0].kind === 'income' ? 'text-emerald-600' : 'text-destructive',
+                        )}
                       >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        disabled={pending}
-                        onClick={() => { setVoidTarget(row); setVoidReason('') }}
-                        aria-label="作废分录"
-                      >
-                        <Ban className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
+                        {group.rows[0].kind === 'income' ? '+' : '−'}
+                        {formatCurrency(info.original, group.rows[0].currency)}
+                      </TableCell>
+                      <TableCell className="text-right font-semibold">
+                        {formatCny(info.cny)}
+                      </TableCell>
+                      <TableCell colSpan={3} />
+                    </TableRow>
+                  ) : null}
+                </Fragment>
+              )
+            })}
             {filteredEntries.length === 0 && (
               <TableRow>
                 <TableCell colSpan={12} className="py-12 text-center text-muted-foreground">
@@ -1269,18 +1451,24 @@ export function JournalManager({
               </Select>
             </div>
             <div className="sm:col-span-2">
-              <Button
-                type="button"
-                variant={splitEnabled ? 'secondary' : 'outline'}
-                size="sm"
-                onClick={toggleSplitMode}
-              >
-                {splitEnabled
-                  ? '退出拆分模式'
-                  : editingEntry
-                    ? '拆分模式：把这条分录拆成多条（按费用性质）'
-                    : '拆分模式：一笔流水按费用性质记多条分录'}
-              </Button>
+              {groupedEdit ? (
+                <p className="text-xs text-muted-foreground">
+                  该分录属于拆分批次，保存时整批一起更新；如需减少条数，请先作废对应分录。
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  variant={splitEnabled ? 'secondary' : 'outline'}
+                  size="sm"
+                  onClick={toggleSplitMode}
+                >
+                  {splitEnabled
+                    ? '退出拆分模式'
+                    : editingEntry
+                      ? '拆分模式：把这条分录拆成多条（按费用性质）'
+                      : '拆分模式：一笔流水按费用性质记多条分录'}
+                </Button>
+              )}
             </div>
             {splitEnabled ? (
               <div className="space-y-2 sm:col-span-2">
