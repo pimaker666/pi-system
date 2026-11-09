@@ -134,9 +134,12 @@ export function JournalManager({
   const [entryAmount, setEntryAmount] = useState('')
   const [entryCurrency, setEntryCurrency] = useState<CurrencyCode>('CNY')
   const [entryRate, setEntryRate] = useState('1')
-  // 拆分模式：一笔银行流水按费用性质拆成多条分录，共享账户/日期/摘要/流水号等（新建与编辑均可用）
+  const [entrySummary, setEntrySummary] = useState('')
+  // 拆分模式：一笔银行流水按费用性质拆成多条分录，共享账户/日期/流水号等，摘要按行各自填写
   const [splitEnabled, setSplitEnabled] = useState(false)
-  const [splitLines, setSplitLines] = useState<Array<{ category_id: string; amount: string }>>([])
+  const [splitLines, setSplitLines] = useState<
+    Array<{ category_id: string; amount: string; summary: string }>
+  >([])
   const [collapsedSplits, setCollapsedSplits] = useState<Set<string>>(new Set())
 
   // 作废
@@ -283,6 +286,7 @@ export function JournalManager({
     setEntryAmount('')
     setEntryCurrency(activeAccounts[0]?.currency ?? 'CNY')
     setEntryRate(!activeAccounts[0] || activeAccounts[0].currency === 'CNY' ? '1' : '')
+    setEntrySummary('')
     setSplitEnabled(false)
     setSplitLines([])
   }
@@ -296,6 +300,7 @@ export function JournalManager({
       setEntryAmount(String(Number(entry.amount_original)))
       setEntryCurrency(entry.currency)
       setEntryRate(String(entry.exchange_rate_to_cny))
+      setEntrySummary(entry.summary)
       const siblings = entry.split_group_id
         ? entries
             .filter((row) => row.split_group_id === entry.split_group_id && !row.voided_at && row.id !== entry.id)
@@ -304,10 +309,15 @@ export function JournalManager({
       if (siblings.length > 0) {
         setSplitEnabled(true)
         setSplitLines([
-          { category_id: entry.category_id, amount: String(Number(entry.amount_original)) },
+          {
+            category_id: entry.category_id,
+            amount: String(Number(entry.amount_original)),
+            summary: entry.summary,
+          },
           ...siblings.map((row) => ({
             category_id: row.category_id,
             amount: String(Number(row.amount_original)),
+            summary: row.summary,
           })),
         ])
       } else {
@@ -332,19 +342,23 @@ export function JournalManager({
     if (splitEnabled) {
       setEntryCategory(splitLines[0]?.category_id ?? entryCategory)
       setEntryAmount(splitLines[0]?.amount ?? '')
+      setEntrySummary(splitLines[0]?.summary ?? entrySummary)
       setSplitEnabled(false)
       return
     }
     setSplitEnabled(true)
-    setSplitLines([{ category_id: entryCategory, amount: entryAmount }])
+    setSplitLines([{ category_id: entryCategory, amount: entryAmount, summary: entrySummary }])
   }
 
-  function patchSplitLine(index: number, patch: Partial<{ category_id: string; amount: string }>) {
+  function patchSplitLine(
+    index: number,
+    patch: Partial<{ category_id: string; amount: string; summary: string }>,
+  ) {
     setSplitLines((current) => current.map((line, i) => (i === index ? { ...line, ...patch } : line)))
   }
 
   function addSplitLine() {
-    setSplitLines((current) => [...current, { category_id: '', amount: '' }])
+    setSplitLines((current) => [...current, { category_id: '', amount: '', summary: '' }])
   }
 
   function removeSplitLine(index: number) {
@@ -778,56 +792,56 @@ export function JournalManager({
           </>
         )}
         <TableCell>{row.category?.name ?? '—'}</TableCell>
-        {showShared && (
-          <>
-            <TableCell rowSpan={shared?.rowSpan} className="align-top">
-              <div className={cn('font-medium', !shared && row.voided_at && 'line-through')}>
-                {row.summary}
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {shared === null && row.voided_at
-                  ? `已作废：${row.void_reason ?? ''}`
-                  : [
-                      row.counterparty ? `对方：${row.counterparty}` : '',
-                      row.reimbursee ? `报销：${row.reimbursee}` : '',
-                      row.reference_no ? `流水：${row.reference_no}` : '',
-                      row.remark ?? '',
-                    ]
-                      .filter(Boolean)
-                      .join(' · ') || '—'}
-              </div>
-              {shared ? (
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-100"
-                    onClick={() => toggleSplitCollapse(shared.splitId)}
-                    aria-expanded={!shared.collapsed}
-                  >
-                    {shared.collapsed ? (
-                      <ChevronRight className="h-3 w-3" />
-                    ) : (
-                      <ChevronDown className="h-3 w-3" />
-                    )}
-                    拆分 {shared.totalCount} 条
-                  </button>
-                  {shared.chunkCount < shared.totalCount ? (
-                    <span className="text-[11px] text-muted-foreground">
-                      本页可见 {shared.chunkCount} 条
-                    </span>
-                  ) : null}
-                  {shared.voidedCount > 0 ? (
-                    <span className="text-[11px] text-muted-foreground">
-                      {shared.voidedCount} 条已作废
-                    </span>
-                  ) : null}
-                </div>
+        <TableCell className="align-top">
+          <div className={cn('font-medium', !shared && row.voided_at && 'line-through')}>
+            {row.summary}
+          </div>
+          {first ? (
+            <div className="text-xs text-muted-foreground">
+              {shared === null && row.voided_at
+                ? `已作废：${row.void_reason ?? ''}`
+                : [
+                    row.counterparty ? `对方：${row.counterparty}` : '',
+                    row.reimbursee ? `报销：${row.reimbursee}` : '',
+                    row.reference_no ? `流水：${row.reference_no}` : '',
+                    row.remark ?? '',
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || '—'}
+            </div>
+          ) : null}
+          {shared && first ? (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 transition-colors hover:bg-sky-100"
+                onClick={() => toggleSplitCollapse(shared.splitId)}
+                aria-expanded={!shared.collapsed}
+              >
+                {shared.collapsed ? (
+                  <ChevronRight className="h-3 w-3" />
+                ) : (
+                  <ChevronDown className="h-3 w-3" />
+                )}
+                拆分 {shared.totalCount} 条
+              </button>
+              {shared.chunkCount < shared.totalCount ? (
+                <span className="text-[11px] text-muted-foreground">
+                  本页可见 {shared.chunkCount} 条
+                </span>
               ) : null}
-            </TableCell>
-            <TableCell rowSpan={shared?.rowSpan} className="align-top">
-              {row.shop ? <Badge variant="outline">{row.shop}</Badge> : '—'}
-            </TableCell>
-          </>
+              {shared.voidedCount > 0 ? (
+                <span className="text-[11px] text-muted-foreground">
+                  {shared.voidedCount} 条已作废
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+        </TableCell>
+        {showShared && (
+          <TableCell rowSpan={shared?.rowSpan} className="align-top">
+            {row.shop ? <Badge variant="outline">{row.shop}</Badge> : '—'}
+          </TableCell>
         )}
         <TableCell
           className={cn(
@@ -1424,7 +1438,7 @@ export function JournalManager({
           <DialogHeader>
             <DialogTitle>{editingEntry ? '编辑分录' : '记一笔'}</DialogTitle>
             <DialogDescription>
-              登记银行账户的收入或支出；账户与分类可在「账户管理」「分类管理」中维护。一笔流水含多种费用性质时可开拆分模式，按行各记一个分类；编辑导入的分录时同样可拆分。
+              登记银行账户的收入或支出；账户与分类可在「账户管理」「分类管理」中维护。一笔流水含多种费用性质时可开拆分模式，按行各记一个分类、金额与摘要；编辑导入的分录时同样可拆分。
             </DialogDescription>
           </DialogHeader>
           <form key={editingEntry?.id ?? 'new'} className="grid gap-4 sm:grid-cols-2" onSubmit={handleEntrySubmit}>
@@ -1482,7 +1496,7 @@ export function JournalManager({
                 <div className="space-y-2">
                   {splitLines.map((line, index) => (
                     <div key={index} className="flex items-end gap-2">
-                      <div className="flex-1 space-y-1">
+                      <div className="min-w-0 flex-1 space-y-1">
                         {index === 0 ? <p className="text-xs text-muted-foreground">分类</p> : null}
                         <Select
                           name="category_id"
@@ -1498,7 +1512,7 @@ export function JournalManager({
                           </SelectContent>
                         </Select>
                       </div>
-                      <div className="w-36 space-y-1">
+                      <div className="w-32 shrink-0 space-y-1">
                         {index === 0 ? <p className="text-xs text-muted-foreground">金额</p> : null}
                         <Input
                           name="amount_original"
@@ -1507,6 +1521,16 @@ export function JournalManager({
                           step="0.0001"
                           value={line.amount}
                           onChange={(event) => patchSplitLine(index, { amount: event.target.value })}
+                          required
+                        />
+                      </div>
+                      <div className="min-w-0 flex-[1.5] space-y-1">
+                        {index === 0 ? <p className="text-xs text-muted-foreground">摘要（每条单独填写）</p> : null}
+                        <Input
+                          name="line_summary"
+                          value={line.summary}
+                          onChange={(event) => patchSplitLine(index, { summary: event.target.value })}
+                          placeholder="该笔摘要"
                           required
                         />
                       </div>
@@ -1525,7 +1549,7 @@ export function JournalManager({
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  合计 {formatCurrency(splitTotal, entryCurrency)}；每条分录共享上方账户、日期、摘要、流水号等信息，分类汇总与报销人统计按行各自归集。
+                  合计 {formatCurrency(splitTotal, entryCurrency)}；每条分录共享上方账户、日期、流水号、报销人等信息，摘要与分类、金额按行各自填写。
                 </p>
               </div>
             ) : (
@@ -1586,16 +1610,19 @@ export function JournalManager({
                 required
               />
             </div>
-            <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="journal-summary">摘要</Label>
-              <Input
-                id="journal-summary"
-                name="summary"
-                placeholder="例如：支付 10 月供应商货款"
-                defaultValue={editingEntry?.summary ?? ''}
-                required
-              />
-            </div>
+            {!splitEnabled && (
+              <div className="space-y-2 sm:col-span-2">
+                <Label htmlFor="journal-summary">摘要</Label>
+                <Input
+                  id="journal-summary"
+                  name="summary"
+                  placeholder="例如：支付 10 月供应商货款"
+                  value={entrySummary}
+                  onChange={(event) => setEntrySummary(event.target.value)}
+                  required
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label htmlFor="journal-counterparty">收/付款人（可选）</Label>
               <Input

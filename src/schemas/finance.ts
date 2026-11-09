@@ -128,8 +128,8 @@ export const financeJournalEntrySchema = z.object({
   remark: z.string().trim().max(1000).optional().default(''),
 })
 
-// 「记一笔」拆分模式：一笔银行流水按费用性质拆成多条分录，每行一个分类 + 金额，
-// 其余字段（账户 / 日期 / 摘要 / 流水号 / 报销人等）由外层表单共享。
+// 「记一笔」拆分模式：一笔银行流水按费用性质拆成多条分录，每行一个分类 + 金额 + 摘要，
+// 其余字段（账户 / 日期 / 流水号 / 报销人等）由外层表单共享。
 export const financeJournalEntryLineSchema = z.object({
   category_id: z.string().uuid('请选择分类'),
   amount_original: z.coerce
@@ -137,6 +137,7 @@ export const financeJournalEntryLineSchema = z.object({
     .positive('金额必须大于 0')
     .max(999999999999, '金额超出允许范围')
     .refine(scale4Refine, '金额最多保留 4 位小数'),
+  summary: z.string().trim().min(1, '请输入该笔摘要').max(500, '摘要最多 500 字'),
 })
 
 export const financeJournalAccountSchema = z.object({

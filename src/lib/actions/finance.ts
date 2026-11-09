@@ -580,18 +580,25 @@ export async function saveJournalEntry(
   const entryId = formData.get('entry_id')
   const editingId =
     typeof entryId === 'string' && /^[0-9a-f-]{36}$/i.test(entryId) ? entryId : null
-  // 拆分模式下表单含多组同名 category_id / amount_original；单笔记一笔时各只有 1 个。
+  // 拆分模式下表单含多组同名 category_id / amount_original / line_summary；单笔记一笔时各只有 1 个。
   const lineCategories = formData.getAll('category_id')
   const lineAmounts = formData.getAll('amount_original')
+  const lineSummaries = formData.getAll('line_summary')
   if (lineCategories.length === 0 || lineCategories.length !== lineAmounts.length) {
     return { ok: false, error: '分录明细数据不完整，请重新填写' }
   }
   if (lineCategories.length > 50) {
     return { ok: false, error: '单笔最多拆分 50 条分录' }
   }
+  // 是否拆分以「表单带了行级 line_summary」为准：拆分 UI 哪怕只剩 1 行也不渲染共享摘要字段
+  const isSplit = lineSummaries.length > 0
+  if (isSplit && lineSummaries.length !== lineCategories.length) {
+    return { ok: false, error: '拆分明细的摘要数据不完整，请重新填写' }
+  }
   const lineInputs = lineCategories.map((category_id, index) => ({
     category_id,
     amount_original: lineAmounts[index],
+    summary: isSplit ? lineSummaries[index] : formData.get('summary'),
   }))
   const parsedLines = z.array(financeJournalEntryLineSchema).safeParse(lineInputs)
   if (!parsedLines.success) {
@@ -611,7 +618,7 @@ export async function saveJournalEntry(
     amount_original: lineInputs[0].amount_original,
     currency: formData.get('currency'),
     exchange_rate_to_cny: formData.get('exchange_rate_to_cny'),
-    summary: formData.get('summary'),
+    summary: lineInputs[0].summary ?? '',
     counterparty: formData.get('counterparty') || '',
     reference_no: formData.get('reference_no') || '',
     reimbursee: formData.get('reimbursee') || '',
@@ -647,7 +654,6 @@ export async function saveJournalEntry(
     kind: parsed.data.kind,
     currency: parsed.data.currency,
     exchange_rate_to_cny: normalizedRate(parsed.data.currency, parsed.data.exchange_rate_to_cny),
-    summary: parsed.data.summary,
     counterparty: parsed.data.counterparty || null,
     reference_no: parsed.data.reference_no || null,
     reimbursee: parsed.data.reimbursee || null,
@@ -658,6 +664,7 @@ export async function saveJournalEntry(
     ...payload,
     category_id: line.category_id,
     amount_original: line.amount_original,
+    summary: line.summary,
   }))
 
   if (editingId) {
