@@ -3,10 +3,18 @@
 import { Fragment, FormEvent, useMemo, useRef, useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { BarChart3, ChevronDown, ChevronRight, Download, FileUp, Pencil, Plus, Settings2, Tags, Trash2, Ban } from 'lucide-react'
+import { BarChart3, Check, ChevronDown, ChevronRight, ChevronsUpDown, Download, FileUp, Pencil, Plus, Settings2, Tags, Trash2, Ban } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import {
   Dialog,
   DialogContent,
@@ -17,6 +25,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -60,6 +69,7 @@ import type {
   FinanceJournalCategory,
   FinanceJournalEntry,
   FinanceJournalImportRule,
+  FinanceReimbursementRequest,
   FinanceTransactionType,
   Profile,
 } from '@/types'
@@ -73,6 +83,7 @@ interface JournalManagerProps {
   rules: FinanceJournalImportRule[]
   runningBalances: Record<string, number>
   members: Array<Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>>
+  reimbursements: FinanceReimbursementRequest[]
 }
 
 interface ImportPreviewRow extends JournalImportParsedRow {
@@ -107,6 +118,7 @@ export function JournalManager({
   rules,
   runningBalances,
   members,
+  reimbursements,
 }: JournalManagerProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -135,12 +147,16 @@ export function JournalManager({
   const [entryCurrency, setEntryCurrency] = useState<CurrencyCode>('CNY')
   const [entryRate, setEntryRate] = useState('1')
   const [entrySummary, setEntrySummary] = useState('')
+  const [entryReimbursee, setEntryReimbursee] = useState('')
   // 拆分模式：一笔银行流水按费用性质拆成多条分录，共享账户/日期/流水号等，摘要按行各自填写
   const [splitEnabled, setSplitEnabled] = useState(false)
   const [splitLines, setSplitLines] = useState<
     Array<{ category_id: string; amount: string; summary: string }>
   >([])
   const [collapsedSplits, setCollapsedSplits] = useState<Set<string>>(new Set())
+  // 从已完成的报销单导入拆分明细
+  const [importReimbursementId, setImportReimbursementId] = useState('')
+  const [importPickerOpen, setImportPickerOpen] = useState(false)
 
   // 作废
   const [voidTarget, setVoidTarget] = useState<FinanceJournalEntry | null>(null)
@@ -187,6 +203,19 @@ export function JournalManager({
   const reimburseeRequired = splitEnabled
     ? splitLines.some((line) => reimbursementCategoryIds.has(line.category_id))
     : kindCategories.find((category) => category.id === entryCategory)?.name === REIMBURSEMENT_CATEGORY_NAME
+  // 拆分导入：仅支出类型可导入；报销分类不在当前支出分类里时行分类留空由用户手选
+  const importableReimbursements = useMemo(
+    () => reimbursements.filter((request) => (request.items?.length ?? 0) > 0),
+    [reimbursements],
+  )
+  const defaultSplitCategoryId = useMemo(
+    () => kindCategories.find((category) => category.name === REIMBURSEMENT_CATEGORY_NAME)?.id ?? '',
+    [kindCategories],
+  )
+  const selectedImportReimbursement = useMemo(
+    () => importableReimbursements.find((request) => request.id === importReimbursementId) ?? null,
+    [importableReimbursements, importReimbursementId],
+  )
   const splitTotal = useMemo(
     () => splitLines.reduce((sum, line) => sum + (Number(line.amount) > 0 ? Number(line.amount) : 0), 0),
     [splitLines],
@@ -287,8 +316,10 @@ export function JournalManager({
     setEntryCurrency(activeAccounts[0]?.currency ?? 'CNY')
     setEntryRate(!activeAccounts[0] || activeAccounts[0].currency === 'CNY' ? '1' : '')
     setEntrySummary('')
+    setEntryReimbursee('')
     setSplitEnabled(false)
     setSplitLines([])
+    setImportReimbursementId('')
   }
 
   function openEntryDialog(entry?: FinanceJournalEntry) {
@@ -301,6 +332,8 @@ export function JournalManager({
       setEntryCurrency(entry.currency)
       setEntryRate(String(entry.exchange_rate_to_cny))
       setEntrySummary(entry.summary)
+      setEntryReimbursee(entry.reimbursee ?? '')
+      setImportReimbursementId('')
       const siblings = entry.split_group_id
         ? entries
             .filter((row) => row.split_group_id === entry.split_group_id && !row.voided_at && row.id !== entry.id)
@@ -363,6 +396,29 @@ export function JournalManager({
 
   function removeSplitLine(index: number) {
     setSplitLines((current) => (current.length <= 1 ? current : current.filter((_, i) => i !== index)))
+  }
+
+  // 选择已完成的报销单：明细逐行生成拆分（摘要带项目名前缀、金额取明细合计、分类默认报销），导入后可手改
+  function applyReimbursement(requestId: string) {
+    setImportReimbursementId(requestId)
+    const request = importableReimbursements.find((row) => row.id === requestId)
+    if (!request) return
+    setSplitLines(
+      [...(request.items ?? [])]
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map((item) => ({
+          category_id: defaultSplitCategoryId,
+          amount: String(Number(item.amount)),
+          summary: request.project_name ? `${request.project_name} ${item.summary}` : item.summary,
+        })),
+    )
+    const applicantName = displayProfileName(request.applicant)
+    if (applicantName) setEntryReimbursee(applicantName)
+  }
+
+  function reimbursementOptionLabel(request: FinanceReimbursementRequest) {
+    const total = (request.items ?? []).reduce((sum, item) => sum + Number(item.amount), 0)
+    return `${request.completed_at ? formatDate(request.completed_at) : ''} 完成 · ${displayProfileName(request.applicant)} · ${formatCny(total)}`
   }
 
   function handleEntryAccountChange(value: string) {
@@ -1493,6 +1549,50 @@ export function JournalManager({
                     添加一笔
                   </Button>
                 </div>
+                {entryKind === 'expense' && importableReimbursements.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Popover open={importPickerOpen} onOpenChange={setImportPickerOpen}>
+                      <PopoverTrigger asChild>
+                        <Button type="button" variant="outline" className="w-full justify-between font-normal sm:w-96">
+                          <span className={selectedImportReimbursement ? 'truncate' : 'truncate text-muted-foreground'}>
+                            {selectedImportReimbursement
+                              ? reimbursementOptionLabel(selectedImportReimbursement)
+                              : '从已完成的报销单导入明细（可输入报销人/金额/日期搜索）'}
+                          </span>
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[--radix-popover-trigger-width] min-w-[320px] p-0" align="start">
+                        <Command>
+                          <CommandInput placeholder="搜索报销人 / 金额 / 完成日期…" />
+                          <CommandList>
+                            <CommandEmpty>未找到匹配的报销单</CommandEmpty>
+                            <CommandGroup>
+                              {importableReimbursements.map((request) => (
+                                <CommandItem
+                                  key={request.id}
+                                  value={reimbursementOptionLabel(request)}
+                                  onSelect={() => {
+                                    applyReimbursement(request.id)
+                                    setImportPickerOpen(false)
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      'mr-2 h-4 w-4 shrink-0',
+                                      importReimbursementId === request.id ? 'opacity-100' : 'opacity-0',
+                                    )}
+                                  />
+                                  <span className="truncate">{reimbursementOptionLabel(request)}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                )}
                 <div className="space-y-2">
                   {splitLines.map((line, index) => (
                     <div key={index} className="flex items-end gap-2">
@@ -1550,6 +1650,9 @@ export function JournalManager({
                 </div>
                 <p className="text-xs text-muted-foreground">
                   合计 {formatCurrency(splitTotal, entryCurrency)}；每条分录共享上方账户、日期、流水号、报销人等信息，摘要与分类、金额按行各自填写。
+                  {entryKind === 'expense' && importableReimbursements.length > 0
+                    ? ' 选择报销单导入会按明细自动生成各行（分类默认「报销」），导入后可手动修改再保存。'
+                    : ''}
                 </p>
               </div>
             ) : (
@@ -1639,7 +1742,8 @@ export function JournalManager({
                 name="reimbursee"
                 placeholder={reimburseeRequired ? '选择「报销」分类时必填' : '用于按人统计报销'}
                 list="journal-member-options"
-                defaultValue={editingEntry?.reimbursee ?? ''}
+                value={entryReimbursee}
+                onChange={(event) => setEntryReimbursee(event.target.value)}
                 required={reimburseeRequired}
               />
             </div>

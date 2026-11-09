@@ -8,6 +8,7 @@ import type {
   FinanceJournalAccountBalance,
   FinanceJournalCategory,
   FinanceJournalImportRule,
+  FinanceReimbursementRequest,
   Profile,
 } from '@/types'
 
@@ -30,12 +31,17 @@ export default async function FinanceJournalPage() {
       fetchAllJournalRows<Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>>((from, to) => supabase
         .from('profiles').select('id, chinese_name, full_name, email')
         .eq('status', 'approved').order('chinese_name').order('id').range(from, to)),
+      fetchAllJournalRows<FinanceReimbursementRequest>((from, to) => supabase
+        .from('finance_reimbursement_requests')
+        .select('*, applicant:profiles!finance_reimbursement_requests_applicant_id_fkey(id, chinese_name, full_name, email), items:finance_reimbursement_items(*)')
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false }).order('id').range(from, to)),
     ])
   } catch {
     return <div role="alert" className="rounded-lg border p-6">日记账读取失败，请刷新重试；未显示不完整的余额或流水。</div>
   }
 
-  const [{ accounts, entries, runningBalances }, categories, balances, rules, members] = data
+  const [{ accounts, entries, runningBalances }, categories, balances, rules, members, reimbursements] = data
   const monthFlowMap = new Map<string, { income: number; expense: number }>()
   for (const row of entries) {
     if (row.voided_at || row.entry_date < month.from || row.entry_date > month.to) continue
@@ -63,6 +69,7 @@ export default async function FinanceJournalPage() {
         rules={rules}
         runningBalances={runningBalances}
         members={members}
+        reimbursements={reimbursements}
       />
     </div>
   )
