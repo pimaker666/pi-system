@@ -1,5 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { hasCurrentPermission, requireAdmin, requireApproved } from '@/lib/auth'
+import {
+  LEAVE_DAY_PART_LABELS,
+  LEAVE_TYPE_META,
+  daysBetweenInclusive,
+  formatLeaveHours,
+} from '@/lib/leave'
 import { displayProfileName, formatDate } from '@/lib/utils'
 import type {
   ApprovalApprover,
@@ -7,6 +13,8 @@ import type {
   ApprovalInboxScope,
   ApprovalRule,
   ApprovalSideTodo,
+  LeaveDayPart,
+  LeaveType,
   UserRole,
 } from '@/types'
 
@@ -45,11 +53,59 @@ export async function fetchReimbursementTodos(): Promise<ApprovalSideTodo[]> {
     )
     return {
       id: record.id,
+      label: '待审批报销',
       title: `${record.project_name ?? '费用报销'} · ${formatDate(record.expense_date)}`,
       detail: `${displayProfileName(record.applicant)} · ${record.items?.length ?? 0} 项 · ¥${total.toFixed(2)}`,
       href: '/reimbursement',
     }
   })
+}
+
+/** 请假审批：库内按角色（财务/管理员）放行，与 review_leave_request 的守卫保持一致。 */
+export async function fetchLeaveTodos(): Promise<ApprovalSideTodo[]> {
+  const profile = await requireApproved()
+  if (profile.role !== 'admin' && profile.role !== 'finance') return []
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('leave_requests')
+    .select(
+      'id, leave_type, start_date, end_date, day_part, hours, applicant:profiles!leave_requests_applicant_id_fkey(chinese_name, full_name, email)',
+    )
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true })
+    .limit(20)
+  if (error || !data) return []
+  return data.map((row) => {
+    const record = row as {
+      id: string
+      leave_type: LeaveType
+      start_date: string
+      end_date: string
+      day_part: LeaveDayPart
+      hours: number | null
+      applicant?: { chinese_name?: string | null; full_name?: string | null; email?: string | null } | null
+    }
+    const dayCount = daysBetweenInclusive(record.start_date, record.end_date).length
+    const duration =
+      record.hours != null
+        ? formatLeaveHours(record.hours)
+        : `${dayCount} 天${record.day_part === 'full' ? '' : `（${LEAVE_DAY_PART_LABELS[record.day_part]}）`}`
+    return {
+      id: record.id,
+      label: '待审批请假',
+      title: `${LEAVE_TYPE_META[record.leave_type].label} · ${record.start_date}`,
+      detail: `${displayProfileName(record.applicant)} · ${duration}`,
+      href: '/finance/leave',
+    }
+  })
+}
+
+export async function fetchApprovalSideTodos(): Promise<ApprovalSideTodo[]> {
+  const [reimbursements, leaves] = await Promise.all([
+    fetchReimbursementTodos(),
+    fetchLeaveTodos(),
+  ])
+  return [...reimbursements, ...leaves]
 }
 
 export async function fetchApprovalPendingCount(): Promise<number> {

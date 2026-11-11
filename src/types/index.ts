@@ -84,6 +84,7 @@ export interface ApprovalInboxItem {
 }
 export interface ApprovalSideTodo {
   id: string
+  label: string
   title: string
   detail: string
   href: string

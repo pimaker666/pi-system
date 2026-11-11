@@ -166,7 +166,7 @@ export function ApprovalCenter({
                 href={todo.href}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-background"
               >
-                <span className="font-medium">待审批报销：{todo.title}</span>
+                <span className="font-medium">{todo.label}：{todo.title}</span>
                 <span className="flex items-center gap-2 text-xs text-muted-foreground">
                   {todo.detail}
                   <ArrowUpRight className="h-3.5 w-3.5" />

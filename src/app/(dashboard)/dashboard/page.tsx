@@ -17,7 +17,7 @@ import { getFinancePageAccess, requireApproved } from '@/lib/auth'
 import { getDashboardStats } from '@/lib/dashboard-stats'
 import {
   currentMonthDateRange,
-  fetchDashboardApprovalCount,
+  fetchDashboardApprovalCounts,
   fetchDashboardMonthOrders,
   fetchDashboardPendingCommissionCount,
   fetchDashboardReceivables,
@@ -193,6 +193,8 @@ export default async function DashboardPage() {
   const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
   const monthRange = currentMonthDateRange()
 
+  const canReviewLeave = profile.role === 'admin' || profile.role === 'finance'
+
   const [stats, pisResult, approvals, receivables, monthOrders, commissionPending, ordersResult] =
     await Promise.all([
       getDashboardStats(),
@@ -202,7 +204,7 @@ export default async function DashboardPage() {
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(8),
-      fetchDashboardApprovalCount(supabase),
+      fetchDashboardApprovalCounts(supabase, { canReviewLeave }),
       fetchDashboardReceivables(supabase),
       fetchDashboardMonthOrders(supabase),
       isSalesperson ? fetchDashboardPendingCommissionCount(supabase) : Promise.resolve(0),
@@ -280,6 +282,14 @@ export default async function DashboardPage() {
     .filter(Boolean)
     .join(' · ')
 
+  const approvalHint = [
+    approvals.reimbursement > 0 ? `报销 ${approvals.reimbursement}` : null,
+    approvals.leave > 0 ? `请假 ${approvals.leave}` : null,
+    approvals.engine > 0 ? `审批申请 ${approvals.engine}` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
+
   const tailTodos: TodoRowData[] = [
     {
       key: 'receivables',
@@ -295,12 +305,12 @@ export default async function DashboardPage() {
     {
       key: 'approvals',
       label: '待我审批',
-      hint: approvals > 0 ? '有需要我处理的审批' : '暂无待审批事项',
-      value: approvals,
+      hint: approvals.total > 0 ? approvalHint : '暂无待审批事项',
+      value: approvals.total,
       unit: '项',
       href: '/approvals',
       icon: ClipboardCheck,
-      tone: approvals > 0 ? 'info' : 'neutral',
+      tone: approvals.total > 0 ? 'info' : 'neutral',
     },
   ]
   if (isSalesperson) {

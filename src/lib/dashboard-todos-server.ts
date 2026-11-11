@@ -90,11 +90,49 @@ export async function fetchDashboardMonthOrders(
   }
 }
 
-/** 待我审批：RPC 已按当前账号的审批资格过滤，失败时工作台降级为 0。 */
-export async function fetchDashboardApprovalCount(supabase: SupabaseClient): Promise<number> {
-  const { data, error } = await supabase.rpc('approval_pending_count')
+export interface DashboardApprovalCounts {
+  total: number
+  engine: number
+  reimbursement: number
+  leave: number
+}
+
+async function countPendingRows(
+  supabase: SupabaseClient,
+  table: 'finance_reimbursement_requests' | 'leave_requests',
+): Promise<number> {
+  const { count, error } = await supabase
+    .from(table)
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
   if (error) return 0
-  return Number(data ?? 0)
+  return count ?? 0
+}
+
+/**
+ * 待我审批：审批引擎 + 报销 + 请假。
+ * 审批引擎只覆盖订单编辑等动作，报销/请假是独立流程，需按各自审批权限单独计数；
+ * 请假审批在库内按角色（财务/管理员）判定，因此由调用方传入 canReviewLeave。
+ */
+export async function fetchDashboardApprovalCounts(
+  supabase: SupabaseClient,
+  options: { canReviewLeave: boolean },
+): Promise<DashboardApprovalCounts> {
+  const [engineResult, permissionResult] = await Promise.all([
+    supabase.rpc('approval_pending_count'),
+    supabase.rpc('current_permission_map', { p_permissions: ['reimbursement.review'] }),
+  ])
+  const engine = engineResult.error ? 0 : Number(engineResult.data ?? 0)
+  const permissions = permissionResult.error
+    ? {}
+    : ((permissionResult.data ?? {}) as Record<string, boolean>)
+  const [reimbursement, leave] = await Promise.all([
+    permissions['reimbursement.review'] === true
+      ? countPendingRows(supabase, 'finance_reimbursement_requests')
+      : 0,
+    options.canReviewLeave ? countPendingRows(supabase, 'leave_requests') : 0,
+  ])
+  return { total: engine + reimbursement + leave, engine, reimbursement, leave }
 }
 
 /** 待确认提成：与侧边栏角标同一口径，RLS 只返回本人待确认行。 */

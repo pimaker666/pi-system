@@ -2,7 +2,7 @@ import { requireApproved } from '@/lib/auth'
 import {
   fetchApprovalInbox,
   fetchApprovalPendingCount,
-  fetchReimbursementTodos,
+  fetchApprovalSideTodos,
 } from '@/lib/approvals-server'
 import { ApprovalCenter } from '@/components/approvals/approval-center'
 import type { ApprovalInboxScope } from '@/types'
@@ -22,7 +22,7 @@ export default async function ApprovalsPage({
   const [items, pendingCount, sideTodos] = await Promise.all([
     fetchApprovalInbox(scope),
     fetchApprovalPendingCount(),
-    scope === 'pending' ? fetchReimbursementTodos() : Promise.resolve([]),
+    scope === 'pending' ? fetchApprovalSideTodos() : Promise.resolve([]),
   ])
 
   return (
