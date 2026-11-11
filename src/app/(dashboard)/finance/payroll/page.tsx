@@ -21,7 +21,7 @@ export default async function PayrollPage({
   // 四段查询互不依赖，一次并发发出；可见表集合在拿到结果后再过滤。
   const itemsQuery = supabase
     .from('payroll_items')
-    .select('*, profile:profiles!inner(id, chinese_name, full_name, email)')
+    .select('*, profile:profiles(id, chinese_name, full_name, email)')
     .order('sort_order', { ascending: true })
   const scopedItemsQuery = canManage ? itemsQuery : itemsQuery.eq('profile_id', profile.id)
 
@@ -40,7 +40,11 @@ export default async function PayrollPage({
         .order('full_name', { ascending: true })
       : Promise.resolve({ data: null }),
     canManage
-      ? supabase.from('payroll_salary_profiles').select('*')
+      ? supabase
+        .from('payroll_salary_profiles')
+        .select('*')
+        .order('sort_order', { ascending: true })
+        .order('name', { ascending: true })
       : Promise.resolve({ data: null }),
   ])
 
@@ -67,7 +71,7 @@ export default async function PayrollPage({
         <h1 className="text-2xl font-semibold">{canManage ? '工资表' : '我的工资条'}</h1>
         <p className="text-sm text-muted-foreground">
           {canManage
-            ? '财务核算工资后推送给员工，员工在系统中确认或驳回；推送后金额锁定，修改需先撤回发布。'
+            ? '人员取自薪资档案（可含无系统账号的员工）；核算后推送员工确认，推送后金额锁定，修改需先撤回发布。'
             : '财务推送后可在此查看本人工资条并确认或驳回。'}
         </p>
       </div>

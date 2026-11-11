@@ -2,9 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { Check, ChevronsUpDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
 import {
   Dialog,
   DialogContent,
@@ -15,6 +24,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -34,7 +44,9 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   addPayrollItem,
   confirmOwnPayrollItem,
+  createPayrollSalaryProfile,
   createPayrollSheet,
+  deletePayrollSalaryProfile,
   deletePayrollSheet,
   publishPayrollSheet,
   rejectOwnPayrollItem,
@@ -52,7 +64,7 @@ import {
   PAYROLL_SHEET_STATUS_LABELS,
 } from '@/lib/payroll'
 import { formatCny } from '@/lib/finance'
-import { displayProfileName, formatAmount, formatDate } from '@/lib/utils'
+import { cn, displayProfileName, formatAmount, formatDate } from '@/lib/utils'
 import type {
   PayrollItemWithProfile,
   PayrollSalaryProfile,
@@ -112,8 +124,45 @@ function isDirty(item: PayrollItemWithProfile, draft: RowDraft) {
   return draft.remark !== (item.remark ?? '')
 }
 
+function draftPayrollValues(draft: RowDraft) {
+  return {
+    base_salary: Number(draft.base_salary || 0),
+    commission: Number(draft.commission || 0),
+    bonus: Number(draft.bonus || 0),
+    attendance_deduction: Number(draft.attendance_deduction || 0),
+    other_deduction: Number(draft.other_deduction || 0),
+    social_insurance: Number(draft.social_insurance || 0),
+    housing_fund: Number(draft.housing_fund || 0),
+    tax: Number(draft.tax || 0),
+  }
+}
+
 function monthLabel(month: string) {
   return `${Number(month.slice(0, 4))}年${Number(month.slice(5, 7))}月`
+}
+
+interface SalaryDraft {
+  name: string
+  base_salary: string
+  social_insurance: string
+  housing_fund: string
+}
+
+function buildSalaryDraft(row: PayrollSalaryProfile): SalaryDraft {
+  return {
+    name: row.name,
+    base_salary: draftValue(row.base_salary),
+    social_insurance: draftValue(row.social_insurance),
+    housing_fund: draftValue(row.housing_fund),
+  }
+}
+
+function payrollItemName(item: PayrollItemWithProfile) {
+  return item.profile ? displayProfileName(item.profile) : item.employee_name
+}
+
+function payrollStaffLabel(row: PayrollSalaryProfile) {
+  return row.profile_id ? `${row.name}（账号）` : `${row.name}（无账号）`
 }
 
 function toMonthInputValue(month: string | null) {
@@ -145,10 +194,13 @@ export function PayrollManager({
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({})
   const [deductionTouched, setDeductionTouched] = useState<Record<string, boolean>>({})
   const [fullDaysOverride, setFullDaysOverride] = useState<number | null>(null)
+  const [editing, setEditing] = useState(false)
   const [salaryOpen, setSalaryOpen] = useState(false)
-  const [salaryDrafts, setSalaryDrafts] = useState<
-    Record<string, { base_salary: string; social_insurance: string; housing_fund: string }>
-  >({})
+  const [salaryDrafts, setSalaryDrafts] = useState<Record<string, SalaryDraft>>({})
+  const [salaryAddProfileId, setSalaryAddProfileId] = useState('')
+  const [salaryAddOpen, setSalaryAddOpen] = useState(false)
+  const [salaryManualName, setSalaryManualName] = useState('')
+  const [salaryDeleteTarget, setSalaryDeleteTarget] = useState<PayrollSalaryProfile | null>(null)
   const [pending, startTransition] = useTransition()
   const [createOpen, setCreateOpen] = useState(false)
   const [createPeriod, setCreatePeriod] = useState('')
@@ -158,7 +210,11 @@ export function PayrollManager({
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [rejectTarget, setRejectTarget] = useState<PayrollItemWithProfile | null>(null)
   const [rejectReason, setRejectReason] = useState('')
-  const [addProfileId, setAddProfileId] = useState('')
+  const [addStaffId, setAddStaffId] = useState('')
+  const [addStaffOpen, setAddStaffOpen] = useState(false)
+  const [manualStaffName, setManualStaffName] = useState('')
+  const [discardOpen, setDiscardOpen] = useState(false)
+  const [removeTarget, setRemoveTarget] = useState<PayrollItemWithProfile | null>(null)
 
   const sheet = sheets.find((entry) => entry.period_month === currentMonth) ?? null
   // 已推送的工资表金额对外承诺，财务侧只读；改数必须先撤回发布。
@@ -170,6 +226,26 @@ export function PayrollManager({
   const effectiveFullDays =
     fullDaysOverride ?? sheet?.full_attendance_days ?? countWeekdays(currentMonth.slice(0, 7))
 
+  // 切表/切月一律回到只读，避免把上一张表的编辑态带过去
+  useEffect(() => {
+    setEditing(false)
+    setAddStaffId('')
+    setManualStaffName('')
+    setRemoveTarget(null)
+  }, [sheet?.id])
+
+  // 薪资档案增删后（而不是改金额后）重建编辑草稿
+  const salaryRosterKey = salaryProfiles
+    .map((row) => `${row.id}:${row.profile_id ?? ''}`)
+    .join('|')
+  useEffect(() => {
+    if (!salaryOpen) return
+    const next: Record<string, SalaryDraft> = {}
+    for (const row of salaryProfiles) next[row.id] = buildSalaryDraft(row)
+    setSalaryDrafts(next)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [salaryRosterKey, salaryOpen])
+
   const deductionTouchedRef = useRef<Record<string, boolean>>({})
   deductionTouchedRef.current = deductionTouched
 
@@ -177,6 +253,12 @@ export function PayrollManager({
     const next: Record<string, RowDraft> = {}
     const fullDays = fullDaysOverride ?? sheet?.full_attendance_days ?? null
     for (const item of items) {
+      const existing = drafts[item.id]
+      // 编辑态下保留未保存的输入：补入人员、改满勤天数等会触发服务端刷新，不能冲掉正在填的行。
+      if (editing && existing && isDirty(item, existing)) {
+        next[item.id] = existing
+        continue
+      }
       const draft = buildDraft(item)
       // 未手动改过的扣款行始终按公式回算：满勤天数调整后服务端旧值不会把客户端联动值盖掉。
       if (!deductionTouchedRef.current[item.id]) {
@@ -202,7 +284,7 @@ export function PayrollManager({
         .map((item) => item.id)
 
   function patchDraft(itemId: string, field: keyof RowDraft, value: string) {
-    if (locked) return
+    if (locked || !editing) return
     if (field === 'attendance_deduction') {
       setDeductionTouched((current) => ({ ...current, [itemId]: true }))
     }
@@ -249,7 +331,7 @@ export function PayrollManager({
   }
 
   function handleFullDaysChange(value: string) {
-    if (!sheet || locked) return
+    if (!sheet || locked || !editing) return
     const days = value === '' ? null : Number(value)
     if (days !== null && (!Number.isInteger(days) || days < 1 || days > 31)) return
     startTransition(async () => {
@@ -269,16 +351,11 @@ export function PayrollManager({
   }
 
   function openSalaryDialog() {
-    const next: Record<string, { base_salary: string; social_insurance: string; housing_fund: string }> = {}
-    for (const profile of profiles) {
-      const salary = salaryProfiles.find((row) => row.profile_id === profile.id)
-      next[profile.id] = {
-        base_salary: salary ? String(Number(salary.base_salary)) : '',
-        social_insurance: salary ? String(Number(salary.social_insurance)) : '',
-        housing_fund: salary ? String(Number(salary.housing_fund)) : '',
-      }
-    }
+    const next: Record<string, SalaryDraft> = {}
+    for (const row of salaryProfiles) next[row.id] = buildSalaryDraft(row)
     setSalaryDrafts(next)
+    setSalaryAddProfileId('')
+    setSalaryManualName('')
     setSalaryOpen(true)
   }
 
@@ -304,7 +381,7 @@ export function PayrollManager({
         payout_month: fromMonthInputValue(createPayout),
       })
       if (result.ok && result.sheet_id) {
-        toast.success('工资表已创建，已默认带入全部在职员工')
+        toast.success('工资表已创建，已按薪资档案带入人员')
         setCreateOpen(false)
         setCreatePeriod('')
         setCreatePayout('')
@@ -335,12 +412,148 @@ export function PayrollManager({
       })
       .filter((row) => row.attendance_days >= 0)
     if (rows.length === 0) return
-    runAction(() => updatePayrollItems({ rows }))
+    startTransition(async () => {
+      const result = await updatePayrollItems({ rows })
+      if (result.ok) {
+        toast.success(`已保存 ${rows.length} 行`)
+        setEditing(false)
+        setDeductionTouched({})
+      } else {
+        toast.error(result.error ?? '保存失败')
+      }
+    })
   }
 
-  const addableProfiles = profiles.filter(
-    (profile) => !sheetItems.some((item) => item.profile_id === profile.id),
+  function cancelEditing() {
+    const next: Record<string, RowDraft> = {}
+    for (const item of items) next[item.id] = buildDraft(item)
+    setDrafts(next)
+    setDeductionTouched({})
+    setEditing(false)
+    setAddStaffId('')
+    setManualStaffName('')
+    setDiscardOpen(false)
+  }
+
+  function requestCancelEditing() {
+    if (dirtyIds.length > 0) {
+      setDiscardOpen(true)
+      return
+    }
+    cancelEditing()
+  }
+
+  function handleRemoveItem() {
+    if (!removeTarget) return
+    const target = removeTarget
+    startTransition(async () => {
+      const result = await removePayrollItem({ item_id: target.id })
+      if (result.ok) {
+        toast.success(`已移除 ${target.profile ? displayProfileName(target.profile) : target.employee_name}`)
+        setRemoveTarget(null)
+      } else {
+        toast.error(result.error ?? '移除失败')
+      }
+    })
+  }
+
+  function handleAddStaff(salaryProfileId: string) {
+    if (!sheet) return
+    startTransition(async () => {
+      const result = await addPayrollItem({
+        sheet_id: sheet.id,
+        salary_profile_id: salaryProfileId,
+      })
+      if (result.ok) {
+        toast.success('已补入工资表')
+        setAddStaffId('')
+      } else {
+        toast.error(result.error ?? '补入失败')
+      }
+    })
+  }
+
+  function handleAddManualStaff() {
+    if (!sheet || !manualStaffName.trim()) return
+    const name = manualStaffName.trim()
+    startTransition(async () => {
+      const result = await addPayrollItem({ sheet_id: sheet.id, name })
+      if (result.ok) {
+        toast.success(`已补入 ${name}，并写入薪资档案`)
+        setManualStaffName('')
+      } else {
+        toast.error(result.error ?? '补入失败')
+      }
+    })
+  }
+
+  function handleAddSalaryAccount() {
+    if (!salaryAddProfileId) return
+    startTransition(async () => {
+      const result = await createPayrollSalaryProfile({ profile_id: salaryAddProfileId })
+      if (result.ok) {
+        toast.success('已加入薪资档案，可继续填写金额')
+        setSalaryAddProfileId('')
+      } else {
+        toast.error(result.error ?? '新增失败')
+      }
+    })
+  }
+
+  function handleAddSalaryManual() {
+    const name = salaryManualName.trim()
+    if (!name) return
+    startTransition(async () => {
+      const result = await createPayrollSalaryProfile({ name })
+      if (result.ok) {
+        toast.success('已加入薪资档案，可继续填写金额')
+        setSalaryManualName('')
+      } else {
+        toast.error(result.error ?? '新增失败')
+      }
+    })
+  }
+
+  function handleDeleteSalaryProfile() {
+    if (!salaryDeleteTarget) return
+    const target = salaryDeleteTarget
+    startTransition(async () => {
+      const result = await deletePayrollSalaryProfile({ id: target.id })
+      if (result.ok) {
+        toast.success('已从薪资档案移除')
+        setSalaryDeleteTarget(null)
+      } else {
+        toast.error(result.error ?? '删除失败')
+      }
+    })
+  }
+
+  const usedSalaryProfileIds = new Set(
+    sheetItems.map((item) => item.salary_profile_id).filter((value): value is string => Boolean(value)),
   )
+  const usedProfileIds = new Set(
+    sheetItems.map((item) => item.profile_id).filter((value): value is string => Boolean(value)),
+  )
+  const approvedProfileIds = new Set(profiles.map((profile) => profile.id))
+  const addableStaff = salaryProfiles.filter(
+    (row) =>
+      !usedSalaryProfileIds.has(row.id) &&
+      (!row.profile_id ||
+        (approvedProfileIds.has(row.profile_id) && !usedProfileIds.has(row.profile_id))),
+  )
+  const addableSalaryAccounts = profiles.filter(
+    (profile) => !salaryProfiles.some((row) => row.profile_id === profile.id),
+  )
+  const rosterRows = useMemo(
+    () =>
+      [...salaryProfiles].sort(
+        (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'zh-CN'),
+      ),
+    [salaryProfiles],
+  )
+  const selectedSalaryAccount =
+    addableSalaryAccounts.find((profile) => profile.id === salaryAddProfileId) ?? null
+  const selectedAddStaff = salaryProfiles.find((row) => row.id === addStaffId) ?? null
 
   // ---------------- 员工视图：本人工资条 ----------------
   if (!canManage) {
@@ -492,22 +705,32 @@ export function PayrollManager({
   }
 
   // ---------------- 财务/管理员视图 ----------------
-  const confirmedCount = sheetItems.filter((item) => item.confirmation === 'confirmed').length
-  const rejectedCount = sheetItems.filter((item) => item.confirmation === 'rejected').length
-  const pendingCount = sheetItems.length - confirmedCount - rejectedCount
+  // 无账号人员没有员工端，不参与确认统计
+  const confirmableItems = sheetItems.filter((item) => item.profile_id)
+  const confirmedCount = confirmableItems.filter((item) => item.confirmation === 'confirmed').length
+  const rejectedCount = confirmableItems.filter((item) => item.confirmation === 'rejected').length
+  const pendingCount = confirmableItems.length - confirmedCount - rejectedCount
   const totals = sheetItems.reduce(
     (acc, item) => {
-      const derived = calcPayroll(item)
+      const draft = drafts[item.id]
+      const derived = draft ? calcPayroll(draftPayrollValues(draft)) : calcPayroll(item)
       return {
-        base: acc.base + Number(item.base_salary),
-        commission: acc.commission + Number(item.commission),
-        bonus: acc.bonus + Number(item.bonus),
+        base: acc.base + (draft ? Number(draft.base_salary || 0) : Number(item.base_salary)),
+        commission:
+          acc.commission + (draft ? Number(draft.commission || 0) : Number(item.commission)),
+        bonus: acc.bonus + (draft ? Number(draft.bonus || 0) : Number(item.bonus)),
         attendanceDeduction:
-          acc.attendanceDeduction + Number(item.attendance_deduction),
-        otherDeduction: acc.otherDeduction + Number(item.other_deduction),
-        social: acc.social + Number(item.social_insurance),
-        fund: acc.fund + Number(item.housing_fund),
-        tax: acc.tax + Number(item.tax),
+          acc.attendanceDeduction +
+          (draft ? Number(draft.attendance_deduction || 0) : Number(item.attendance_deduction)),
+        otherDeduction:
+          acc.otherDeduction +
+          (draft ? Number(draft.other_deduction || 0) : Number(item.other_deduction)),
+        social:
+          acc.social +
+          (draft ? Number(draft.social_insurance || 0) : Number(item.social_insurance)),
+        fund:
+          acc.fund + (draft ? Number(draft.housing_fund || 0) : Number(item.housing_fund)),
+        tax: acc.tax + (draft ? Number(draft.tax || 0) : Number(item.tax)),
         gross: acc.gross + derived.gross,
         deduction: acc.deduction + derived.totalDeduction,
         net: acc.net + derived.net,
@@ -533,9 +756,11 @@ export function PayrollManager({
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={currentMonth || undefined}
+          disabled={editing}
           onValueChange={(value) => {
             setCurrentMonth(value)
-            setAddProfileId('')
+            setAddStaffId('')
+            setManualStaffName('')
           }}
         >
           <SelectTrigger className="w-44">
@@ -577,12 +802,25 @@ export function PayrollManager({
               </span>
             )}
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              {dirtyIds.length > 0 && (
-                <Button onClick={handleSaveRows} disabled={pending}>
-                  保存修改（{dirtyIds.length} 行）
-                </Button>
-              )}
-              {sheet.status === 'draft' && (
+              {sheet.status === 'draft' &&
+                (editing ? (
+                  <>
+                    <Button
+                      onClick={handleSaveRows}
+                      disabled={pending || dirtyIds.length === 0}
+                    >
+                      保存修改{dirtyIds.length > 0 ? `（${dirtyIds.length} 行）` : ''}
+                    </Button>
+                    <Button variant="outline" disabled={pending} onClick={requestCancelEditing}>
+                      取消编辑
+                    </Button>
+                  </>
+                ) : (
+                  <Button variant="outline" disabled={pending} onClick={() => setEditing(true)}>
+                    编辑工资表
+                  </Button>
+                ))}
+              {sheet.status === 'draft' && !editing && (
                 <>
                   <Button
                     variant="outline"
@@ -625,7 +863,7 @@ export function PayrollManager({
                 id="payout_month"
                 type="month"
                 className="w-40"
-                disabled={locked}
+                disabled={locked || !editing}
                 value={toMonthInputValue(sheet.payout_month)}
                 onChange={(event) =>
                   runAction(() =>
@@ -645,14 +883,16 @@ export function PayrollManager({
                 min={1}
                 max={31}
                 className="h-8 w-20 text-right"
-                disabled={locked}
+                disabled={locked || !editing}
                 value={effectiveFullDays}
                 onChange={(event) => handleFullDaysChange(event.target.value)}
               />
               <span className="text-xs text-muted-foreground">
                 {locked
                   ? '工资表已推送，金额与满勤天数已锁定；如需修改请先撤回发布。'
-                  : '默认当月工作日数；考勤扣款=底薪÷满勤天数×缺勤天数，手动改过的行不联动。'}
+                  : editing
+                    ? '默认当月工作日数；考勤扣款=底薪÷满勤天数×缺勤天数，手动改过的行不联动。'
+                    : '发放月份与满勤天数随整表编辑一起解锁，点「编辑工资表」后可调整。'}
               </span>
             </>
           )}
@@ -662,6 +902,14 @@ export function PayrollManager({
             </span>
           )}
         </div>
+      )}
+
+      {sheet && canManage && sheet.status === 'draft' && (
+        <p className="text-xs text-muted-foreground">
+          {editing
+            ? '正在编辑：金额与天数改动点「保存修改」统一生效；补入/移除人员立即保存；点「取消编辑」放弃未保存的金额与天数。'
+            : '工资表默认只读，点「编辑工资表」后才能修改人员与金额。'}
+        </p>
       )}
 
       {!sheet ? (
@@ -674,32 +922,85 @@ export function PayrollManager({
         </Card>
       ) : (
         <>
-          {sheet.status === 'draft' && addableProfiles.length > 0 && (
-            <div className="flex items-center gap-2">
-              <Select value={addProfileId || undefined} onValueChange={setAddProfileId}>
-                <SelectTrigger className="w-52">
-                  <SelectValue placeholder="选择要补入的员工" />
-                </SelectTrigger>
-                <SelectContent>
-                  {addableProfiles.map((profile) => (
-                    <SelectItem key={profile.id} value={profile.id}>
-                      {displayProfileName(profile)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          {sheet.status === 'draft' && editing && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Popover open={addStaffOpen} onOpenChange={setAddStaffOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-64 justify-between font-normal"
+                    disabled={pending || addableStaff.length === 0}
+                  >
+                    <span className={cn('truncate', !selectedAddStaff && 'text-muted-foreground')}>
+                      {selectedAddStaff
+                        ? payrollStaffLabel(selectedAddStaff)
+                        : addableStaff.length === 0
+                          ? '薪资档案人员已全部在本表'
+                          : '选择薪资档案人员…'}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-[--radix-popover-trigger-width] min-w-[280px] p-0"
+                  align="start"
+                >
+                  <Command>
+                    <CommandInput placeholder="搜索姓名…" />
+                    <CommandList>
+                      <CommandEmpty>未找到人员</CommandEmpty>
+                      <CommandGroup>
+                        {addableStaff.map((row) => (
+                          <CommandItem
+                            key={row.id}
+                            value={payrollStaffLabel(row)}
+                            onSelect={() => {
+                              setAddStaffId(row.id)
+                              setAddStaffOpen(false)
+                            }}
+                          >
+                            <Check
+                              className={cn(
+                                'mr-2 h-4 w-4 shrink-0',
+                                addStaffId === row.id ? 'opacity-100' : 'opacity-0',
+                              )}
+                            />
+                            <span className="truncate">{payrollStaffLabel(row)}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
               <Button
                 variant="outline"
                 size="sm"
-                disabled={pending || !addProfileId}
-                onClick={() =>
-                  runAction(() =>
-                    addPayrollItem({ sheet_id: sheet.id, profile_id: addProfileId }),
-                  )
-                }
+                disabled={pending || !addStaffId}
+                onClick={() => handleAddStaff(addStaffId)}
               >
                 补入员工
               </Button>
+              <span className="text-xs text-muted-foreground">或手动新增无账号员工</span>
+              <Input
+                className="h-8 w-40"
+                maxLength={50}
+                placeholder="员工姓名"
+                value={manualStaffName}
+                onChange={(event) => setManualStaffName(event.target.value)}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={pending || !manualStaffName.trim()}
+                onClick={handleAddManualStaff}
+              >
+                新增并补入
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                手动新增会同时写入薪资档案，后续新建工资表继续带入。
+              </span>
             </div>
           )}
           <div className="overflow-x-auto rounded-md border">
@@ -722,29 +1023,39 @@ export function PayrollManager({
                   <TableHead className="text-right">实发工资</TableHead>
                   <TableHead className="min-w-32">备注</TableHead>
                   {sheet.status === 'published' && <TableHead>确认状态</TableHead>}
-                  {sheet.status === 'draft' && <TableHead className="w-10" />}
+                  {sheet.status === 'draft' && editing && <TableHead className="w-10" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
+                {sheetItems.length === 0 && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={
+                        15 +
+                        (sheet.status === 'published' ? 1 : 0) +
+                        (sheet.status === 'draft' && editing ? 1 : 0)
+                      }
+                      className="py-8 text-center text-sm text-muted-foreground"
+                    >
+                      {canManage
+                        ? '暂无人员。点「编辑工资表」后可从薪资档案补入，或先在「薪资档案」新增人员。'
+                        : '暂无工资明细。'}
+                    </TableCell>
+                  </TableRow>
+                )}
                 {sheetItems.map((item, index) => {
                   const draft = drafts[item.id]
-                  const derived = draft
-                    ? calcPayroll({
-                        base_salary: Number(draft.base_salary || 0),
-                        commission: Number(draft.commission || 0),
-                        bonus: Number(draft.bonus || 0),
-                        attendance_deduction: Number(draft.attendance_deduction || 0),
-                        other_deduction: Number(draft.other_deduction || 0),
-                        social_insurance: Number(draft.social_insurance || 0),
-                        housing_fund: Number(draft.housing_fund || 0),
-                        tax: Number(draft.tax || 0),
-                      })
-                    : calcPayroll(item)
+                  const derived = draft ? calcPayroll(draftPayrollValues(draft)) : calcPayroll(item)
                   return (
                     <TableRow key={item.id}>
                       <TableCell>{index + 1}</TableCell>
                       <TableCell className="whitespace-nowrap font-medium">
-                        {displayProfileName(item.profile)}
+                        {payrollItemName(item)}
+                        {!item.profile_id && (
+                          <Badge variant="outline" className="ml-2 font-normal">
+                            无账号
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="p-1">
                         <Input
@@ -753,7 +1064,7 @@ export function PayrollManager({
                           max="62"
                           step="0.01"
                           className="h-8 w-20 text-right"
-                          disabled={locked}
+                          disabled={locked || !editing}
                           value={draft?.attendance_days ?? ''}
                           onChange={(event) =>
                             patchDraft(item.id, 'attendance_days', event.target.value)
@@ -773,9 +1084,9 @@ export function PayrollManager({
                             type="number"
                             min="0"
                             step="0.01"
-                            aria-label={`${displayProfileName(item.profile)}${label}`}
+                            aria-label={`${payrollItemName(item)}${label}`}
                             className="h-8 w-24 text-right"
-                            disabled={locked}
+                            disabled={locked || !editing}
                             value={draft?.[field] ?? ''}
                             onChange={(event) => patchDraft(item.id, field, event.target.value)}
                           />
@@ -797,9 +1108,9 @@ export function PayrollManager({
                             type="number"
                             min="0"
                             step="0.01"
-                            aria-label={`${displayProfileName(item.profile)}${label}`}
+                            aria-label={`${payrollItemName(item)}${label}`}
                             className="h-8 w-24 text-right"
-                            disabled={locked}
+                            disabled={locked || !editing}
                             value={draft?.[field] ?? ''}
                             onChange={(event) => patchDraft(item.id, field, event.target.value)}
                           />
@@ -815,42 +1126,44 @@ export function PayrollManager({
                         <Input
                           className="h-8 min-w-28"
                           maxLength={500}
-                          disabled={locked}
+                          disabled={locked || !editing}
                           value={draft?.remark ?? ''}
                           onChange={(event) => patchDraft(item.id, 'remark', event.target.value)}
                         />
                       </TableCell>
                       {sheet.status === 'published' && (
                         <TableCell>
-                          <div className="space-y-1">
-                            <Badge
-                              variant={
-                                item.confirmation === 'confirmed'
-                                  ? 'default'
-                                  : item.confirmation === 'rejected'
-                                    ? 'destructive'
-                                    : 'secondary'
-                              }
-                            >
-                              {PAYROLL_CONFIRMATION_LABELS[item.confirmation]}
-                            </Badge>
-                            {item.confirmation === 'rejected' && item.rejected_reason && (
-                              <p className="max-w-36 truncate text-xs text-muted-foreground">
-                                {item.rejected_reason}
-                              </p>
-                            )}
-                          </div>
+                          {item.profile_id ? (
+                            <div className="space-y-1">
+                              <Badge
+                                variant={
+                                  item.confirmation === 'confirmed'
+                                    ? 'default'
+                                    : item.confirmation === 'rejected'
+                                      ? 'destructive'
+                                      : 'secondary'
+                                }
+                              >
+                                {PAYROLL_CONFIRMATION_LABELS[item.confirmation]}
+                              </Badge>
+                              {item.confirmation === 'rejected' && item.rejected_reason && (
+                                <p className="max-w-36 truncate text-xs text-muted-foreground">
+                                  {item.rejected_reason}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <Badge variant="outline">无账号，无需确认</Badge>
+                          )}
                         </TableCell>
                       )}
-                      {sheet.status === 'draft' && (
+                      {sheet.status === 'draft' && editing && (
                         <TableCell>
                           <Button
                             variant="ghost"
                             size="sm"
                             disabled={pending}
-                            onClick={() =>
-                              runAction(() => removePayrollItem({ item_id: item.id }))
-                            }
+                            onClick={() => setRemoveTarget(item)}
                           >
                             移除
                           </Button>
@@ -876,7 +1189,13 @@ export function PayrollManager({
                   <TableCell className="text-right">{formatCny(totals.tax)}</TableCell>
                   <TableCell className="text-right">{formatCny(totals.deduction)}</TableCell>
                   <TableCell className="text-right">{formatCny(totals.net)}</TableCell>
-                  <TableCell colSpan={sheet.status === 'published' ? 2 : 1} />
+                  <TableCell
+                    colSpan={
+                      1 +
+                      (sheet.status === 'published' ? 1 : 0) +
+                      (sheet.status === 'draft' && editing ? 1 : 0)
+                    }
+                  />
                 </TableRow>
               </TableBody>
             </Table>
@@ -894,8 +1213,9 @@ export function PayrollManager({
           <DialogHeader>
             <DialogTitle>新建工资表</DialogTitle>
             <DialogDescription>
-              按所属月份创建，自动带入全部在职员工，并按薪资档案（底薪/社保/公积金）、考勤表出勤天数、
-              员工已确认结清提成自动填入；满勤天数默认当月工作日数，所有金额仍可逐项手动修改。
+              按所属月份创建，默认带入薪资档案中的全部人员（含没有系统账号的员工），
+              并按档案底薪/社保/公积金、考勤表出勤天数、员工已确认结清提成自动填入；
+              满勤天数默认当月工作日数，所有金额仍可逐项手动修改。
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
@@ -930,14 +1250,91 @@ export function PayrollManager({
       </Dialog>
 
       <Dialog open={salaryOpen} onOpenChange={setSalaryOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>薪资档案</DialogTitle>
             <DialogDescription>
-              维护每人的底薪、社保代扣、公积金代扣；新建工资表或补入员工时自动带入，工资表内改动不回写档案。
+              薪资档案是新建工资表的人员来源：可加入系统账号员工，也可直接填写没有账号的员工姓名。
+              新建工资表或补入员工时自动带入底薪、社保代扣、公积金代扣；从档案移除不影响已生成的工资表。
             </DialogDescription>
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto rounded-md border">
+          <div className="flex flex-wrap items-center gap-2">
+            <Popover open={salaryAddOpen} onOpenChange={setSalaryAddOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-56 justify-between font-normal"
+                  disabled={pending || addableSalaryAccounts.length === 0}
+                >
+                  <span className={cn('truncate', !selectedSalaryAccount && 'text-muted-foreground')}>
+                    {selectedSalaryAccount
+                      ? displayProfileName(selectedSalaryAccount)
+                      : addableSalaryAccounts.length === 0
+                        ? '有账号员工已全部在档案中'
+                        : '选择系统账号员工…'}
+                  </span>
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-[--radix-popover-trigger-width] min-w-[240px] p-0"
+                align="start"
+              >
+                <Command>
+                  <CommandInput placeholder="搜索姓名…" />
+                  <CommandList>
+                    <CommandEmpty>未找到员工</CommandEmpty>
+                    <CommandGroup>
+                      {addableSalaryAccounts.map((profile) => (
+                        <CommandItem
+                          key={profile.id}
+                          value={displayProfileName(profile)}
+                          onSelect={() => {
+                            setSalaryAddProfileId(profile.id)
+                            setSalaryAddOpen(false)
+                          }}
+                        >
+                          <Check
+                            className={cn(
+                              'mr-2 h-4 w-4 shrink-0',
+                              salaryAddProfileId === profile.id ? 'opacity-100' : 'opacity-0',
+                            )}
+                          />
+                          <span className="truncate">{displayProfileName(profile)}</span>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pending || !salaryAddProfileId}
+              onClick={handleAddSalaryAccount}
+            >
+              加入档案
+            </Button>
+            <span className="text-xs text-muted-foreground">或手动添加无账号员工</span>
+            <Input
+              className="h-8 w-36"
+              maxLength={50}
+              placeholder="员工姓名"
+              value={salaryManualName}
+              onChange={(event) => setSalaryManualName(event.target.value)}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pending || !salaryManualName.trim()}
+              onClick={handleAddSalaryManual}
+            >
+              添加人员
+            </Button>
+          </div>
+          <div className="max-h-[55vh] overflow-y-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -945,28 +1342,48 @@ export function PayrollManager({
                   <TableHead className="text-right">底薪</TableHead>
                   <TableHead className="text-right">社保代扣</TableHead>
                   <TableHead className="text-right">公积金代扣</TableHead>
-                  <TableHead className="w-20" />
+                  <TableHead className="w-32" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {profiles.map((profile) => {
-                  const draft = salaryDrafts[profile.id]
+                {rosterRows.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-8 text-center text-sm text-muted-foreground">
+                      档案里还没有人，先在上方加入员工。
+                    </TableCell>
+                  </TableRow>
+                )}
+                {rosterRows.map((row) => {
+                  const draft = salaryDrafts[row.id]
                   if (!draft) return null
-                  const salary = salaryProfiles.find((row) => row.profile_id === profile.id)
+                  const isAccount = Boolean(row.profile_id)
                   const dirty =
-                    !salary ||
-                    draft.base_salary !== String(Number(salary.base_salary)) ||
-                    draft.social_insurance !== String(Number(salary.social_insurance)) ||
-                    draft.housing_fund !== String(Number(salary.housing_fund))
-                  const patch = (field: keyof typeof draft, value: string) =>
+                    draft.name !== row.name ||
+                    draft.base_salary !== draftValue(row.base_salary) ||
+                    draft.social_insurance !== draftValue(row.social_insurance) ||
+                    draft.housing_fund !== draftValue(row.housing_fund)
+                  const patch = (field: keyof SalaryDraft, value: string) =>
                     setSalaryDrafts((current) => ({
                       ...current,
-                      [profile.id]: { ...draft, [field]: value },
+                      [row.id]: { ...draft, [field]: value },
                     }))
                   return (
-                    <TableRow key={profile.id}>
-                      <TableCell className="whitespace-nowrap font-medium">
-                        {displayProfileName(profile)}
+                    <TableRow key={row.id}>
+                      <TableCell className="p-1">
+                        {isAccount ? (
+                          <div className="flex items-center gap-2 px-2">
+                            <span className="whitespace-nowrap font-medium">{row.name}</span>
+                            <Badge variant="outline">账号</Badge>
+                          </div>
+                        ) : (
+                          <Input
+                            className="h-8 w-36"
+                            maxLength={50}
+                            aria-label="员工姓名"
+                            value={draft.name}
+                            onChange={(event) => patch('name', event.target.value)}
+                          />
+                        )}
                       </TableCell>
                       {(
                         [
@@ -980,7 +1397,7 @@ export function PayrollManager({
                             type="number"
                             min="0"
                             step="0.01"
-                            aria-label={`${displayProfileName(profile)}${label}`}
+                            aria-label={`${row.name}${label}`}
                             className="h-8 w-24 text-right"
                             value={draft[field]}
                             onChange={(event) => patch(field, event.target.value)}
@@ -988,23 +1405,38 @@ export function PayrollManager({
                         </TableCell>
                       ))}
                       <TableCell className="p-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={pending || !dirty}
-                          onClick={() =>
-                            runAction(() =>
-                              savePayrollSalaryProfile({
-                                profile_id: profile.id,
-                                base_salary: Number(draft.base_salary || 0),
-                                social_insurance: Number(draft.social_insurance || 0),
-                                housing_fund: Number(draft.housing_fund || 0),
-                              }),
-                            )
-                          }
-                        >
-                          保存
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={
+                              pending ||
+                              !dirty ||
+                              (!isAccount && !draft.name.trim())
+                            }
+                            onClick={() =>
+                              runAction(() =>
+                                savePayrollSalaryProfile({
+                                  id: row.id,
+                                  name: draft.name.trim(),
+                                  base_salary: Number(draft.base_salary || 0),
+                                  social_insurance: Number(draft.social_insurance || 0),
+                                  housing_fund: Number(draft.housing_fund || 0),
+                                }),
+                              )
+                            }
+                          >
+                            保存
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending}
+                            onClick={() => setSalaryDeleteTarget(row)}
+                          >
+                            删除
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
@@ -1015,6 +1447,29 @@ export function PayrollManager({
           <DialogFooter>
             <Button variant="outline" onClick={() => setSalaryOpen(false)}>
               关闭
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={salaryDeleteTarget !== null}
+        onOpenChange={(open) => !open && setSalaryDeleteTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>从薪资档案移除</DialogTitle>
+            <DialogDescription>
+              移除 {salaryDeleteTarget?.name ?? ''} 后，新建工资表不再带入该人员；
+              已生成的工资表保留姓名与金额快照，不受影响。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSalaryDeleteTarget(null)}>
+              取消
+            </Button>
+            <Button variant="destructive" disabled={pending} onClick={handleDeleteSalaryProfile}>
+              确认移除
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1092,6 +1547,52 @@ export function PayrollManager({
               }}
             >
               确认删除
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>放弃未保存的修改</DialogTitle>
+            <DialogDescription>
+              当前有 {dirtyIds.length} 行金额或天数尚未保存，取消编辑将丢弃这些改动；已补入/移除的人员不受影响。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDiscardOpen(false)}>
+              继续编辑
+            </Button>
+            <Button variant="destructive" onClick={cancelEditing}>
+              放弃修改
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={removeTarget !== null}
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>移除员工</DialogTitle>
+            <DialogDescription>
+              从本表移除「
+              {removeTarget
+                ? removeTarget.profile
+                  ? displayProfileName(removeTarget.profile)
+                  : removeTarget.employee_name
+                : ''}
+              」后，该行已填金额一并删除；人员仍在薪资档案中，可通过「补入员工」重新加入。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRemoveTarget(null)}>
+              取消
+            </Button>
+            <Button variant="destructive" disabled={pending} onClick={handleRemoveItem}>
+              确认移除
             </Button>
           </DialogFooter>
         </DialogContent>

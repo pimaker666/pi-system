@@ -35,10 +35,15 @@ const sheetIdSchema = z.object({
   sheet_id: z.string().uuid(),
 })
 
-const addItemSchema = z.object({
-  sheet_id: z.string().uuid(),
-  profile_id: z.string().uuid(),
-})
+const addItemSchema = z
+  .object({
+    sheet_id: z.string().uuid(),
+    salary_profile_id: z.string().uuid().optional(),
+    name: z.string().trim().min(1, '请填写员工姓名').max(50, '姓名最长 50 字').optional(),
+  })
+  .refine((value) => Boolean(value.salary_profile_id) !== Boolean(value.name), {
+    message: '请选择薪资档案人员或填写姓名',
+  })
 
 const removeItemSchema = z.object({
   item_id: z.string().uuid(),
@@ -66,10 +71,24 @@ const updateItemsSchema = z.object({
 })
 
 const salaryProfileSchema = z.object({
-  profile_id: z.string().uuid(),
+  id: z.string().uuid(),
+  name: z.string().trim().min(1, '请填写姓名').max(50, '姓名最长 50 字').optional(),
   base_salary: money('基本工资'),
   social_insurance: money('社保代扣'),
   housing_fund: money('公积金代扣'),
+})
+
+const newSalaryProfileSchema = z
+  .object({
+    profile_id: z.string().uuid().optional(),
+    name: z.string().trim().min(1, '请填写姓名').max(50, '姓名最长 50 字').optional(),
+  })
+  .refine((value) => Boolean(value.profile_id) !== Boolean(value.name), {
+    message: '请选择系统账号或填写姓名',
+  })
+
+const salaryProfileIdSchema = z.object({
+  id: z.string().uuid(),
 })
 
 const rejectSchema = z.object({
@@ -96,33 +115,36 @@ async function requireFinanceManager() {
 type PayrollSupabase = Awaited<ReturnType<typeof createClient>>
 
 interface PayrollAutofill {
-  salaryByProfile: Map<string, { base_salary: number; social_insurance: number; housing_fund: number }>
   attendanceDaysByProfile: Map<string, number>
   commissionByProfile: Map<string, number>
 }
 
-// 指定月份的自动带入口径：薪资档案（底薪/社保/公积金）、考勤表 √ 出勤天数、已确认结清提成（CNY）。
+interface PayrollRosterRow {
+  id: string
+  profile_id: string | null
+  name: string
+  base_salary: number | string
+  social_insurance: number | string
+  housing_fund: number | string
+  sort_order: number
+  profile: {
+    status: string
+    chinese_name: string | null
+    full_name: string | null
+    email: string | null
+  } | null
+}
+
+function payrollProfileName(profile: { chinese_name: string | null; full_name: string | null; email: string | null }) {
+  return profile.chinese_name?.trim() || profile.full_name?.trim() || profile.email?.trim() || '员工'
+}
+
+// 指定月份的自动带入口径：考勤表 √ 出勤天数、已确认结清提成（CNY）；底薪/社保/公积金取自薪资档案行。
 async function loadPayrollAutofill(
   supabase: PayrollSupabase,
   month: string,
 ): Promise<PayrollAutofill> {
-  const [salaryRes, commissionByProfile] = await Promise.all([
-    supabase.from('payroll_salary_profiles').select('profile_id, base_salary, social_insurance, housing_fund'),
-    fetchConfirmedCommissionBySalesperson(supabase, month),
-  ])
-  if (salaryRes.error) {
-    throw new Error(`薪资档案读取失败：${salaryRes.error.message}`)
-  }
-  const salaryByProfile = new Map(
-    (salaryRes.data ?? []).map((row) => [
-      row.profile_id as string,
-      {
-        base_salary: Number(row.base_salary),
-        social_insurance: Number(row.social_insurance),
-        housing_fund: Number(row.housing_fund),
-      },
-    ]),
-  )
+  const commissionByProfile = await fetchConfirmedCommissionBySalesperson(supabase, month)
 
   const { data: attendanceSheets, error: sheetError } = await supabase
     .from('attendance_sheets')
@@ -159,7 +181,7 @@ async function loadPayrollAutofill(
     }
   }
 
-  return { salaryByProfile, attendanceDaysByProfile, commissionByProfile }
+  return { attendanceDaysByProfile, commissionByProfile }
 }
 
 const ID_CHUNK = 100
@@ -206,12 +228,24 @@ export async function createPayrollSheet(input: {
   const month = parsed.data.period_month.slice(0, 7)
   const fullAttendanceDays = countWeekdays(month)
 
-  // 先取自动带入口径，失败在建表前中止，避免留下空表
+  // 先取自动带入口径与薪资档案，失败在建表前中止，避免留下空表
   let autofill: PayrollAutofill | null = null
   try {
     autofill = await loadPayrollAutofill(supabase, month)
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : '自动取数失败' }
+  }
+
+  // 工资表人员以薪资档案为准：账号员工 + 无账号人员，薪资档案里删掉的人不会再自动入表。
+  const { data: roster, error: rosterError } = await supabase
+    .from('payroll_salary_profiles')
+    .select(
+      'id, profile_id, name, base_salary, social_insurance, housing_fund, sort_order, profile:profiles!payroll_salary_profiles_profile_id_fkey(status, chinese_name, full_name, email)',
+    )
+    .order('sort_order', { ascending: true })
+    .order('name', { ascending: true })
+  if (rosterError) {
+    return { ok: false, error: `读取薪资档案失败：${rosterError.message}` }
   }
 
   const { data: sheet, error: sheetError } = await supabase
@@ -228,33 +262,29 @@ export async function createPayrollSheet(input: {
     return { ok: false, error: `创建工资表失败：${sheetError?.message ?? '未知错误'}` }
   }
 
-  // 全员（已启用账号）默认入表，按账号创建时间排序号；薪资档案/考勤/已确认提成自动带入。
-  const { data: profiles, error: profilesError } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('status', 'approved')
-    .order('created_at', { ascending: true })
-    .order('full_name', { ascending: true })
-  if (profilesError) {
-    return { ok: false, error: `读取员工列表失败：${profilesError.message}` }
-  }
+  const staff = ((roster ?? []) as unknown as PayrollRosterRow[]).filter(
+    (row) => !row.profile_id || row.profile?.status === 'approved',
+  )
 
-  if (profiles && profiles.length > 0) {
-    const { salaryByProfile, attendanceDaysByProfile, commissionByProfile } = autofill
+  if (staff.length > 0) {
+    const { attendanceDaysByProfile, commissionByProfile } = autofill
     const { error: itemsError } = await supabase.from('payroll_items').insert(
-      profiles.map((row, index) => {
-        const salary = salaryByProfile.get(row.id)
-        const attendanceDays = attendanceDaysByProfile.get(row.id) ?? 0
-        const baseSalary = salary?.base_salary ?? 0
+      staff.map((row, index) => {
+        const attendanceDays = row.profile_id
+          ? (attendanceDaysByProfile.get(row.profile_id) ?? 0)
+          : 0
+        const baseSalary = Number(row.base_salary)
         return {
           sheet_id: sheet.id,
-          profile_id: row.id,
+          profile_id: row.profile_id,
+          salary_profile_id: row.id,
+          employee_name: row.profile ? payrollProfileName(row.profile) : row.name,
           sort_order: index + 1,
           attendance_days: attendanceDays,
           base_salary: baseSalary,
-          commission: commissionByProfile.get(row.id) ?? 0,
-          social_insurance: salary?.social_insurance ?? 0,
-          housing_fund: salary?.housing_fund ?? 0,
+          commission: row.profile_id ? (commissionByProfile.get(row.profile_id) ?? 0) : 0,
+          social_insurance: Number(row.social_insurance),
+          housing_fund: Number(row.housing_fund),
           attendance_deduction: calcAttendanceDeduction(baseSalary, fullAttendanceDays, attendanceDays),
         }
       }),
@@ -309,7 +339,8 @@ export async function updatePayrollSheetMeta(input: {
 }
 
 export async function savePayrollSalaryProfile(input: {
-  profile_id: string
+  id: string
+  name?: string
   base_salary: number
   social_insurance: number
   housing_fund: number
@@ -320,17 +351,101 @@ export async function savePayrollSalaryProfile(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? '参数不合法' }
   }
   const supabase = await createClient()
-  const { error } = await supabase.from('payroll_salary_profiles').upsert(
-    {
-      profile_id: parsed.data.profile_id,
+  const { data: row, error: readError } = await supabase
+    .from('payroll_salary_profiles')
+    .select('id, profile_id')
+    .eq('id', parsed.data.id)
+    .maybeSingle()
+  if (readError) return { ok: false, error: `读取薪资档案失败：${readError.message}` }
+  if (!row) return { ok: false, error: '薪资档案不存在，请刷新后重试' }
+
+  const { error } = await supabase
+    .from('payroll_salary_profiles')
+    .update({
+      // 账号员工的姓名以账号资料为准，只有无账号人员允许在档案里改名
+      ...(row.profile_id ? {} : { name: parsed.data.name }),
       base_salary: parsed.data.base_salary,
       social_insurance: parsed.data.social_insurance,
       housing_fund: parsed.data.housing_fund,
       updated_by: profile.id,
-    },
-    { onConflict: 'profile_id' },
-  )
+    })
+    .eq('id', parsed.data.id)
   if (error) return { ok: false, error: `保存薪资档案失败：${error.message}` }
+  revalidatePayroll()
+  return { ok: true }
+}
+
+export async function createPayrollSalaryProfile(input: {
+  profile_id?: string
+  name?: string
+}): Promise<ActionResult & { id?: string }> {
+  await requireFinanceManager()
+  const parsed = newSalaryProfileSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? '参数不合法' }
+  }
+  const supabase = await createClient()
+
+  let name = parsed.data.name ?? ''
+  let profileId: string | null = parsed.data.profile_id ?? null
+  if (profileId) {
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, status, chinese_name, full_name, email')
+      .eq('id', profileId)
+      .maybeSingle()
+    if (profileError) return { ok: false, error: `读取账号失败：${profileError.message}` }
+    if (!profile) return { ok: false, error: '账号不存在' }
+    if (profile.status !== 'approved') return { ok: false, error: '该账号不是已启用状态，暂不能加入薪资档案' }
+    name = payrollProfileName(profile)
+
+    const { data: existing } = await supabase
+      .from('payroll_salary_profiles')
+      .select('id')
+      .eq('profile_id', profileId)
+      .maybeSingle()
+    if (existing) return { ok: false, error: '该员工已在薪资档案中' }
+  }
+
+  const { data: lastRow } = await supabase
+    .from('payroll_salary_profiles')
+    .select('sort_order')
+    .order('sort_order', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const { data: created, error } = await supabase
+    .from('payroll_salary_profiles')
+    .insert({
+      profile_id: profileId,
+      name,
+      sort_order: (lastRow?.sort_order ?? 0) + 1,
+    })
+    .select('id')
+    .single()
+  if (error) {
+    if (error.code === '23505') return { ok: false, error: '该员工已在薪资档案中' }
+    return { ok: false, error: `新增薪资档案失败：${error.message}` }
+  }
+  revalidatePayroll()
+  return { ok: true, id: created.id }
+}
+
+export async function deletePayrollSalaryProfile(input: { id: string }): Promise<ActionResult> {
+  await requireFinanceManager()
+  const parsed = salaryProfileIdSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: '参数不合法' }
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('payroll_salary_profiles')
+    .delete()
+    .eq('id', parsed.data.id)
+  if (error) {
+    return {
+      ok: false,
+      error: `删除薪资档案失败：${error.message}（若人员已在已推送的工资表中，请先撤回发布）`,
+    }
+  }
   revalidatePayroll()
   return { ok: true }
 }
@@ -391,11 +506,12 @@ export async function deletePayrollSheet(input: { sheet_id: string }): Promise<A
 
 export async function addPayrollItem(input: {
   sheet_id: string
-  profile_id: string
+  salary_profile_id?: string
+  name?: string
 }): Promise<ActionResult> {
   await requireFinanceManager()
   const parsed = addItemSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: '参数不合法' }
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '参数不合法' }
   const supabase = await createClient()
 
   const { data: sheet, error: sheetError } = await supabase
@@ -408,6 +524,44 @@ export async function addPayrollItem(input: {
     return { ok: false, error: '工资表已推送员工确认，请先撤回发布再调整人员' }
   }
 
+  const rosterRowSelect =
+    'id, profile_id, name, base_salary, social_insurance, housing_fund, sort_order'
+  const rosterSelect = `${rosterRowSelect}, profile:profiles!payroll_salary_profiles_profile_id_fkey(status, chinese_name, full_name, email)`
+
+  let roster: PayrollRosterRow
+  if (parsed.data.salary_profile_id) {
+    const { data, error } = await supabase
+      .from('payroll_salary_profiles')
+      .select(rosterSelect)
+      .eq('id', parsed.data.salary_profile_id)
+      .maybeSingle()
+    if (error) return { ok: false, error: `读取薪资档案失败：${error.message}` }
+    if (!data) return { ok: false, error: '薪资档案人员不存在，请刷新后重试' }
+    roster = data as unknown as PayrollRosterRow
+    if (roster.profile_id && roster.profile?.status !== 'approved') {
+      return { ok: false, error: '该账号不是已启用状态，暂不能补入工资表' }
+    }
+  } else {
+    // 补入无账号员工：同时写入薪资档案，后续新建工资表会继续带入
+    const { data: lastRow } = await supabase
+      .from('payroll_salary_profiles')
+      .select('sort_order')
+      .order('sort_order', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const { data: created, error } = await supabase
+      .from('payroll_salary_profiles')
+      .insert({
+        profile_id: null,
+        name: parsed.data.name,
+        sort_order: (lastRow?.sort_order ?? 0) + 1,
+      })
+      .select(rosterRowSelect)
+      .single()
+    if (error || !created) return { ok: false, error: `新增薪资档案失败：${error?.message ?? '未知错误'}` }
+    roster = { ...(created as unknown as PayrollRosterRow), profile: null }
+  }
+
   const month = (sheet.period_month as string).slice(0, 7)
   const fullAttendanceDays =
     sheet.full_attendance_days == null ? countWeekdays(month) : Number(sheet.full_attendance_days)
@@ -418,9 +572,10 @@ export async function addPayrollItem(input: {
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : '自动取数失败' }
   }
-  const salary = autofill.salaryByProfile.get(parsed.data.profile_id)
-  const attendanceDays = autofill.attendanceDaysByProfile.get(parsed.data.profile_id) ?? 0
-  const baseSalary = salary?.base_salary ?? 0
+  const attendanceDays = roster.profile_id
+    ? (autofill.attendanceDaysByProfile.get(roster.profile_id) ?? 0)
+    : 0
+  const baseSalary = Number(roster.base_salary)
 
   const { count } = await supabase
     .from('payroll_items')
@@ -428,13 +583,15 @@ export async function addPayrollItem(input: {
     .eq('sheet_id', parsed.data.sheet_id)
   const { error } = await supabase.from('payroll_items').insert({
     sheet_id: parsed.data.sheet_id,
-    profile_id: parsed.data.profile_id,
+    profile_id: roster.profile_id,
+    salary_profile_id: roster.id,
+    employee_name: roster.profile ? payrollProfileName(roster.profile) : roster.name,
     sort_order: (count ?? 0) + 1,
     attendance_days: attendanceDays,
     base_salary: baseSalary,
-    commission: autofill.commissionByProfile.get(parsed.data.profile_id) ?? 0,
-    social_insurance: salary?.social_insurance ?? 0,
-    housing_fund: salary?.housing_fund ?? 0,
+    commission: roster.profile_id ? (autofill.commissionByProfile.get(roster.profile_id) ?? 0) : 0,
+    social_insurance: Number(roster.social_insurance),
+    housing_fund: Number(roster.housing_fund),
     attendance_deduction: calcAttendanceDeduction(baseSalary, fullAttendanceDays, attendanceDays),
   })
   if (error) {

@@ -1670,7 +1670,9 @@ export interface PayrollSheet {
 export interface PayrollItem {
   id: string
   sheet_id: string
-  profile_id: string
+  profile_id: string | null
+  salary_profile_id: string | null
+  employee_name: string
   sort_order: number
   attendance_days: number
   base_salary: number
@@ -1689,14 +1691,17 @@ export interface PayrollItem {
 }
 
 export interface PayrollItemWithProfile extends PayrollItem {
-  profile: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'>
+  profile: Pick<Profile, 'id' | 'chinese_name' | 'full_name' | 'email'> | null
 }
 
 export interface PayrollSalaryProfile {
-  profile_id: string
+  id: string
+  profile_id: string | null
+  name: string
   base_salary: number
   social_insurance: number
   housing_fund: number
+  sort_order: number
   updated_by: string | null
   created_at: string
   updated_at: string
