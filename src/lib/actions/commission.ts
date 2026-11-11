@@ -592,6 +592,19 @@ export async function submitBusinessOrderCommissionClearance(input: {
     return { ok: false, error: '部分订单明细行不存在' }
   }
 
+  // 页面可能停留较久：确认过的行不能被旧的提交请求重新拉回待确认。
+  for (const chunk of chunkIds(itemIds)) {
+    const { data, error } = await supabase
+      .from('finance_business_order_item_commission_clearances')
+      .select('business_order_item_id')
+      .in('business_order_item_id', chunk)
+      .eq('status', 'confirmed')
+    if (error) return { ok: false, error: error.message }
+    if ((data?.length ?? 0) > 0) {
+      return { ok: false, error: '部分产品行已结清，请刷新页面后再提交' }
+    }
+  }
+
   const orderIds = [...new Set(items.map((item) => item.order_id))]
   const orders = []
   for (const chunk of chunkIds(orderIds)) {

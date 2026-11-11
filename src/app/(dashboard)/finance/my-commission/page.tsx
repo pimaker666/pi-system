@@ -3,10 +3,7 @@ import { CommissionManager } from '@/components/finance/commission-manager'
 import { CommissionSummary } from '@/components/finance/commission-summary'
 import { requireApproved } from '@/lib/auth'
 import { fetchBusinessOrderCommissions } from '@/lib/business-order-commissions-server'
-import {
-  parseBusinessOrderCommissionFilters,
-  summarizeCommissionByPeriod,
-} from '@/lib/business-order-commission'
+import { parseBusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
 
@@ -19,11 +16,11 @@ export default async function MyCommissionPage({
   if (profile.role !== 'sales' && profile.role !== 'supervisor') redirect('/dashboard')
 
   const parsedFilters = parseBusinessOrderCommissionFilters(await searchParams)
-  const filters = { ...parsedFilters, salespeople: [profile.id], page: 1 }
+  const filters = { ...parsedFilters, salespeople: [profile.id] }
   const supabase = await createClient()
   const [options, commissions] = await Promise.all([
     fetchDailyOrderOptions(supabase),
-    fetchBusinessOrderCommissions(supabase, filters, 1, 1000, 'settled'),
+    fetchBusinessOrderCommissions(supabase, filters, filters.page, undefined, 'settled', true),
   ])
   return (
     <div className="space-y-6">
@@ -32,7 +29,7 @@ export default async function MyCommissionPage({
         <p className="text-sm text-muted-foreground">查看本人已确认结清的历史订单及按结清归属月汇总的提成。</p>
       </div>
 
-      <CommissionSummary totals={summarizeCommissionByPeriod(commissions.rows)} showSalesperson={false} />
+      <CommissionSummary totals={commissions.summary ?? []} showSalesperson={false} />
 
       <CommissionManager
         rows={commissions.rows}

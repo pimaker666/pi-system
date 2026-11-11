@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useMemo, useState, useTransition } from 'react'
 import { CheckCircle2, ListOrdered, Plus, RotateCcw, Save, SlidersHorizontal, Tag, Trash2 } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -481,6 +481,15 @@ function DisplayColumnSelector({
 
 const CATEGORY_ORDER: DailyOrderShippingCategory[] = ['stock', 'sample', 'custom_sample', 'custom', 'purchase']
 
+function categoryRateDrafts(categoryRates: CommissionCategoryRate[]): Record<string, string> {
+  const map = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
+  return CATEGORY_ORDER.reduce<Record<string, string>>((acc, category) => {
+    const value = map.get(category)
+    acc[category] = value == null ? '' : String(value)
+    return acc
+  }, {})
+}
+
 function CategoryRatesDialog({
   categoryRates,
 }: {
@@ -489,14 +498,7 @@ function CategoryRatesDialog({
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
-  const initial = useMemo(() => {
-    const map = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
-    return CATEGORY_ORDER.reduce<Record<string, string>>((acc, category) => {
-      const value = map.get(category)
-      acc[category] = value == null ? '' : String(value)
-      return acc
-    }, {})
-  }, [categoryRates])
+  const initial = useMemo(() => categoryRateDrafts(categoryRates), [categoryRates])
   const [drafts, setDrafts] = useState<Record<string, string>>(initial)
 
   function save() {
@@ -523,7 +525,14 @@ function CategoryRatesDialog({
 
   return (
     <>
-      <Button type="button" variant="outline" onClick={() => setOpen(true)}>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => {
+          setDrafts(categoryRateDrafts(categoryRates))
+          setOpen(true)
+        }}
+      >
         <SlidersHorizontal className="mr-1.5 h-4 w-4" />
         按发货分类设置提点
       </Button>
@@ -1049,6 +1058,7 @@ export function CommissionManager({
   options,
 }: CommissionManagerProps) {
   const router = useRouter()
+  const pathname = usePathname()
   const currentPage = filters.page
   const totalPages = Math.max(1, Math.ceil(totalCount / COMMISSION_PAGE_SIZE))
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set())
@@ -1063,6 +1073,7 @@ export function CommissionManager({
   const [rejectPending, startRejectTransition] = useTransition()
   const [rejectingRow, setRejectingRow] = useState<BusinessOrderCommissionRow | null>(null)
   const [rejectReason, setRejectReason] = useState('')
+  const [directSettleTargets, setDirectSettleTargets] = useState<BusinessOrderCommissionRow[] | null>(null)
   const [exchangeRate, setExchangeRate] = useState('')
   const [exchangeRatePending, startExchangeRateTransition] = useTransition()
   const [visibleColumns, setVisibleColumns] = useState<Set<OptionalCommissionColumn>>(new Set())
@@ -1110,6 +1121,7 @@ export function CommissionManager({
     [rows],
   )
   const canConfirmClearance = isSalespersonView
+  const canDirectSettle = !readOnly && (actor.role === 'admin' || actor.role === 'finance')
 
   const groups = useMemo(() => {
     const map = new Map<string, BusinessOrderCommissionRow[]>()
@@ -1140,6 +1152,10 @@ export function CommissionManager({
   const allConfirmationSelected =
     confirmationSelectableRows.length > 0 &&
     confirmationSelectableRows.every((row) => row.item_ids.every((id) => selectedConfirmationItemIds.has(id)))
+  const directSettleSelectableRows = useMemo(
+    () => (canDirectSettle ? rows.filter((row) => row.clearance_status === 'pending') : []),
+    [canDirectSettle, rows],
+  )
   const cancelClearanceSelectableRows = useMemo(
     () => rows.filter((row) => row.clearance_status === 'confirmed'),
     [rows],
@@ -1296,6 +1312,25 @@ export function CommissionManager({
     })
   }
 
+  function confirmDirectSettle() {
+    if (!directSettleTargets?.length) return
+    const rowCount = directSettleTargets.length
+    const itemIds = directSettleTargets.flatMap((row) => row.item_ids)
+    startConfirmTransition(async () => {
+      const result = await confirmBusinessOrderCommissionClearance({
+        business_order_item_ids: itemIds,
+      })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '直接结清失败')
+        return
+      }
+      toast.success(`已由财务直接结清 ${rowCount} 个产品行`)
+      setDirectSettleTargets(null)
+      router.refresh()
+    })
+  }
+
   function submitRowRejection() {
     if (!rejectingRow) return
     const reason = rejectReason.trim()
@@ -1438,6 +1473,26 @@ export function CommissionManager({
         </div>
       )}
 
+      {canDirectSettle && directSettleSelectableRows.length > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+          <span className="text-sm text-muted-foreground">
+            当前页待确认 {directSettleSelectableRows.length} 个产品行
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={confirmPending}
+            onClick={() => setDirectSettleTargets(directSettleSelectableRows)}
+          >
+            <CheckCircle2 className="mr-1.5 h-4 w-4" />
+            直接结清当前页
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            财务可直接结清，无需业务再次确认；结清后金额锁定，如需修改须先取消结清。
+          </span>
+        </div>
+      )}
+
       {readOnly && canCancelClearances && cancelClearanceSelectableRows.length > 0 && (
         <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-3 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
           <span className="text-sm text-muted-foreground">已选 {selectedCancelledClearanceCount} 个产品行</span>
@@ -1458,7 +1513,7 @@ export function CommissionManager({
         <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
           <h2 className="text-sm font-semibold">筛选提成产品行</h2>
           <span className="rounded-full bg-muted px-2.5 py-1 text-xs text-muted-foreground">
-            共 {totalCount} 个产品行
+            共 {totalCount} 个订单
           </span>
         </div>
         <div className="grid gap-3 p-4 md:grid-cols-4 xl:grid-cols-11">
@@ -1512,7 +1567,7 @@ export function CommissionManager({
         <div className="flex flex-wrap gap-2 xl:col-span-11">
           <Button type="submit">筛选</Button>
           <Button asChild type="button" variant="outline">
-            <Link href="/finance/commission">清空</Link>
+            <Link href={pathname}>清空</Link>
           </Button>
         </div>
         </div>
@@ -1734,10 +1789,17 @@ export function CommissionManager({
                         {row.clearance_period && (
                           <div className="text-xs text-muted-foreground">{row.clearance_period}</div>
                         )}
-                        {!readOnly && row.clearance_status === 'pending' && canConfirmClearance && (
+                        {!readOnly && row.clearance_status === 'pending' && (canConfirmClearance || canDirectSettle) && (
                           <div className="flex items-center gap-1 pt-1">
-                            <Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={confirmPending} onClick={() => confirmRowClearance(row)}>确认</Button>
-                            <Button type="button" variant="outline" size="sm" className="h-7 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={rejectPending} onClick={() => { setRejectingRow(row); setRejectReason('') }}>驳回</Button>
+                            {canConfirmClearance && (
+                              <>
+                                <Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={confirmPending} onClick={() => confirmRowClearance(row)}>确认</Button>
+                                <Button type="button" variant="outline" size="sm" className="h-7 text-xs text-destructive hover:bg-destructive hover:text-destructive-foreground" disabled={rejectPending} onClick={() => { setRejectingRow(row); setRejectReason('') }}>驳回</Button>
+                              </>
+                            )}
+                            {canDirectSettle && (
+                              <Button type="button" variant="outline" size="sm" className="h-7 text-xs" disabled={confirmPending} onClick={() => setDirectSettleTargets([row])}>直接结清</Button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1768,7 +1830,7 @@ export function CommissionManager({
           <div className="flex items-center gap-1">
             {currentPage > 1 && (
               <Link
-                href={`/finance/commission?${businessOrderCommissionFilterQuery({ ...filters, page: currentPage - 1 })}`}
+                href={`${pathname}?${businessOrderCommissionFilterQuery({ ...filters, page: currentPage - 1 })}`}
                 className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
               >
                 上一页
@@ -1787,7 +1849,7 @@ export function CommissionManager({
                 ) : (
                   <Link
                     key={item}
-                    href={`/finance/commission?${businessOrderCommissionFilterQuery({ ...filters, page: item })}`}
+                    href={`${pathname}?${businessOrderCommissionFilterQuery({ ...filters, page: item })}`}
                     className={`inline-flex h-8 min-w-8 items-center justify-center rounded-md text-sm ${
                       item === currentPage
                         ? 'bg-primary text-primary-foreground'
@@ -1800,7 +1862,7 @@ export function CommissionManager({
               )}
             {currentPage < totalPages && (
               <Link
-                href={`/finance/commission?${businessOrderCommissionFilterQuery({ ...filters, page: currentPage + 1 })}`}
+                href={`${pathname}?${businessOrderCommissionFilterQuery({ ...filters, page: currentPage + 1 })}`}
                 className="inline-flex h-8 items-center rounded-md border px-3 text-sm hover:bg-muted"
               >
                 下一页
@@ -1825,6 +1887,26 @@ export function CommissionManager({
             <AlertDialogCancel disabled={cancelClearancePending}>取消</AlertDialogCancel>
             <AlertDialogAction disabled={cancelClearancePending} onClick={confirmCancelClearances}>
               确认取消结清
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={directSettleTargets != null}
+        onOpenChange={(open) => !open && setDirectSettleTargets(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>财务直接结清？</AlertDialogTitle>
+            <AlertDialogDescription>
+              将直接结清 {directSettleTargets?.length ?? 0} 个产品行，无需业务再次确认；结清后金额锁定，如需修改须先在已结清订单中取消结清。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={confirmPending}>取消</AlertDialogCancel>
+            <AlertDialogAction disabled={confirmPending} onClick={confirmDirectSettle}>
+              确认结清
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

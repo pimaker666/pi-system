@@ -124,6 +124,7 @@ export function CommissionClearanceDetails({ rows }: { rows: BusinessOrderCommis
 
   function selectStatus(nextStatus: CommissionClearanceStatus | 'all') {
     setStatus(nextStatus)
+    setSelectedIds(new Set())
     if (nextStatus !== 'rejected' || unreadRejectedCount === 0) return
     startReadTransition(async () => {
       const result = await markBusinessOrderCommissionRejectionsRead()
@@ -183,7 +184,10 @@ export function CommissionClearanceDetails({ rows }: { rows: BusinessOrderCommis
             </div>
             <select
               value={salesperson}
-              onChange={(event) => setSalesperson(event.target.value)}
+              onChange={(event) => {
+                setSalesperson(event.target.value)
+                setSelectedIds(new Set())
+              }}
               className="h-9 rounded-md border bg-background px-3 text-sm"
               aria-label="按业务员筛选"
             >

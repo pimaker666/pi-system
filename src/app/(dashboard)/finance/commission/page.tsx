@@ -45,7 +45,7 @@ export default async function FinanceCommissionPage({
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">业务提成</h1>
             <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-              已收齐且已发货的产品行自动进入本页；全部确认结清的订单会自动移入“已结清订单”。未关联客户的订单保留展示，补充客户后即可按产品行计算提成。
+              已收齐且已发货的产品行自动进入本页；业务确认或财务直接结清后即视为已结清，全部结清的订单会自动移入“已结清订单”。未关联客户的订单保留展示，补充客户后即可按产品行计算提成。
             </p>
           </div>
         </div>

@@ -467,7 +467,15 @@ async function loadCommissionContext(
     ),
   ]
 
-  const [categoryRates, customerTags, customOrderRates, defaultFreightCommissionRate, itemCommissions, orderCommissions, clearances, financialLabels] =
+  const customerIds = [
+    ...new Set(
+      orders
+        .map((order) => order.customer_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  ]
+
+  const [categoryRates, customerTags, customOrderRates, defaultFreightCommissionRate, itemCommissions, orderCommissions, clearances, financialLabels, customOrderCounts, customerTagColors] =
     await Promise.all([
       fetchAllCategoryRates(supabase),
       fetchAllCustomerCommissionTags(supabase),
@@ -477,19 +485,9 @@ async function loadCommissionContext(
       fetchOrderCommissionsFor(supabase, orderIds),
       fetchCommissionClearancesFor(supabase, itemIds),
       fetchProductFinancialLabelsFor(supabase, productIds),
+      fetchCustomOrderCounts(supabase, customerIds),
+      fetchCustomerTagColors(supabase, orderIds),
     ])
-
-  const customerIds = [
-    ...new Set(
-      orders
-        .map((order) => order.customer_id)
-        .filter((id): id is string => typeof id === 'string' && id.length > 0),
-    ),
-  ]
-  const [customOrderCounts, customerTagColors] = await Promise.all([
-    fetchCustomOrderCounts(supabase, customerIds),
-    fetchCustomerTagColors(supabase, orderIds),
-  ])
 
   return {
     categoryRates,
