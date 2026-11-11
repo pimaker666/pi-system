@@ -17,11 +17,11 @@ import { getFinancePageAccess, requireApproved } from '@/lib/auth'
 import { getDashboardStats } from '@/lib/dashboard-stats'
 import {
   currentMonthDateRange,
-  fetchDashboardApprovalCounts,
   fetchDashboardMonthOrders,
   fetchDashboardPendingCommissionCount,
   fetchDashboardReceivables,
 } from '@/lib/dashboard-todos-server'
+import { getApprovalTodoCounts } from '@/lib/approvals-server'
 import { fetchBusinessOrderCostTodoSummary } from '@/lib/business-order-costs-server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -193,8 +193,6 @@ export default async function DashboardPage() {
   const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
   const monthRange = currentMonthDateRange()
 
-  const canReviewLeave = profile.role === 'admin' || profile.role === 'finance'
-
   const [stats, pisResult, approvals, receivables, monthOrders, commissionPending, ordersResult] =
     await Promise.all([
       getDashboardStats(),
@@ -204,7 +202,7 @@ export default async function DashboardPage() {
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(8),
-      fetchDashboardApprovalCounts(supabase, { canReviewLeave }),
+      getApprovalTodoCounts(),
       fetchDashboardReceivables(supabase),
       fetchDashboardMonthOrders(supabase),
       isSalesperson ? fetchDashboardPendingCommissionCount(supabase) : Promise.resolve(0),

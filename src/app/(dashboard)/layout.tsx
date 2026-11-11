@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { getFinancePageAccess, requireApproved } from '@/lib/auth'
+import { getApprovalTodoCounts } from '@/lib/approvals-server'
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
 import { Sidebar, type SidebarMode } from '@/components/layout/sidebar'
@@ -18,7 +19,8 @@ export default async function DashboardLayout({
     cookieMode === 'expanded' || cookieMode === 'collapsed' ? cookieMode : 'auto'
   const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
   const supabase = await createClient()
-  const [financeAccess, commissionAttentionCount, approvalPendingCount] = await Promise.all([
+  // 与工作台「待我审批」同一口径：审批引擎 + 报销 + 请假（同一请求内只查一次）。
+  const [financeAccess, commissionAttentionCount, approvalCounts] = await Promise.all([
     getFinancePageAccess(),
     isSalesperson
       ? supabase
@@ -30,10 +32,7 @@ export default async function DashboardLayout({
           return count ?? 0
         })
       : Promise.resolve(0),
-    supabase.rpc('approval_pending_count').then(({ data, error }) => {
-      if (error) return 0
-      return Number(data ?? 0)
-    }),
+    getApprovalTodoCounts(),
   ])
 
   return (
@@ -44,7 +43,7 @@ export default async function DashboardLayout({
         fullName={displayProfileName(profile)}
         financeAccess={financeAccess}
         commissionAttentionCount={commissionAttentionCount}
-        approvalPendingCount={approvalPendingCount}
+        approvalPendingCount={approvalCounts.total}
         mode={sidebarMode}
       />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">

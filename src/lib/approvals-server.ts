@@ -1,3 +1,5 @@
+import { cache } from 'react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { hasCurrentPermission, requireAdmin, requireApproved } from '@/lib/auth'
 import {
@@ -25,6 +27,52 @@ export async function fetchApprovalInbox(scope: ApprovalInboxScope): Promise<App
   if (error) throw new Error(`读取审批列表失败：${error.message}`)
   return (data ?? []) as ApprovalInboxItem[]
 }
+
+export interface ApprovalTodoCounts {
+  total: number
+  engine: number
+  reimbursement: number
+  leave: number
+}
+
+async function countPendingRows(
+  supabase: SupabaseClient,
+  table: 'finance_reimbursement_requests' | 'leave_requests',
+): Promise<number> {
+  const { count, error } = await supabase
+    .from(table)
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'pending')
+  if (error) return 0
+  return count ?? 0
+}
+
+/**
+ * 待我审批计数：审批引擎 + 报销 + 请假。
+ * 审批引擎只覆盖订单类动作，报销/请假是独立流程：报销按 reimbursement.review 权限，
+ * 请假按库内财务/管理员角色（与 review_leave_request 守卫一致）。
+ * 侧边栏角标与工作台卡片共用，同一请求内只查一次。
+ */
+export const getApprovalTodoCounts = cache(async (): Promise<ApprovalTodoCounts> => {
+  const profile = await requireApproved()
+  const canReviewLeave = profile.role === 'admin' || profile.role === 'finance'
+  const supabase = await createClient()
+  const [engineResult, permissionResult] = await Promise.all([
+    supabase.rpc('approval_pending_count'),
+    supabase.rpc('current_permission_map', { p_permissions: ['reimbursement.review'] }),
+  ])
+  const engine = engineResult.error ? 0 : Number(engineResult.data ?? 0)
+  const permissions = permissionResult.error
+    ? {}
+    : ((permissionResult.data ?? {}) as Record<string, boolean>)
+  const [reimbursement, leave] = await Promise.all([
+    permissions['reimbursement.review'] === true
+      ? countPendingRows(supabase, 'finance_reimbursement_requests')
+      : 0,
+    canReviewLeave ? countPendingRows(supabase, 'leave_requests') : 0,
+  ])
+  return { total: engine + reimbursement + leave, engine, reimbursement, leave }
+})
 
 export async function fetchReimbursementTodos(): Promise<ApprovalSideTodo[]> {
   await requireApproved()
