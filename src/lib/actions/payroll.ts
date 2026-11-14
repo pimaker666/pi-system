@@ -49,6 +49,10 @@ const removeItemSchema = z.object({
   item_id: z.string().uuid(),
 })
 
+const itemIdSchema = z.object({
+  item_id: z.string().uuid(),
+})
+
 const money = (label: string) =>
   z.coerce.number({ invalid_type_error: `${label}须为数字` }).min(0, `${label}不能为负`).max(999999999, `${label}超出范围`)
 
@@ -203,6 +207,40 @@ async function findPublishedSheetIds(
     for (const row of (data ?? []) as { id: string }[]) published.add(row.id)
   }
   return { published, error: null }
+}
+
+// 行级锁：已发布表里已推送的行不可改数；撤回该行（pushed_at 为空）后可单独修改再推送。
+async function findLockedItemIds(
+  supabase: PayrollSupabase,
+  itemIds: string[],
+): Promise<{ locked: Set<string>; error: string | null }> {
+  const locked = new Set<string>()
+  const rows: { id: string; sheet_id: string; pushed_at: string | null }[] = []
+  for (let index = 0; index < itemIds.length; index += ID_CHUNK) {
+    const { data, error } = await supabase
+      .from('payroll_items')
+      .select('id, sheet_id, pushed_at')
+      .in('id', itemIds.slice(index, index + ID_CHUNK))
+    if (error) return { locked, error: `工资明细读取失败：${error.message}` }
+    rows.push(...((data ?? []) as typeof rows))
+  }
+
+  const published = new Set<string>()
+  const sheetIds = [...new Set(rows.map((row) => row.sheet_id))]
+  for (let index = 0; index < sheetIds.length; index += ID_CHUNK) {
+    const { data, error } = await supabase
+      .from('payroll_sheets')
+      .select('id')
+      .in('id', sheetIds.slice(index, index + ID_CHUNK))
+      .eq('status', 'published')
+    if (error) return { locked, error: `工资表状态读取失败：${error.message}` }
+    for (const row of (data ?? []) as { id: string }[]) published.add(row.id)
+  }
+
+  for (const row of rows) {
+    if (published.has(row.sheet_id) && row.pushed_at) locked.add(row.id)
+  }
+  return { locked, error: null }
 }
 
 export async function createPayrollSheet(input: {
@@ -456,16 +494,11 @@ export async function publishPayrollSheet(input: { sheet_id: string }): Promise<
   if (!pushableCount) {
     return { ok: false, error: '工资表里没有系统账号员工，没有可推送的工资条' }
   }
-  const { data: updated, error } = await supabase
-    .from('payroll_sheets')
-    .update({ status: 'published' })
-    .eq('id', parsed.data.sheet_id)
-    .eq('status', 'draft')
-    .select('id')
+  // RPC 原子完成：状态置 published，同时给有账号的行写入 pushed_at
+  const { error } = await supabase.rpc('publish_payroll_sheet', {
+    p_sheet_id: parsed.data.sheet_id,
+  })
   if (error) return { ok: false, error: `推送失败：${error.message}` }
-  if (!updated || updated.length === 0) {
-    return { ok: false, error: '工资表状态已变更，请刷新后重试' }
-  }
   revalidatePayroll()
   return { ok: true }
 }
@@ -480,6 +513,84 @@ export async function unpublishPayrollSheet(input: { sheet_id: string }): Promis
     p_sheet_id: parsed.data.sheet_id,
   })
   if (error) return { ok: false, error: `撤回失败：${error.message}` }
+  revalidatePayroll()
+  return { ok: true }
+}
+
+async function loadPayrollItemContext(
+  supabase: PayrollSupabase,
+  itemId: string,
+): Promise<
+  | { item: { id: string; profile_id: string | null; pushed_at: string | null; sheet_status: string }; error: null }
+  | { item: null; error: string }
+> {
+  const { data: item, error } = await supabase
+    .from('payroll_items')
+    .select('id, profile_id, pushed_at, sheet_id')
+    .eq('id', itemId)
+    .maybeSingle()
+  if (error) return { item: null, error: `读取工资明细失败：${error.message}` }
+  if (!item) return { item: null, error: '工资明细不存在，请刷新后重试' }
+  const { data: sheet, error: sheetError } = await supabase
+    .from('payroll_sheets')
+    .select('status')
+    .eq('id', item.sheet_id)
+    .maybeSingle()
+  if (sheetError) return { item: null, error: `读取工资表失败：${sheetError.message}` }
+  if (!sheet) return { item: null, error: '工资表不存在，请刷新后重试' }
+  return { item: { ...item, sheet_status: sheet.status }, error: null }
+}
+
+// 单行撤回：该员工立刻看不到工资条，之后可单独改数再推送
+export async function unpushPayrollItem(input: { item_id: string }): Promise<ActionResult> {
+  await requireFinanceManager()
+  const parsed = itemIdSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: '参数不合法' }
+  const supabase = await createClient()
+  const context = await loadPayrollItemContext(supabase, parsed.data.item_id)
+  if (!context.item) return { ok: false, error: context.error }
+  if (context.item.sheet_status !== 'published') {
+    return { ok: false, error: '工资表未推送，无需撤回单行' }
+  }
+  if (!context.item.pushed_at) {
+    return { ok: false, error: '该工资条已是未推送状态' }
+  }
+  const { data: updated, error } = await supabase
+    .from('payroll_items')
+    .update({ pushed_at: null })
+    .eq('id', parsed.data.item_id)
+    .select('id')
+  if (error) return { ok: false, error: `撤回失败：${error.message}` }
+  if (!updated || updated.length === 0) return { ok: false, error: '撤回失败，请刷新后重试' }
+  revalidatePayroll()
+  return { ok: true }
+}
+
+// 单行推送：仅已发布工资表、有系统账号且当前未推送的行
+export async function pushPayrollItem(input: { item_id: string }): Promise<ActionResult> {
+  await requireFinanceManager()
+  const parsed = itemIdSchema.safeParse(input)
+  if (!parsed.success) return { ok: false, error: '参数不合法' }
+  const supabase = await createClient()
+  const context = await loadPayrollItemContext(supabase, parsed.data.item_id)
+  if (!context.item) return { ok: false, error: context.error }
+  if (context.item.sheet_status !== 'published') {
+    return { ok: false, error: '工资表尚未推送，请先整表推送' }
+  }
+  if (!context.item.profile_id) {
+    return { ok: false, error: '该员工没有系统账号，无法推送工资条' }
+  }
+  if (context.item.pushed_at) {
+    return { ok: false, error: '该工资条已推送' }
+  }
+  const { data: updated, error } = await supabase
+    .from('payroll_items')
+    .update({ pushed_at: new Date().toISOString() })
+    .eq('id', parsed.data.item_id)
+    .is('pushed_at', null)
+    .select('id')
+  if (error) return { ok: false, error: `推送失败：${error.message}` }
+  if (!updated || updated.length === 0) return { ok: false, error: '推送失败，请刷新后重试' }
   revalidatePayroll()
   return { ok: true }
 }
@@ -640,10 +751,10 @@ export async function updatePayrollItems(input: {
     return { ok: false, error: parsed.error.issues[0]?.message ?? '参数不合法' }
   }
   const supabase = await createClient()
-  const lock = await findPublishedSheetIds(supabase, parsed.data.rows.map((row) => row.id))
+  const lock = await findLockedItemIds(supabase, parsed.data.rows.map((row) => row.id))
   if (lock.error) return { ok: false, error: lock.error }
-  if (lock.published.size > 0) {
-    return { ok: false, error: '工资表已推送员工确认，请先撤回发布再修改金额' }
+  if (lock.locked.size > 0) {
+    return { ok: false, error: '已推送的工资条不能直接修改，请先撤回该行再编辑' }
   }
   const normalizedRows = parsed.data.rows.map(({ id, remark, ...fields }) => ({
     id,

@@ -1685,6 +1685,7 @@ export interface PayrollItem {
   housing_fund: number
   tax: number
   remark: string | null
+  pushed_at: string | null
   confirmation: 'pending' | 'confirmed' | 'rejected'
   confirmed_at: string | null
   rejected_reason: string | null

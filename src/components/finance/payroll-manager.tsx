@@ -47,9 +47,11 @@ import {
   deletePayrollSalaryProfile,
   deletePayrollSheet,
   publishPayrollSheet,
+  pushPayrollItem,
   removePayrollItem,
   savePayrollSalaryProfile,
   unpublishPayrollSheet,
+  unpushPayrollItem,
   updatePayrollItems,
   updatePayrollSheetMeta,
 } from '@/lib/actions/payroll'
@@ -211,8 +213,9 @@ export function PayrollManager({
   const [removeTarget, setRemoveTarget] = useState<PayrollItemWithProfile | null>(null)
 
   const sheet = sheets.find((entry) => entry.period_month === currentMonth) ?? null
-  // 已推送的工资表金额对外承诺，财务侧只读；改数必须先撤回发布。
+  // 已推送的行对外承诺不能直接改数；可只撤回这一行，改完再单独推送。
   const locked = sheet?.status === 'published'
+  const rowLocked = (item: PayrollItemWithProfile) => Boolean(locked && item.pushed_at)
   const sheetItems = useMemo(
     () => items.filter((item) => item.sheet_id === sheet?.id),
     [items, sheet?.id],
@@ -271,14 +274,13 @@ export function PayrollManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, sheet?.id, sheet?.full_attendance_days])
 
-  const dirtyIds = locked
-    ? []
-    : sheetItems
-        .filter((item) => drafts[item.id] && isDirty(item, drafts[item.id]))
-        .map((item) => item.id)
+  const dirtyIds = sheetItems
+    .filter((item) => !rowLocked(item) && drafts[item.id] && isDirty(item, drafts[item.id]))
+    .map((item) => item.id)
 
   function patchDraft(itemId: string, field: keyof RowDraft, value: string) {
-    if (locked || !editing) return
+    const target = sheetItems.find((item) => item.id === itemId)
+    if (!editing || !target || rowLocked(target)) return
     if (field === 'attendance_deduction') {
       setDeductionTouched((current) => ({ ...current, [itemId]: true }))
     }
@@ -447,6 +449,30 @@ export function PayrollManager({
         setRemoveTarget(null)
       } else {
         toast.error(result.error ?? '移除失败')
+      }
+    })
+  }
+
+  function handleUnpushItem(item: PayrollItemWithProfile) {
+    const name = payrollItemName(item)
+    startTransition(async () => {
+      const result = await unpushPayrollItem({ item_id: item.id })
+      if (result.ok) {
+        toast.success(`已撤回 ${name} 的工资条，可编辑后重新推送`)
+      } else {
+        toast.error(result.error ?? '撤回失败')
+      }
+    })
+  }
+
+  function handlePushItem(item: PayrollItemWithProfile) {
+    const name = payrollItemName(item)
+    startTransition(async () => {
+      const result = await pushPayrollItem({ item_id: item.id })
+      if (result.ok) {
+        toast.success(`已推送 ${name} 的工资条`)
+      } else {
+        toast.error(result.error ?? '推送失败')
       }
     })
   }
@@ -620,8 +646,9 @@ export function PayrollManager({
 
   // ---------------- 财务/管理员视图 ----------------
   // 无账号人员没有员工端，工资条默认不推送，只保留在工资表里
-  const pushedItems = sheetItems.filter((item) => item.profile_id)
-  const unpushedCount = sheetItems.length - pushedItems.length
+  const pushedItems = sheetItems.filter((item) => item.pushed_at)
+  const pendingPushCount = sheetItems.filter((item) => item.profile_id && !item.pushed_at).length
+  const noAccountCount = sheetItems.filter((item) => !item.profile_id).length
   const totals = sheetItems.reduce(
     (acc, item) => {
       const draft = drafts[item.id]
@@ -711,28 +738,25 @@ export function PayrollManager({
             {sheet.status === 'published' && (
               <span className="text-xs text-muted-foreground">
                 已推送 {pushedItems.length} 人
-                {unpushedCount > 0 ? ` · 无账号未推送 ${unpushedCount} 人` : ''}
+                {pendingPushCount > 0 ? ` · 待推送 ${pendingPushCount} 人` : ''}
+                {noAccountCount > 0 ? ` · 无账号 ${noAccountCount} 人` : ''}
               </span>
             )}
             <div className="ml-auto flex flex-wrap items-center gap-2">
-              {sheet.status === 'draft' &&
-                (editing ? (
-                  <>
-                    <Button
-                      onClick={handleSaveRows}
-                      disabled={pending || dirtyIds.length === 0}
-                    >
-                      保存修改{dirtyIds.length > 0 ? `（${dirtyIds.length} 行）` : ''}
-                    </Button>
-                    <Button variant="outline" disabled={pending} onClick={requestCancelEditing}>
-                      取消编辑
-                    </Button>
-                  </>
-                ) : (
-                  <Button variant="outline" disabled={pending} onClick={() => setEditing(true)}>
-                    编辑工资表
+              {editing ? (
+                <>
+                  <Button onClick={handleSaveRows} disabled={pending || dirtyIds.length === 0}>
+                    保存修改{dirtyIds.length > 0 ? `（${dirtyIds.length} 行）` : ''}
                   </Button>
-                ))}
+                  <Button variant="outline" disabled={pending} onClick={requestCancelEditing}>
+                    取消编辑
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" disabled={pending} onClick={() => setEditing(true)}>
+                  编辑工资表
+                </Button>
+              )}
               {sheet.status === 'draft' && !editing && (
                 <>
                   <Button
@@ -751,7 +775,7 @@ export function PayrollManager({
                   </Button>
                 </>
               )}
-              {sheet.status === 'published' && (
+              {sheet.status === 'published' && !editing && (
                 <Button
                   variant="outline"
                   disabled={pending}
@@ -802,7 +826,7 @@ export function PayrollManager({
               />
               <span className="text-xs text-muted-foreground">
                 {locked
-                  ? '工资表已推送，金额与满勤天数已锁定；如需修改请先撤回发布。'
+                  ? '已推送后满勤天数锁定；单行改数请先撤回该员工，改完再单独推送。'
                   : editing
                     ? '默认当月工作日数；考勤扣款=底薪÷满勤天数×缺勤天数，手动改过的行不联动。'
                     : '发放月份与满勤天数随整表编辑一起解锁，点「编辑工资表」后可调整。'}
@@ -817,11 +841,13 @@ export function PayrollManager({
         </div>
       )}
 
-      {sheet && canManage && sheet.status === 'draft' && (
+      {sheet && canManage && (
         <p className="text-xs text-muted-foreground">
-          {editing
-            ? '正在编辑：金额与天数改动点「保存修改」统一生效；补入/移除人员立即保存；点「取消编辑」放弃未保存的金额与天数。'
-            : '工资表默认只读，点「编辑工资表」后才能修改人员与金额。'}
+          {locked
+            ? '已推送的工资条只读；点某行「撤回」后该员工看不到工资条，改完点该行「推送」即可重新送达。'
+            : editing
+              ? '正在编辑：金额与天数改动点「保存修改」统一生效；补入/移除人员立即保存；点「取消编辑」放弃未保存的金额与天数。'
+              : '工资表默认只读，点「编辑工资表」后才能修改人员与金额。'}
         </p>
       )}
 
@@ -977,7 +1003,7 @@ export function PayrollManager({
                           max="62"
                           step="0.01"
                           className="h-8 w-20 text-right"
-                          disabled={locked || !editing}
+                          disabled={!editing || rowLocked(item)}
                           value={draft?.attendance_days ?? ''}
                           onChange={(event) =>
                             patchDraft(item.id, 'attendance_days', event.target.value)
@@ -999,7 +1025,7 @@ export function PayrollManager({
                             step="0.01"
                             aria-label={`${payrollItemName(item)}${label}`}
                             className="h-8 w-24 text-right"
-                            disabled={locked || !editing}
+                            disabled={!editing || rowLocked(item)}
                             value={draft?.[field] ?? ''}
                             onChange={(event) => patchDraft(item.id, field, event.target.value)}
                           />
@@ -1023,7 +1049,7 @@ export function PayrollManager({
                             step="0.01"
                             aria-label={`${payrollItemName(item)}${label}`}
                             className="h-8 w-24 text-right"
-                            disabled={locked || !editing}
+                            disabled={!editing || rowLocked(item)}
                             value={draft?.[field] ?? ''}
                             onChange={(event) => patchDraft(item.id, field, event.target.value)}
                           />
@@ -1039,17 +1065,39 @@ export function PayrollManager({
                         <Input
                           className="h-8 min-w-28"
                           maxLength={500}
-                          disabled={locked || !editing}
+                          disabled={!editing || rowLocked(item)}
                           value={draft?.remark ?? ''}
                           onChange={(event) => patchDraft(item.id, 'remark', event.target.value)}
                         />
                       </TableCell>
                       {sheet.status === 'published' && (
                         <TableCell>
-                          {item.profile_id ? (
-                            <Badge>已推送</Badge>
-                          ) : (
+                          {!item.profile_id ? (
                             <Badge variant="outline">未推送（无账号）</Badge>
+                          ) : item.pushed_at ? (
+                            <div className="flex items-center gap-1">
+                              <Badge>已推送</Badge>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={pending}
+                                onClick={() => handleUnpushItem(item)}
+                              >
+                                撤回
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <Badge variant="secondary">未推送</Badge>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                disabled={pending}
+                                onClick={() => handlePushItem(item)}
+                              >
+                                推送
+                              </Button>
+                            </div>
                           )}
                         </TableCell>
                       )}
@@ -1098,7 +1146,7 @@ export function PayrollManager({
           </div>
           {sheet.status === 'published' && (
             <p className="text-xs text-muted-foreground">
-              已推送的工资表金额只读；如需修改请先「撤回发布」，撤回后全员确认状态重置为待确认，重新推送后需再次确认。
+              已推送的工资条金额只读。个别有误可只「撤回」该员工，改数后单独「推送」；整表重来才用「撤回发布」。
             </p>
           )}
         </>
@@ -1376,7 +1424,7 @@ export function PayrollManager({
           <DialogHeader>
             <DialogTitle>推送工资条</DialogTitle>
             <DialogDescription>
-              推送后员工可在「工资表」页查看本人工资条，每人只能看到自己的；无系统账号的人员不推送。金额随即锁定，如需修改须先撤回发布。
+              推送后员工可在「工资表」页查看本人工资条，每人只能看到自己的；无系统账号的人员不推送。金额随即锁定，个别有误可只撤回该员工，改完再单独推送。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
