@@ -91,15 +91,6 @@ const salaryProfileIdSchema = z.object({
   id: z.string().uuid(),
 })
 
-const rejectSchema = z.object({
-  item_id: z.string().uuid(),
-  reason: z.string().trim().min(1, '请填写驳回原因').max(500, '驳回原因最长 500 字'),
-})
-
-const itemIdSchema = z.object({
-  item_id: z.string().uuid(),
-})
-
 function revalidatePayroll() {
   revalidatePath('/finance/payroll')
 }
@@ -455,6 +446,16 @@ export async function publishPayrollSheet(input: { sheet_id: string }): Promise<
   const parsed = sheetIdSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: '参数不合法' }
   const supabase = await createClient()
+  // 无账号人员没有员工端，其工资条不推送；整表都没有账号员工时不允许推送
+  const { count: pushableCount, error: countError } = await supabase
+    .from('payroll_items')
+    .select('id', { count: 'exact', head: true })
+    .eq('sheet_id', parsed.data.sheet_id)
+    .not('profile_id', 'is', null)
+  if (countError) return { ok: false, error: `读取工资明细失败：${countError.message}` }
+  if (!pushableCount) {
+    return { ok: false, error: '工资表里没有系统账号员工，没有可推送的工资条' }
+  }
   const { data: updated, error } = await supabase
     .from('payroll_sheets')
     .update({ status: 'published' })
@@ -474,7 +475,7 @@ export async function unpublishPayrollSheet(input: { sheet_id: string }): Promis
   const parsed = sheetIdSchema.safeParse(input)
   if (!parsed.success) return { ok: false, error: '参数不合法' }
   const supabase = await createClient()
-  // RPC 原子完成：状态回 draft + 全员确认状态重置为待确认
+  // RPC 原子完成：状态回 draft，历史确认字段一并重置
   const { error } = await supabase.rpc('unpublish_payroll_sheet', {
     p_sheet_id: parsed.data.sheet_id,
   })
@@ -667,66 +668,3 @@ export async function updatePayrollItems(input: {
   return { ok: true }
 }
 
-export async function confirmOwnPayrollItem(input: { item_id: string }): Promise<ActionResult> {
-  const profile = await requireApproved()
-  const parsed = itemIdSchema.safeParse(input)
-  if (!parsed.success) return { ok: false, error: '参数不合法' }
-  const supabase = await createClient()
-
-  const { data: item, error: readError } = await supabase
-    .from('payroll_items')
-    .select('id, profile_id')
-    .eq('id', parsed.data.item_id)
-    .single()
-  if (readError || !item) return { ok: false, error: '工资条不存在' }
-  if (item.profile_id !== profile.id) return { ok: false, error: '只能确认自己的工资条' }
-
-  const lock = await findPublishedSheetIds(supabase, [parsed.data.item_id])
-  if (lock.error) return { ok: false, error: lock.error }
-  if (lock.published.size === 0) return { ok: false, error: '工资表尚未发布，暂时无法确认' }
-
-  const { error } = await supabase
-    .from('payroll_items')
-    .update({ confirmation: 'confirmed' })
-    .eq('id', parsed.data.item_id)
-    .eq('confirmation', 'pending')
-  if (error) return { ok: false, error: `确认失败：${error.message}` }
-  revalidatePayroll()
-  return { ok: true }
-}
-
-export async function rejectOwnPayrollItem(input: {
-  item_id: string
-  reason: string
-}): Promise<ActionResult> {
-  const profile = await requireApproved()
-  const parsed = rejectSchema.safeParse(input)
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? '参数不合法' }
-  }
-  const supabase = await createClient()
-
-  const { data: item, error: readError } = await supabase
-    .from('payroll_items')
-    .select('id, profile_id')
-    .eq('id', parsed.data.item_id)
-    .single()
-  if (readError || !item) return { ok: false, error: '工资条不存在' }
-  if (item.profile_id !== profile.id) return { ok: false, error: '只能驳回自己的工资条' }
-
-  const lock = await findPublishedSheetIds(supabase, [parsed.data.item_id])
-  if (lock.error) return { ok: false, error: lock.error }
-  if (lock.published.size === 0) return { ok: false, error: '工资表尚未发布，暂时无法驳回' }
-
-  const { error } = await supabase
-    .from('payroll_items')
-    .update({
-      confirmation: 'rejected',
-      rejected_reason: parsed.data.reason,
-    })
-    .eq('id', parsed.data.item_id)
-    .eq('confirmation', 'pending')
-  if (error) return { ok: false, error: `驳回失败：${error.message}` }
-  revalidatePayroll()
-  return { ok: true }
-}

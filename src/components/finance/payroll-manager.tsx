@@ -40,16 +40,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Textarea } from '@/components/ui/textarea'
 import {
   addPayrollItem,
-  confirmOwnPayrollItem,
   createPayrollSalaryProfile,
   createPayrollSheet,
   deletePayrollSalaryProfile,
   deletePayrollSheet,
   publishPayrollSheet,
-  rejectOwnPayrollItem,
   removePayrollItem,
   savePayrollSalaryProfile,
   unpublishPayrollSheet,
@@ -60,7 +57,6 @@ import {
   calcAttendanceDeduction,
   calcPayroll,
   countWeekdays,
-  PAYROLL_CONFIRMATION_LABELS,
   PAYROLL_SHEET_STATUS_LABELS,
 } from '@/lib/payroll'
 import { formatCny } from '@/lib/finance'
@@ -208,8 +204,6 @@ export function PayrollManager({
   const [publishOpen, setPublishOpen] = useState(false)
   const [unpublishOpen, setUnpublishOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [rejectTarget, setRejectTarget] = useState<PayrollItemWithProfile | null>(null)
-  const [rejectReason, setRejectReason] = useState('')
   const [addStaffId, setAddStaffId] = useState('')
   const [addStaffOpen, setAddStaffOpen] = useState(false)
   const [manualStaffName, setManualStaffName] = useState('')
@@ -590,24 +584,11 @@ export function PayrollManager({
           return (
             <Card key={item.id}>
               <CardContent className="space-y-4 pt-6">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-medium">
-                    {itemSheet ? `${monthLabel(itemSheet.period_month)}工资条` : '工资条'}
-                    {itemSheet?.payout_month
-                      ? `（${monthLabel(itemSheet.payout_month)}发放）`
-                      : ''}
-                  </div>
-                  <Badge
-                    variant={
-                      item.confirmation === 'confirmed'
-                        ? 'default'
-                        : item.confirmation === 'rejected'
-                          ? 'destructive'
-                          : 'secondary'
-                    }
-                  >
-                    {PAYROLL_CONFIRMATION_LABELS[item.confirmation]}
-                  </Badge>
+                <div className="font-medium">
+                  {itemSheet ? `${monthLabel(itemSheet.period_month)}工资条` : '工资条'}
+                  {itemSheet?.payout_month
+                    ? `（${monthLabel(itemSheet.payout_month)}发放）`
+                    : ''}
                 </div>
                 <div className="overflow-x-auto rounded-md border">
                   <Table>
@@ -629,87 +610,18 @@ export function PayrollManager({
                     </TableBody>
                   </Table>
                 </div>
-                {item.confirmation === 'rejected' && item.rejected_reason && (
-                  <p className="text-sm text-destructive">
-                    驳回原因：{item.rejected_reason}（财务处理后会重新推送确认）
-                  </p>
-                )}
-                {item.confirmation === 'pending' && (
-                  <div className="flex gap-2">
-                    <Button
-                      disabled={pending}
-                      onClick={() =>
-                        runAction(() => confirmOwnPayrollItem({ item_id: item.id }))
-                      }
-                    >
-                      确认无误
-                    </Button>
-                    <Button
-                      variant="outline"
-                      disabled={pending}
-                      onClick={() => {
-                        setRejectReason('')
-                        setRejectTarget(item)
-                      }}
-                    >
-                      驳回
-                    </Button>
-                  </div>
-                )}
-                {item.confirmation === 'confirmed' && item.confirmed_at && (
-                  <p className="text-xs text-muted-foreground">
-                    已于 {formatDate(item.confirmed_at, true)} 确认
-                  </p>
-                )}
               </CardContent>
             </Card>
           )
         })}
-        <Dialog open={rejectTarget !== null} onOpenChange={(open) => !open && setRejectTarget(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>驳回工资条</DialogTitle>
-              <DialogDescription>
-                请填写驳回原因，财务修改后会重新推送确认。
-              </DialogDescription>
-            </DialogHeader>
-            <Textarea
-              value={rejectReason}
-              onChange={(event) => setRejectReason(event.target.value)}
-              maxLength={500}
-              placeholder="例如：提成金额与预期不符"
-            />
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setRejectTarget(null)}>
-                取消
-              </Button>
-              <Button
-                variant="destructive"
-                disabled={pending || !rejectReason.trim()}
-                onClick={() => {
-                  if (!rejectTarget) return
-                  const target = rejectTarget
-                  setRejectTarget(null)
-                  runAction(() =>
-                    rejectOwnPayrollItem({ item_id: target.id, reason: rejectReason.trim() }),
-                  )
-                }}
-              >
-                确认驳回
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
     )
   }
 
   // ---------------- 财务/管理员视图 ----------------
-  // 无账号人员没有员工端，不参与确认统计
-  const confirmableItems = sheetItems.filter((item) => item.profile_id)
-  const confirmedCount = confirmableItems.filter((item) => item.confirmation === 'confirmed').length
-  const rejectedCount = confirmableItems.filter((item) => item.confirmation === 'rejected').length
-  const pendingCount = confirmableItems.length - confirmedCount - rejectedCount
+  // 无账号人员没有员工端，工资条默认不推送，只保留在工资表里
+  const pushedItems = sheetItems.filter((item) => item.profile_id)
+  const unpushedCount = sheetItems.length - pushedItems.length
   const totals = sheetItems.reduce(
     (acc, item) => {
       const draft = drafts[item.id]
@@ -798,7 +710,8 @@ export function PayrollManager({
             </Badge>
             {sheet.status === 'published' && (
               <span className="text-xs text-muted-foreground">
-                已确认 {confirmedCount} / 待确认 {pendingCount} / 已驳回 {rejectedCount}
+                已推送 {pushedItems.length} 人
+                {unpushedCount > 0 ? ` · 无账号未推送 ${unpushedCount} 人` : ''}
               </span>
             )}
             <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -827,7 +740,7 @@ export function PayrollManager({
                     disabled={pending}
                     onClick={() => setPublishOpen(true)}
                   >
-                    推送员工确认
+                    推送工资条
                   </Button>
                   <Button
                     variant="destructive"
@@ -1022,7 +935,7 @@ export function PayrollManager({
                   <TableHead className="text-right">应扣工资</TableHead>
                   <TableHead className="text-right">实发工资</TableHead>
                   <TableHead className="min-w-32">备注</TableHead>
-                  {sheet.status === 'published' && <TableHead>确认状态</TableHead>}
+                  {sheet.status === 'published' && <TableHead>推送状态</TableHead>}
                   {sheet.status === 'draft' && editing && <TableHead className="w-10" />}
                 </TableRow>
               </TableHeader>
@@ -1134,26 +1047,9 @@ export function PayrollManager({
                       {sheet.status === 'published' && (
                         <TableCell>
                           {item.profile_id ? (
-                            <div className="space-y-1">
-                              <Badge
-                                variant={
-                                  item.confirmation === 'confirmed'
-                                    ? 'default'
-                                    : item.confirmation === 'rejected'
-                                      ? 'destructive'
-                                      : 'secondary'
-                                }
-                              >
-                                {PAYROLL_CONFIRMATION_LABELS[item.confirmation]}
-                              </Badge>
-                              {item.confirmation === 'rejected' && item.rejected_reason && (
-                                <p className="max-w-36 truncate text-xs text-muted-foreground">
-                                  {item.rejected_reason}
-                                </p>
-                              )}
-                            </div>
+                            <Badge>已推送</Badge>
                           ) : (
-                            <Badge variant="outline">无账号，无需确认</Badge>
+                            <Badge variant="outline">未推送（无账号）</Badge>
                           )}
                         </TableCell>
                       )}
@@ -1478,9 +1374,9 @@ export function PayrollManager({
       <Dialog open={publishOpen} onOpenChange={setPublishOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>推送员工确认</DialogTitle>
+            <DialogTitle>推送工资条</DialogTitle>
             <DialogDescription>
-              推送后员工可在「工资表」页查看本人工资条并确认或驳回；金额随即锁定，如需修改须先撤回发布。
+              推送后员工可在「工资表」页查看本人工资条，每人只能看到自己的；无系统账号的人员不推送。金额随即锁定，如需修改须先撤回发布。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -1505,7 +1401,7 @@ export function PayrollManager({
           <DialogHeader>
             <DialogTitle>撤回发布</DialogTitle>
             <DialogDescription>
-              撤回后工资表回到草稿、可重新修改金额；全员确认/驳回记录将清空，重新推送后员工需要再次确认。
+              撤回后工资表回到草稿、可重新修改金额；重新推送后员工才能再次看到工资条。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

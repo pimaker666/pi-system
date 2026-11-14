@@ -71,8 +71,8 @@ export default async function PayrollPage({
         <h1 className="text-2xl font-semibold">{canManage ? '工资表' : '我的工资条'}</h1>
         <p className="text-sm text-muted-foreground">
           {canManage
-            ? '人员取自薪资档案（可含无系统账号的员工）；核算后推送员工确认，推送后金额锁定，修改需先撤回发布。'
-            : '财务推送后可在此查看本人工资条并确认或驳回。'}
+            ? '人员取自薪资档案（可含无系统账号的员工）；核算后推送工资条，无账号人员默认不推送。推送后金额锁定，修改需先撤回发布。'
+            : '财务推送后可在此查看本人工资条，每人只能看到自己的。'}
         </p>
       </div>
       <PayrollManager
