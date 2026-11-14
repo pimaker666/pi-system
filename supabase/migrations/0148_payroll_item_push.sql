@@ -223,6 +223,8 @@ begin
     raise exception 'Only finance or admin can unpublish payroll sheets';
   end if;
 
+  perform set_config('payroll.unpublishing', '1', true);
+
   update public.payroll_sheets
      set status = 'draft'
    where id = p_sheet_id and status = 'published';
@@ -237,6 +239,8 @@ begin
          rejected_at = null,
          rejected_reason = null
    where sheet_id = p_sheet_id;
+
+  perform set_config('payroll.unpublishing', '', true);
 end;
 $$;
 
