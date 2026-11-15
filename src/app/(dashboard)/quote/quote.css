@@ -1,0 +1,241 @@
+/* Quotation calculator — screen polish + A4 print sheet. */
+
+.quote-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  background: hsl(var(--border));
+  border-top: 1px solid hsl(var(--border));
+}
+.quote-kpi {
+  background: hsl(var(--card));
+  padding: 14px 16px 15px;
+}
+.quote-kpi.is-accent {
+  background: linear-gradient(180deg, hsl(45 60% 97%), hsl(var(--card)));
+}
+
+.quote-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.quote-table th,
+.quote-table td {
+  padding: 9px 12px;
+  white-space: nowrap;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.quote-table th {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.35px;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 0.45);
+  border-bottom: 1px solid hsl(var(--border));
+  position: sticky;
+  top: 0;
+}
+.quote-table td {
+  font-size: 12px;
+  color: hsl(var(--foreground) / 0.85);
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+}
+.quote-table th:first-child,
+.quote-table td:first-child {
+  text-align: left;
+  padding-left: 16px;
+}
+.quote-table th:last-child,
+.quote-table td:last-child {
+  padding-right: 16px;
+}
+.quote-table .is-left {
+  text-align: left;
+  white-space: normal;
+}
+.quote-table.is-tight th,
+.quote-table.is-tight td {
+  padding-left: 8px;
+  padding-right: 8px;
+}
+.quote-table.is-tight th:first-child,
+.quote-table.is-tight td:first-child {
+  padding-left: 12px;
+}
+.quote-table.is-tight th:last-child,
+.quote-table.is-tight td:last-child {
+  padding-right: 12px;
+}
+.quote-table tbody tr:hover td {
+  background: hsl(var(--muted) / 0.3);
+}
+.quote-table tr.is-total td {
+  background: hsl(var(--muted) / 0.55);
+  font-weight: 600;
+  border-top: 1px solid hsl(var(--border));
+}
+.quote-table tr.is-current td {
+  background: hsl(var(--accent) / 0.65);
+}
+.quote-table tr.is-current td:first-child {
+  box-shadow: inset 3px 0 0 hsl(var(--primary));
+}
+
+.quote-print-head {
+  display: none;
+}
+.quote-terms,
+.quote-sign {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .quote-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .quote-kpis {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  body {
+    background: #fff !important;
+  }
+  html[data-quote-print] .print-chrome {
+    display: none !important;
+  }
+  html[data-quote-print] .app-shell {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  html[data-quote-print] .app-column {
+    display: block !important;
+    overflow: visible !important;
+  }
+  html[data-quote-print] .app-main {
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+  .quote-page {
+    max-width: none !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .quote-page .print-hidden {
+    display: none !important;
+  }
+  .quote-doc {
+    gap: 0 !important;
+  }
+  .quote-doc .print-card {
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+  }
+  .quote-print-head {
+    display: flex !important;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+    border-bottom: 2px solid #14533c;
+    padding-bottom: 8px;
+    margin-bottom: 10px;
+  }
+  .quote-print-head .quote-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: #14533c;
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.5px;
+  }
+  .quote-head-block {
+    padding: 0 0 8px !important;
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  .quote-head-kicker {
+    display: none !important;
+  }
+  .quote-title {
+    font-size: 16px !important;
+    margin: 0 0 2px !important;
+  }
+  .quote-kpis {
+    grid-template-columns: repeat(4, 1fr) !important;
+    border: 1px solid hsl(var(--border));
+    margin: 6px 0 !important;
+    break-inside: avoid;
+  }
+  .quote-kpi {
+    padding: 5px 9px 6px !important;
+  }
+  .quote-kpi .k-value {
+    font-size: 13.5px !important;
+  }
+  .quote-table {
+    font-size: 8.6px;
+  }
+  .quote-table th {
+    position: static;
+    font-size: 7.6px;
+    padding: 3px 6px;
+  }
+  .quote-table td {
+    font-size: 8.6px;
+    padding: 3px 6px;
+  }
+  .quote-table .print-col {
+    display: none !important;
+  }
+  .quote-table tr {
+    break-inside: avoid;
+  }
+  .quote-block {
+    margin-top: 6px !important;
+    border-top: 1px solid hsl(var(--border)) !important;
+  }
+  .quote-block-head {
+    padding: 6px 0 3px !important;
+  }
+  .quote-notices,
+  .quote-actions,
+  .quote-chips {
+    display: none !important;
+  }
+  .quote-terms {
+    display: block !important;
+    margin-top: 6px;
+    border-top: 1px solid hsl(var(--border));
+    padding-top: 5px;
+    font-size: 7.8px;
+    line-height: 1.5;
+    color: hsl(var(--muted-foreground));
+  }
+  .quote-sign {
+    display: flex !important;
+    justify-content: space-between;
+    margin-top: 8px;
+    font-size: 8.5px;
+    color: hsl(var(--muted-foreground));
+  }
+  .quote-sign > div {
+    width: 44%;
+    border-top: 1px solid #ccc;
+    padding-top: 5px;
+  }
+}

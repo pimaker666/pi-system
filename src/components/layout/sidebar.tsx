@@ -12,6 +12,7 @@ import {
   FileText,
   FilePlus2,
   Scale,
+  Calculator,
   Landmark,
   Settings,
   ShieldCheck,
@@ -37,6 +38,7 @@ const NAV: NavItem[] = [
     match: (p) => p.startsWith('/pi') && p !== '/pi/create',
   },
   { href: '/weight-calc', label: '计算重量', icon: Scale },
+  { href: '/quote', label: '报价计算', icon: Calculator },
   {
     href: '/products',
     label: '产品库',
@@ -106,7 +108,7 @@ export function Sidebar({
   )
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r bg-muted/30">
+    <aside className="print-chrome flex h-full w-60 flex-col border-r bg-muted/30">
       <div className="flex h-16 items-center gap-2 border-b px-6">
         <FileText className="h-6 w-6 text-primary" />
         <span className="text-lg font-semibold">PI 系统</span>

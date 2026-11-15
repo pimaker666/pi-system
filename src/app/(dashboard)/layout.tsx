@@ -11,13 +11,13 @@ export default async function DashboardLayout({
   const profile = await requireApproved()
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="app-shell flex h-screen overflow-hidden">
       <Sidebar role={profile.role} fullName={displayProfileName(profile)} />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex h-16 items-center justify-end border-b px-6">
+      <div className="app-column flex flex-1 flex-col overflow-hidden">
+        <header className="print-chrome flex h-16 items-center justify-end border-b px-6">
           <LogoutButton />
         </header>
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="app-main flex-1 overflow-y-auto p-6">{children}</main>
       </div>
     </div>
   )
