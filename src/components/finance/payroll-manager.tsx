@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Check, ChevronsUpDown } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -189,6 +190,7 @@ export function PayrollManager({
   selectedMonth: string
 }) {
   const [currentMonth, setCurrentMonth] = useState(selectedMonth)
+  const router = useRouter()
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({})
   const [deductionTouched, setDeductionTouched] = useState<Record<string, boolean>>({})
   const [fullDaysOverride, setFullDaysOverride] = useState<number | null>(null)
@@ -243,31 +245,22 @@ export function PayrollManager({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [salaryRosterKey, salaryOpen])
 
-  const deductionTouchedRef = useRef<Record<string, boolean>>({})
-  deductionTouchedRef.current = deductionTouched
+  // 刚保存成功的行：服务端刷新回来之前先按已保存的值展示，避免表格回退成旧数据。
+  const savedDraftsRef = useRef<Record<string, RowDraft>>({})
 
   useEffect(() => {
     const next: Record<string, RowDraft> = {}
-    const fullDays = fullDaysOverride ?? sheet?.full_attendance_days ?? null
     for (const item of items) {
       const existing = drafts[item.id]
       // 编辑态下保留未保存的输入：补入人员、改满勤天数等会触发服务端刷新，不能冲掉正在填的行。
-      if (editing && existing && isDirty(item, existing)) {
+      // 刚保存过的行同样保留，直到服务端数据追上已保存的值。
+      if (existing && (editing || savedDraftsRef.current[item.id]) && isDirty(item, existing)) {
         next[item.id] = existing
         continue
       }
-      const draft = buildDraft(item)
-      // 未手动改过的扣款行始终按公式回算：满勤天数调整后服务端旧值不会把客户端联动值盖掉。
-      if (!deductionTouchedRef.current[item.id]) {
-        const days =
-          fullDays ?? countWeekdays(
-            (sheets.find((entry) => entry.id === item.sheet_id)?.period_month ?? currentMonth).slice(0, 7),
-          )
-        draft.attendance_deduction = draftValue(
-          calcAttendanceDeduction(Number(draft.base_salary || 0), days, Number(draft.attendance_days || 0)),
-        )
-      }
-      next[item.id] = draft
+      delete savedDraftsRef.current[item.id]
+      // 草稿一律按库里的值回显：手改的考勤扣款不能被公式重算盖掉。
+      next[item.id] = buildDraft(item)
     }
     setDrafts(next)
     setFullDaysOverride(null)
@@ -411,9 +404,26 @@ export function PayrollManager({
     startTransition(async () => {
       const result = await updatePayrollItems({ rows })
       if (result.ok) {
+        const saved: Record<string, RowDraft> = {}
+        for (const row of rows) {
+          saved[row.id] = {
+            attendance_days: draftValue(row.attendance_days),
+            base_salary: draftValue(row.base_salary),
+            commission: draftValue(row.commission),
+            bonus: draftValue(row.bonus),
+            attendance_deduction: draftValue(row.attendance_deduction),
+            other_deduction: draftValue(row.other_deduction),
+            social_insurance: draftValue(row.social_insurance),
+            housing_fund: draftValue(row.housing_fund),
+            tax: draftValue(row.tax),
+            remark: row.remark ?? '',
+          }
+        }
+        savedDraftsRef.current = { ...savedDraftsRef.current, ...saved }
+        setDrafts((current) => ({ ...current, ...saved }))
         toast.success(`已保存 ${rows.length} 行`)
         setEditing(false)
-        setDeductionTouched({})
+        router.refresh()
       } else {
         toast.error(result.error ?? '保存失败')
       }
