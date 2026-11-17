@@ -10,9 +10,38 @@
 .quote-kpi {
   background: hsl(var(--card));
   padding: 14px 16px 15px;
+  border-top: 3px solid transparent;
+}
+.quote-kpi .k-value {
+  line-height: 1.2;
+}
+.quote-kpi.is-fob {
+  background: linear-gradient(180deg, hsl(212 75% 96%), hsl(var(--card)));
+  border-top-color: hsl(212 70% 55%);
+}
+.quote-kpi.is-fob .k-value {
+  color: hsl(214 65% 36%);
+}
+.quote-kpi.is-boxfob {
+  background: linear-gradient(180deg, hsl(189 70% 95%), hsl(var(--card)));
+  border-top-color: hsl(190 62% 42%);
+}
+.quote-kpi.is-boxfob .k-value {
+  color: hsl(192 70% 28%);
 }
 .quote-kpi.is-accent {
-  background: linear-gradient(180deg, hsl(45 60% 97%), hsl(var(--card)));
+  background: linear-gradient(180deg, hsl(45 85% 94%), hsl(var(--card)));
+  border-top-color: hsl(38 88% 50%);
+}
+.quote-kpi.is-accent .k-value {
+  color: hsl(28 78% 34%);
+}
+.quote-kpi.is-profit {
+  background: linear-gradient(180deg, hsl(150 55% 95%), hsl(var(--card)));
+  border-top-color: hsl(152 50% 40%);
+}
+.quote-kpi.is-profit .k-value {
+  color: hsl(153 58% 26%);
 }
 
 .quote-table {
@@ -72,9 +101,21 @@
   background: hsl(var(--muted) / 0.3);
 }
 .quote-table tr.is-total td {
-  background: hsl(var(--muted) / 0.55);
-  font-weight: 600;
-  border-top: 1px solid hsl(var(--border));
+  background: hsl(212 70% 96%);
+  color: hsl(214 55% 26%);
+  font-weight: 700;
+  border-top: 2px solid hsl(212 70% 55%);
+  border-bottom: 2px solid hsl(212 70% 55%);
+}
+.quote-table tr.is-total td:first-child {
+  box-shadow: inset 3px 0 0 hsl(212 70% 50%);
+}
+.quote-table tbody tr.is-total:hover td {
+  background: hsl(212 70% 93%);
+}
+.quote-table tr.is-total td.text-muted-foreground {
+  color: hsl(214 30% 42%);
+  font-weight: 500;
 }
 .quote-table tr.is-current td {
   background: hsl(var(--accent) / 0.65);
@@ -183,6 +224,24 @@
   }
   .quote-kpi {
     padding: 5px 9px 6px !important;
+  }
+  .quote-kpi.is-fob,
+  .quote-kpi.is-boxfob,
+  .quote-kpi.is-accent,
+  .quote-kpi.is-profit {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .quote-table tr.is-total td {
+    background: #fff !important;
+    border-top: 1.5px solid hsl(212 70% 45%) !important;
+    border-bottom: 1.5px solid hsl(212 70% 45%) !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .quote-table tr.is-total td:first-child {
+    box-shadow: inset 3px 0 0 hsl(212 70% 50%);
   }
   .quote-kpi .k-value {
     font-size: 13.5px !important;
