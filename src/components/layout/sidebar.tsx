@@ -111,7 +111,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'flex h-full shrink-0 flex-col border-r border-white/10 bg-[hsl(var(--sidebar-background))] text-slate-200 transition-[width] duration-200',
+        'print-chrome flex h-full shrink-0 flex-col border-r border-white/10 bg-[hsl(var(--sidebar-background))] text-slate-200 transition-[width] duration-200',
         WIDTH_CLASS[mode],
       )}
     >

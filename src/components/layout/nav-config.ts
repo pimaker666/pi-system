@@ -4,6 +4,7 @@ import {
   Boxes,
   CalendarCheck,
   CalendarPlus,
+  Calculator,
   Check,
   ClipboardCheck,
   CreditCard,
@@ -58,6 +59,7 @@ export const NAV: NavItem[] = [
     match: (pathname) => pathname.startsWith('/pi') && pathname !== '/pi/create',
   },
   { href: '/weight-calc', label: '计算重量', icon: Scale },
+  { href: '/quote', label: '报价计算', icon: Calculator },
   { href: '/reimbursement', label: '费用报销', icon: Wallet },
   {
     href: '/finance/daily-orders',
@@ -167,7 +169,7 @@ export const NAV: NavItem[] = [
 
 export const NAV_GROUPS = [
   { label: null, hrefs: ['/dashboard', '/approvals', '/finance'] },
-  { label: 'PI 与工具', hrefs: ['/pi/create', '/pi/history', '/weight-calc'] },
+  { label: 'PI 与工具', hrefs: ['/pi/create', '/pi/history', '/weight-calc', '/quote'] },
   {
     label: '订单与收款',
     hrefs: ['/finance/daily-orders', '/finance/costs', '/finance/settled-orders'],
