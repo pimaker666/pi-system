@@ -232,10 +232,13 @@ function normalizeEditConstraints(value: unknown) {
       netShippedQuantity,
       numericValue(row.minimum_quantity ?? netShippedQuantity),
     )
+    // 行级字段存在时以行为准；仅旧版 RPC 未返回行级字段时才回退到整单口径。
+    const rowHasAllocationField =
+      row.has_active_allocation !== undefined || row.has_active_allocations !== undefined
     const rowHasAllocation = booleanValue(
       row.has_active_allocation,
       row.has_active_allocations,
-      hasActiveAllocation,
+      !rowHasAllocationField && hasActiveAllocation,
     )
     const identityLocked = booleanValue(
       row.identity_locked,
@@ -1202,7 +1205,7 @@ export function BusinessOrderForm({
               )}
               {!productRowsLocked && normalizedConstraints.hasActiveAllocation && (
                 <Badge variant="outline" className="gap-1 font-normal">
-                  <LockKeyhole className="h-3 w-3" />已有有效分摊，产品身份锁定
+                  <LockKeyhole className="h-3 w-3" />存在有效分摊，对应产品行身份锁定
                 </Badge>
               )}
             </CardTitle>

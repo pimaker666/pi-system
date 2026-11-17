@@ -287,6 +287,10 @@ function businessOrderError(message: string, fallback = '业务订单操作失�
     ],
     ['Cannot change currency after payment allocation', '已有分摊或订单已完成，不能更换币种'],
     ['Order total cannot be less than active payment allocations', '订单总额不能低于有效收款分摊'],
+    [
+      'Order total cannot be lower than active allocated payments; void allocations first',
+      '修改后订单总额低于已分摊的有效收款，请先作废相关分摊',
+    ],
     ['Order item is locked', '订单明细已被发货或退货记录引用，不能删除或更换产品'],
     ['Referenced order item cannot be deleted', '订单明细已被发货或退货记录引用，不能删除'],
     ['Completed order items cannot be changed', '已完成并发货的订单不能修改产品明细'],
