@@ -124,6 +124,11 @@ export function QuoteResult({
   const secondary = secondaryKpi(categoryId, result)
   const packed = hasPacks(categoryId, result)
   const mini = showMini(result)
+  const perMiniCol = (categoryId === 'mask' || categoryId === 'eyemask') && mini
+  const packFirst = categoryId === 'mask' && mini
+  const miniRmb = categoryId === 'eyemask'
+  const miniDp = miniRmb ? 3 : 2
+  const miniCost = (n: number) => fmt(n, miniDp)
 
   return (
     <div className="quote-doc flex flex-col gap-4">
@@ -188,7 +193,7 @@ export function QuoteResult({
         <div className="quote-kpis">
           <div className="quote-kpi">
             <div className="text-[10.5px] font-medium text-muted-foreground">
-              {result.unitLabel}报价 FOB{' '}
+              单{result.unitLabel} FOB{' '}
               <span className="text-[9px] uppercase tracking-[.3px]">unit price</span>
             </div>
             <div className="k-value mt-1 font-mono text-xl font-semibold tracking-tight">
@@ -243,6 +248,7 @@ export function QuoteResult({
             出厂成本明细 <span className="font-normal text-muted-foreground">/ Cost breakdown</span>
           </h3>
           <div className="text-[11px] text-muted-foreground">
+            {packFirst && `单${result.miniLabel}成本 = 单${result.unitLabel}成本 × ${result.packPerUnit}　·　`}
             单{result.unitLabel}成本 = 总成本 ÷ {fmtInt(result.qty)}　·　报价 = 成本 ÷ (1 − 毛利率)
           </div>
         </div>
@@ -252,7 +258,17 @@ export function QuoteResult({
               <tr>
                 <th>成本项目</th>
                 <th className="is-left print-col hidden min-[1440px]:table-cell">计价依据 / 阶梯逻辑</th>
-                <th>单{result.unitLabel}成本 ¥</th>
+                {packFirst ? (
+                  <>
+                    <th>单{result.miniLabel}成本 ¥</th>
+                    <th>折合{result.unitLabel}成本 ¥</th>
+                  </>
+                ) : (
+                  <>
+                    <th>单{result.unitLabel}成本 ¥</th>
+                    {perMiniCol && <th>折合{result.miniLabel}成本 ¥</th>}
+                  </>
+                )}
                 <th>总成本 ¥</th>
                 <th className="print-col">总成本 USD</th>
                 <th>占比</th>
@@ -266,7 +282,17 @@ export function QuoteResult({
                     <small className="text-[10px] text-muted-foreground">{c.nameEn}</small>
                   </td>
                   <td className="is-left print-col hidden min-[1440px]:table-cell text-[11px] text-muted-foreground">{c.basis}</td>
-                  <td>{fmt(c.perUnit)}</td>
+                  {packFirst ? (
+                    <>
+                      <td>{miniCost(c.perMini)}</td>
+                      <td>{fmt(c.perUnit)}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td>{fmt(c.perUnit)}</td>
+                      {perMiniCol && <td>{miniCost(c.perMini)}</td>}
+                    </>
+                  )}
                   <td className="font-medium">{fmt(c.total)}</td>
                   <td className="print-col">{fmt(c.total / result.fx)}</td>
                   <td>
@@ -287,7 +313,17 @@ export function QuoteResult({
                 <td className="is-left print-col text-[11px] text-muted-foreground">
                   各项分项严格汇总（互斥项目已自动清零）
                 </td>
-                <td>{fmt(result.unitCost)}</td>
+                {packFirst ? (
+                  <>
+                    <td>{miniCost(result.miniCost)}</td>
+                    <td>{fmt(result.unitCost)}</td>
+                  </>
+                ) : (
+                  <>
+                    <td>{fmt(result.unitCost)}</td>
+                    {perMiniCol && <td>{miniCost(result.miniCost)}</td>}
+                  </>
+                )}
                 <td>{fmt(result.costTotal)}</td>
                 <td className="print-col">{fmt(result.costTotal / result.fx)}</td>
                 <td>100%</td>
@@ -339,7 +375,7 @@ export function QuoteResult({
                 <th>单{result.unitLabel}成本 ¥</th>
                 <th>单{result.unitLabel}报价 ¥</th>
                 <th>{result.unitLabel} FOB</th>
-                {mini && <th>{result.miniLabel} FOB</th>}
+                {mini && <th>{miniRmb ? `折合单${result.miniLabel}价 ¥` : `${result.miniLabel} FOB`}</th>}
                 <th>总货值 USD</th>
                 <th className="is-left print-col hidden min-[1440px]:table-cell min-w-[130px]">谈判与锁客策略</th>
               </tr>
@@ -367,7 +403,7 @@ export function QuoteResult({
                     <td>{fmt(t.unitCost)}</td>
                     <td>{fmt(t.unitPrice)}</td>
                     <td className="font-medium">{fmt(t.unitFob, 3)}</td>
-                    {mini && <td>{fmt(t.miniPrice / result.fx, 3)}</td>}
+                    {mini && <td>{miniRmb ? fmt(t.miniPrice) : fmt(t.miniPrice / result.fx, 3)}</td>}
                     <td>{fmt(t.totalUSD)}</td>
                     <td className="is-left print-col hidden min-[1440px]:table-cell min-w-[130px] max-w-[180px] text-[10.5px] leading-relaxed text-muted-foreground">
                       {note}

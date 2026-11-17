@@ -3,10 +3,9 @@ import type { QuoteResult } from './engine'
 
 export const TIER_NOTES: Record<CategoryId, string[]> = {
   mask: [
-    '小单试产：袋子按 1 万片总价 ¥3,000 平摊，适合首单测款',
-    '试单打样：接近 1 万片包装门槛，建议引导客户补量',
+    '试单打样：袋子按 1 万片总价 ¥3,000 平摊，彩盒与版费占比高',
     '试销测款：彩盒进入阶梯价，跨境小批量首批常用',
-    '标准起订 MOQ：袋子达 1 万个，边际成本进入平稳区',
+    '标准起订 MOQ：袋子达 1 万个转按 0.30 元/个，边际成本进入平稳区',
     '常规返单：跨入 25% 毛利档，彩盒与版费进一步摊薄',
     '大宗采购：袋子 0.28 元，跨入 15% 极限毛利档',
     '战略大客户：膜片 1.20 元 + 袋子 0.25 元，出海底价',
@@ -37,12 +36,12 @@ export const TIER_NOTES: Record<CategoryId, string[]> = {
     '战略集采：全链路底价，适合年度框架协议',
   ],
   eyemask: [
-    '试单起步：膜材按批次底价平摊，适合首单测款',
-    '小单快反：包材与彩盒进入更优阶梯',
-    '标准起订：膜材与包装成本同步下探',
-    '品牌进阶：适合品牌首批返单，成本结构稳定',
-    '规模定制：单件成本进入底价区，主推黄金量',
-    '战略大单：全链路底价，适合连锁与头部买家',
+    '首单测试 / 低库存试销：彩盒与印刷开机费均摊偏高，促单主推方案',
+    '常规小单轻定制首选：达到起订线，性价比显著优化',
+    '中小电商品牌常规返单：彩盒进入 1.15 元主流区间',
+    '关键临界点：达 3 万对跨入 47% 毛利阶梯，膜材降至 0.08 元平价',
+    '主推黄金采购量：达到大单特惠线，全链条边际成本显著降低',
+    '12 万对 KA 连锁 / 海外大宗战略采购：35% 官方底价毛利，成本最低',
   ],
 }
 
@@ -136,7 +135,7 @@ export function quoteNo(date: string, categoryId: CategoryId) {
 export function secondaryKpi(categoryId: CategoryId, r: QuoteResult) {
   if (categoryId === 'mask') {
     if (r.packPerUnit > 1) {
-      return { label: '单盒 FOB', en: 'per box', value: money3(r.packFob), foot: `出厂价 ¥${fmt(r.packPrice)} / 盒（${r.packPerUnit} 片）` }
+      return { label: '整盒 FOB', en: 'per box', value: money3(r.packFob), foot: `出厂价 ¥${fmt(r.packPrice)} / 盒（${r.packPerUnit} 片）` }
     }
     return { label: '每千片 FOB', en: 'per 1,000 pcs', value: money3(r.unitFob * 1000), foot: `出厂价 ¥${fmt(r.unitPrice * 1000)} / 千片` }
   }
@@ -262,22 +261,23 @@ export function internalText(categoryId: CategoryId, r: QuoteResult, meta: Quote
 export function tierCsv(categoryId: CategoryId, r: QuoteResult) {
   const packed = hasPacks(categoryId, r)
   const mini = showMini(r)
+  const miniRmb = categoryId === 'eyemask'
   const head = ['梯队', '英文', tierQtyHead(categoryId)]
     .concat(packed ? [`折合${r.packLabel}`] : [])
     .concat(['毛利率', `单${r.unitLabel}成本(RMB)`, `单${r.unitLabel}报价(RMB)`, `单${r.unitLabel}FOB(USD)`])
-    .concat(mini ? [`${r.miniLabel}FOB(USD)`] : [])
+    .concat(mini ? [miniRmb ? `折合单${r.miniLabel}价(RMB)` : `${r.miniLabel}FOB(USD)`] : [])
     .concat(['订单总货值(USD)'])
   const rows = r.tiers.map((t) =>
     [t.label, t.labelEn, String(t.qty)]
       .concat(packed ? [String(t.packs)] : [])
       .concat([pct(t.margin), t.unitCost.toFixed(4), t.unitPrice.toFixed(4), t.unitFob.toFixed(4)])
-      .concat(mini ? [(t.miniPrice / r.fx).toFixed(4)] : [])
+      .concat(mini ? [miniRmb ? t.miniPrice.toFixed(4) : (t.miniPrice / r.fx).toFixed(4)] : [])
       .concat([t.totalUSD.toFixed(2)]),
   )
   const current = ['当前报价', '', String(r.orderQty)]
     .concat(packed ? [String(r.packs)] : [])
     .concat([pct(r.margin), r.unitCost.toFixed(4), r.unitPrice.toFixed(4), r.unitFob.toFixed(4)])
-    .concat(mini ? [r.miniFob.toFixed(4)] : [])
+    .concat(mini ? [miniRmb ? r.miniPrice.toFixed(4) : r.miniFob.toFixed(4)] : [])
     .concat([r.revenueUSD.toFixed(2)])
   return [head, ...rows, current]
     .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))

@@ -37,8 +37,8 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
       },
       {
         type: 'select', key: 'piecesPerBox', label: '每盒片数', labelEn: 'Pieces / box',
-        options: [opt(4, '4 片'), opt(5, '5 片'), opt(10, '10 片')],
-        hint: '外贸常用 4 / 5 / 10 片装；彩盒按盒数阶梯计价。',
+        options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => opt(v, v + ' 片' + (v === 4 ? '（默认）' : ''))),
+        hint: '默认 4 片；4 / 5 片有专属彩盒价，其余片数按 10 片装彩盒价计。',
         visible: (s) => s.packageType === '盒装',
       },
       {

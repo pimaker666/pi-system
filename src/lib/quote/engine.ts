@@ -253,7 +253,7 @@ function maskAt(input: QuoteInput, qty: number, fx: number, marginOverride: numb
   const margin = marginOverride == null ? autoMargin : marginOverride
   const film = qty >= 100000 ? 1.2 : 1.33
   const bag = qty < 10000 ? 3000 / qty : qty >= 100000 ? 0.25 : qty >= 50000 ? 0.28 : 0.3
-  const boxUnit = boxed ? pickDesc(DATA.mask.box[ppb] || DATA.mask.box[4], boxes) : 0
+  const boxUnit = boxed ? pickDesc(DATA.mask.box[ppb] || DATA.mask.box[10], boxes) : 0
   const trayUnit = boxed && input.innerTray === '是' ? (boxes > 1000 ? 0.1 : 0.2) : 0
   const laborUnit = boxed ? DATA.mask.laborPerBox : 0
   const colors = num(input.colors, 0)
@@ -600,11 +600,11 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
   const trayOn = pack.boxed && input.innerTray === '是'
   const trayUnit = trayOn ? (packs <= 1000 ? 0.2 : 0.1) : 0
   const laborUnit = pack.boxed ? E.laborPerBox : 0
-  const autoMargin = packs > 5000 ? 0.23 : packs > 2000 ? 0.35 : packs > 500 ? 0.47 : 0.53
+  const autoMargin = pairs >= 120000 ? 0.35 : pairs >= 30000 ? 0.47 : 0.53
   const margin = marginOverride == null ? autoMargin : marginOverride
 
   const rows = [
-    { key: 'membrane', name: '膜材', nameEn: 'Mask patch', basis: `${input.material} · ${membranePerPair.toFixed(3)} 元/对 × ${pack.perPack} 对/件${m.kind === 'silicone' ? '（≥1万对 1.74 元）' : `（批次底价 ¥${m.floorTotal.toLocaleString('en-US')} 平摊）`}`, total: membranePerPack * packs },
+    { key: 'membrane', name: '膜材', nameEn: 'Mask patch', basis: `${input.material} · ${membranePerPair.toFixed(3)} 元/对 × ${pack.perPack} 对/件${m.kind === 'silicone' ? '（≥1万对 1.74 元）' : m.floorTotal > 0 ? `（批次底价 ¥${m.floorTotal.toLocaleString('en-US')} 平摊）` : '（平价 0.30 元/对）'}`, total: membranePerPack * packs },
     { key: 'container', name: pack.isJar ? '罐体包材' : '袋装包材', nameEn: 'Container', basis: pack.isJar ? `${input.jar} · ${pack.jarPrice!.toFixed(2)} 元/罐` : `${pack.kind === 'waterbag' ? '水凝胶袋' : '凝胶/硅胶袋'} · ${bagPerPair.toFixed(2)} 元/对 × ${pack.perPack} 对/件`, total: containerPerPack * packs },
     { key: 'plate', name: '袋子版费', nameEn: 'Bag plate fee', basis: pack.isJar ? '罐装免版费' : `${colors} 色 × ¥${E.platePerColor} = ¥${plateTotal.toLocaleString('en-US')}，按 ${packs.toLocaleString('en-US')} 件平摊`, total: plateTotal },
     { key: 'print', name: '瓶标 / 丝印', nameEn: 'Decoration', basis: pack.isJar ? (input.print === '瓶标' ? (packs <= 3000 ? '≤3000 瓶固定 ¥800 平摊' : '瓶标 0.25–0.30 元/件') : (packs <= 2500 ? '≤2500 瓶固定 ¥1,000 平摊' : '丝印 0.20–0.40 元/件')) : '袋装自带专版印刷', total: (label + silk) * packs },
@@ -612,12 +612,13 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
     { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: trayOn ? `${packs <= 1000 ? '≤1000' : '>1000'} 件 · ${trayUnit.toFixed(2)} 元/件` : pack.boxed ? '未加内托' : '无彩盒不加内托', total: trayUnit * packs },
     { key: 'labor', name: '组装人工', nameEn: 'Assembly labor', basis: pack.boxed ? '盒装 0.50 元/件' : '散装/裸罐无装盒人工', total: laborUnit * packs },
   ]
-  if (pairs < m.moq) warnings.push(`低于该膜材起订量 ${m.moq.toLocaleString('en-US')} 对，膜材按批次底价 ¥${m.floorTotal.toLocaleString('en-US')} 平摊。`)
+  if (m.floorTotal > 0 && pairs < m.moq) warnings.push(`低于该膜材起订量 ${m.moq.toLocaleString('en-US')} 对，膜材按批次底价 ¥${m.floorTotal.toLocaleString('en-US')} 平摊。`)
   if (pairs % pack.perPack !== 0) warnings.push(`订购对数不是 ${pack.perPack} 对/件的整数倍，按 ${packs.toLocaleString('en-US')} 件整件计费（折合 ${billedPairs.toLocaleString('en-US')} 对）。`)
   if (pack.isJar && input.print === '瓶标' && packs <= 3000) notes.push('瓶标开机费 ¥800 平摊；超过 3,000 件改按 0.25–0.30 元/件计。')
   if (pack.isJar && input.print === '丝印' && packs <= 2500) notes.push('丝印开机费 ¥1,000 平摊；超过 2,500 件进入 0.40 元档。')
   if (!pack.isJar) notes.push('袋装自带专版印刷，按色数收取 ¥300/色版费；罐装免版费。')
-  if (packs > 5000) notes.push('已进入 5,000 件以上战略阶梯，享 23% 底价毛利。')
+  if (pairs >= 120000) notes.push('已进入 12 万对战略阶梯，享 35% 官方底价毛利。')
+  else if (pairs >= 30000) notes.push('已达 3 万对档，进入 47% 官方毛利阶梯。')
 
   const unitLabel = pack.isJar ? '罐' : pack.boxed ? '盒' : '袋'
   return finalize({
@@ -702,9 +703,7 @@ export function autoMargin(categoryId: CategoryId, input: QuoteInput): number {
     return q >= 10000 ? 0.16 : q >= 5000 ? 0.2 : q >= 2000 ? 0.3 : 0.35
   }
   const pairs = num(input.qtyPairs, 1)
-  const pack = eyePackOf(input)
-  const packs = pack ? ceil(pairs / pack.perPack) : 1
-  return packs > 5000 ? 0.23 : packs > 2000 ? 0.35 : packs > 500 ? 0.47 : 0.53
+  return pairs >= 120000 ? 0.35 : pairs >= 30000 ? 0.47 : 0.53
 }
 
 export function categoryLabel(categoryId: CategoryId) {

@@ -44,7 +44,7 @@ const mask: MaskData = {
   defaults: {
     packageType: '盒装',
     piecesPerBox: 4,
-    totalPieces: 10000,
+    totalPieces: 3000,
     innerTray: '否',
     colors: 4,
   },
@@ -55,8 +55,7 @@ const mask: MaskData = {
   },
   laborPerBox: 0.8,
   tiers: [
-    [2000, '小单试产', 'Pilot run'],
-    [3000, '试单打样', 'Trial order'],
+    [3000, '试单打样', 'Pilot order'],
     [5000, '试销测款', 'Market test'],
     [10000, '标准起订 MOQ', 'Standard MOQ'],
     [20000, '常规返单', 'Repeat order'],
@@ -244,8 +243,8 @@ const eyemask: EyemaskData = {
     plateColors: 4,
   },
   membranes: {
-    罐装膜材: { floorTotal: 3900, floorPrice: 0.26, moq: 15000, kind: 'jar' },
-    '片装水凝胶（吸塑）': { floorTotal: 15000, floorPrice: 0.3, moq: 50000, kind: 'waterbag' },
+    罐装膜材: { floorTotal: 1200, floorPrice: 0.08, moq: 15000, kind: 'jar' },
+    '片装水凝胶（吸塑）': { floorTotal: 0, floorPrice: 0.3, moq: 50000, kind: 'waterbag' },
     '凝胶眼膜（贴布-定制Logo）': { floorTotal: 27500, floorPrice: 0.55, moq: 50000, kind: 'gelbag' },
     '凝胶眼膜（贴布-不定制Logo）': { floorTotal: 3500, floorPrice: 0.7, moq: 5000, kind: 'gelbag' },
     '硅胶眼膜（吸盘）': { floorTotal: 2000, floorPrice: 2.0, moq: 1000, kind: 'silicone' },
@@ -268,9 +267,9 @@ const eyemask: EyemaskData = {
     [3000, '试单起步', 'Pilot order'],
     [6000, '小单快反', 'Quick response'],
     [12000, '标准起订', 'Standard order'],
-    [18000, '品牌进阶', 'Brand scaling'],
-    [30000, '规模定制', 'Volume order'],
-    [60000, '战略大单', 'Strategic bulk'],
+    [30000, '品牌进阶', 'Brand scaling'],
+    [60000, '规模定制', 'Volume order'],
+    [120000, '战略大单', 'Strategic bulk'],
   ],
 }
 
