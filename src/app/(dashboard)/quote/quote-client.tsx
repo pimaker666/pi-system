@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Calculator } from 'lucide-react'
+import Link from 'next/link'
+import { Calculator, SlidersHorizontal } from 'lucide-react'
 import { Input } from '@/components/ui/input'
-import { CATEGORIES, FX_DEFAULT, defaultsFor, type CategoryId, type QuoteInput } from '@/lib/quote/data'
+import { CATEGORIES, FX_DEFAULT, applyQuoteOverrides, defaultsFor, type CategoryId, type QuoteInput } from '@/lib/quote/data'
 import { autoMargin, compute } from '@/lib/quote/engine'
 import { normalizeInput } from '@/lib/quote/form'
 import { todayLocal } from '@/lib/quote/text'
@@ -66,7 +67,7 @@ function loadStored(): Stored | null {
   }
 }
 
-export function QuoteClient() {
+export function QuoteClient({ isAdmin = false }: { isAdmin?: boolean }) {
   const [categoryId, setCategoryId] = useState<CategoryId>('mask')
   const [inputs, setInputs] = useState<Record<CategoryId, QuoteInput>>(freshInputs)
   const [manual, setManual] = useState<Record<string, number | null>>({})
@@ -74,6 +75,20 @@ export function QuoteClient() {
   const [date, setDate] = useState(todayLocal)
   const [fx, setFx] = useState(FX_DEFAULT)
   const [fxDraft, setFxDraft] = useState(String(FX_DEFAULT))
+  const [paramsVersion, setParamsVersion] = useState(0)
+
+  useEffect(() => {
+    fetch('/api/quote-params')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!j) return
+        applyQuoteOverrides(j.overrides ?? null)
+        setParamsVersion((v) => v + 1)
+      })
+      .catch(() => {
+        /* offline / unauthenticated — code defaults still apply */
+      })
+  }, [])
 
   useEffect(() => {
     const stored = loadStored()
@@ -107,7 +122,8 @@ export function QuoteClient() {
   const manualMargin = manual[categoryId] ?? null
   const result = useMemo(
     () => compute(categoryId, input, { fx, margin: manualMargin }),
-    [categoryId, input, fx, manualMargin],
+    // paramsVersion: re-run once DB-stored overrides arrive.
+    [categoryId, input, fx, manualMargin, paramsVersion],
   )
   const curQty = Number(input[cat.qtyKey])
 
@@ -161,6 +177,15 @@ export function QuoteClient() {
               className="mt-1 h-8 w-20 font-mono text-[12.5px]"
             />
           </label>
+          {isAdmin && (
+            <Link
+              href="/quote-params"
+              className="inline-flex h-8 items-center gap-1.5 self-end rounded-md bg-primary px-3 text-[12.5px] font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/85"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" />
+              报价参数
+            </Link>
+          )}
         </div>
       </div>
 

@@ -106,6 +106,23 @@ function pickAsc(rules: readonly AscTier[], q: number): number {
   return rules[rules.length - 1][1]
 }
 
+/** 开机费成本：≤ setupQty 按 setupFee 平摊，超过后走 ≥ 阶梯。 */
+function setupUnit(cost: { setupQty: number; setupFee: number; tiers: readonly DescTier[] }, qty: number): number {
+  if (qty <= cost.setupQty) return cost.setupFee / qty
+  return pickDesc(cost.tiers, qty)
+}
+
+/** 铝箔袋：不足 minQty 按 minTotal 总价平摊，达到后走 ≥ 阶梯。 */
+function foilUnit(cost: { minQty: number; minTotal: number; tiers: readonly DescTier[] }, qty: number): number {
+  return qty < cost.minQty ? cost.minTotal / qty : pickDesc(cost.tiers, qty)
+}
+
+function setupBasis(cost: { setupQty: number; setupFee: number }, qty: number, unit: string): string {
+  return qty <= cost.setupQty
+    ? `≤${cost.setupQty.toLocaleString('en-US')} 固定 ¥${cost.setupFee.toLocaleString('en-US')} 平摊`
+    : `阶梯单价 ${unit}`
+}
+
 function boxPriceFor(cap: number, qty: number, cfg: { small: anyBand; mid: anyBand; large: anyBand }) {
   const band = cap <= cfg.small.maxCap! ? cfg.small : cap <= cfg.mid.maxCap! ? cfg.mid : cfg.large
   if (qty <= 500) return band.fixed / qty
@@ -251,25 +268,26 @@ function maskAt(input: QuoteInput, qty: number, fx: number, marginOverride: numb
   const boxes = boxed ? ceil(qty / ppb) : 0
   const autoMargin = qty > 20000 ? 0.15 : qty > 10000 ? 0.25 : 0.35
   const margin = marginOverride == null ? autoMargin : marginOverride
-  const film = qty >= 100000 ? 1.2 : 1.33
-  const bag = qty < 10000 ? 3000 / qty : qty >= 100000 ? 0.25 : qty >= 50000 ? 0.28 : 0.3
+  const MC = DATA.mask.costs
+  const film = pickDesc(MC.film.tiers, qty)
+  const bag = foilUnit(MC.bag, qty)
   const boxUnit = boxed ? pickDesc(DATA.mask.box[ppb] || DATA.mask.box[10], boxes) : 0
-  const trayUnit = boxed && input.innerTray === '是' ? (boxes > 1000 ? 0.1 : 0.2) : 0
+  const trayUnit = boxed && input.innerTray === '是' ? pickAsc(MC.tray.tiers, boxes) : 0
   const laborUnit = boxed ? DATA.mask.laborPerBox : 0
   const colors = num(input.colors, 0)
   const plateTotal = colors * PLATE_COLOR_PRICE
   const rows = [
     { key: 'film', name: '膜片成本', nameEn: 'Mask sheet', basis: `面膜料体 + 天丝/蚕丝基布 + 无菌灌装 · ${film.toFixed(2)} 元/片`, total: film * qty },
-    { key: 'bag', name: '铝箔袋', nameEn: 'Foil pouch', basis: qty < 10000 ? '未达 1 万个，按 ¥3,000 总价分摊' : `阶梯价 ${bag.toFixed(2)} 元/个（${qty >= 100000 ? '≥10万' : qty >= 50000 ? '5万–10万' : '1万–5万'}片）`, total: bag * qty },
+    { key: 'bag', name: '铝箔袋', nameEn: 'Foil pouch', basis: qty < MC.bag.minQty ? `未达 ${MC.bag.minQty.toLocaleString('en-US')} 个，按 ¥${MC.bag.minTotal.toLocaleString('en-US')} 总价分摊` : `阶梯价 ${bag.toFixed(2)} 元/个`, total: bag * qty },
     { key: 'box', name: '彩盒', nameEn: 'Color box', basis: boxed ? `${boxes} 盒 × ${boxUnit.toFixed(2)} 元/盒（${ppb}片装）` : '片装无彩盒', total: boxUnit * boxes },
-    { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${boxes > 1000 ? '>1000' : '≤1000'} 盒 · ${trayUnit.toFixed(2)} 元/盒` : '未添加内托', total: trayUnit * boxes },
+    { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${trayUnit.toFixed(2)} 元/盒 × ${boxes} 盒` : '未添加内托', total: trayUnit * boxes },
     { key: 'labor', name: '装盒人工', nameEn: 'Assembly labor', basis: boxed ? `${DATA.mask.laborPerBox.toFixed(2)} 元/盒 × ${boxes} 盒` : '片装免人工装配', total: laborUnit * boxes },
     { key: 'plate', name: '印刷色版费', nameEn: 'Plate fee', basis: `${colors} 色 × ${PLATE_COLOR_PRICE} 元/色，按总量平摊`, total: plateTotal },
   ]
-  if (qty < 10000) warnings.push('铝箔袋起订 10,000 个：本单不足 1 万片，袋子按 1 万个总价 ¥3,000 平摊。')
+  if (qty < MC.bag.minQty) warnings.push(`铝箔袋起订 ${MC.bag.minQty.toLocaleString('en-US')} 个：本单不足，袋子按总价 ¥${MC.bag.minTotal.toLocaleString('en-US')} 平摊。`)
   if (boxed && qty % ppb !== 0) warnings.push(`总片数不是 ${ppb} 的整数倍，按 ${boxes} 盒整盒计费。`)
-  if (!boxed) notes.push('已选择不配彩盒：彩盒、内托与 0.80 元/盒装盒人工自动不计。')
-  if (qty >= 100000) notes.push('膜片与袋子均已进入 10 万片极限阶梯，适合品牌大单。')
+  if (!boxed) notes.push(`已选择不配彩盒：彩盒、内托与 ${DATA.mask.laborPerBox.toFixed(2)} 元/盒装盒人工自动不计。`)
+  if (qty >= MC.film.tiers[0][0]) notes.push(`膜片与袋子均已进入 ≥${MC.film.tiers[0][0].toLocaleString('en-US')} 片极限阶梯，适合品牌大单。`)
 
   return finalize({
     qty,
@@ -325,32 +343,33 @@ function cottonAt(input: QuoteInput, qty: number, fx: number, marginOverride: nu
     : qty >= 10000 ? 0.15 : qty >= 5000 ? 0.2 : qty >= 2000 ? 0.25 : 0.3
   const margin = marginOverride == null ? autoMargin : marginOverride
   const jar = form === '罐装' ? pickDesc(C.jarTiers, qty) : 0
-  const bag = form === '袋装' ? (qty < 10000 ? 3000 / qty : qty >= 100000 ? 0.25 : qty >= 50000 ? 0.28 : 0.3) : 0
+  const CC = C.costs
+  const bag = form === '袋装' ? foilUnit(CC.bag, qty) : 0
   const lotion = C.lotion.ready[pads] ?? C.lotion.formula.base + (pads - C.lotion.formula.basePads) * C.lotion.formula.step
   const print = form === '罐装' ? input.print : '无'
   let label = 0
   let silk = 0
-  if (print === '瓶标') label = qty <= 3000 ? 800 / qty : qty >= 5000 ? 0.25 : 0.3
-  if (print === '丝印') silk = qty <= 2500 ? 1000 / qty : qty <= 4999 ? 0.4 : qty <= 9999 ? 0.3 : 0.2
+  if (print === '瓶标') label = setupUnit(CC.label, qty)
+  if (print === '丝印') silk = setupUnit(CC.silk, qty)
   const boxed = input.colorBox === '是'
   const boxUnit = boxed ? pickAsc(C.box, qty) : 0
-  const trayUnit = boxed && input.innerTray === '是' ? (qty <= 1000 ? 0.2 : 0.1) : 0
+  const trayUnit = boxed && input.innerTray === '是' ? pickAsc(CC.tray.tiers, qty) : 0
   const laborUnit = boxed ? C.laborPerBox : 0
   const rows = [
     { key: 'jar', name: '密封罐', nameEn: 'Jar', basis: form === '罐装' ? `罐装 ${qty >= 10000 ? '≥1万' : qty >= 1000 ? '1千–1万' : '500–999'} 件 · ${jar.toFixed(2)} 元/个` : '袋装不需要罐子', total: jar * qty },
-    { key: 'bag', name: '铝箔袋', nameEn: 'Foil pouch', basis: form === '袋装' ? (qty < 10000 ? '不足 1 万个，按 ¥3,000 总价分摊' : `阶梯价 ${bag.toFixed(2)} 元/个`) : '罐装不需要袋子', total: bag * qty },
+    { key: 'bag', name: '铝箔袋', nameEn: 'Foil pouch', basis: form === '袋装' ? (qty < CC.bag.minQty ? `不足 ${CC.bag.minQty.toLocaleString('en-US')} 个，按 ¥${CC.bag.minTotal.toLocaleString('en-US')} 总价分摊` : `阶梯价 ${bag.toFixed(2)} 元/个`) : '罐装不需要袋子', total: bag * qty },
     { key: 'pad', name: '棉片基布', nameEn: 'Cotton pads', basis: `${padPrice.toFixed(2)} 元/片 × ${pads} 片`, total: padPrice * pads * qty },
     { key: 'lotion', name: '精华液料体', nameEn: 'Lotion', basis: `${pads} 片配 ${pads === 60 ? 110 : pads === 70 ? 120 : 140}ml · ${lotion.toFixed(2)} 元/件`, total: lotion * qty },
-    { key: 'label', name: '瓶标', nameEn: 'Label', basis: print === '瓶标' ? (qty <= 3000 ? '≤3000 瓶固定 ¥800 平摊' : qty >= 5000 ? '≥5000 瓶 0.25 元/张' : '3001–4999 瓶 0.30 元/张') : '未选择瓶标', total: label * qty },
-    { key: 'silk', name: '丝印', nameEn: 'Silkscreen', basis: print === '丝印' ? (qty <= 2500 ? '≤2500 瓶固定 ¥1,000 平摊' : qty <= 4999 ? '2501–4999 瓶 0.40 元/个' : qty <= 9999 ? '5000–9999 瓶 0.30 元/个' : '≥10000 瓶 0.20 元/个') : '未选择丝印', total: silk * qty },
+    { key: 'label', name: '瓶标', nameEn: 'Label', basis: print === '瓶标' ? setupBasis(CC.label, qty, `${label.toFixed(2)} 元/张`) : '未选择瓶标', total: label * qty },
+    { key: 'silk', name: '丝印', nameEn: 'Silkscreen', basis: print === '丝印' ? setupBasis(CC.silk, qty, `${silk.toFixed(2)} 元/个`) : '未选择丝印', total: silk * qty },
     { key: 'box', name: '外彩盒', nameEn: 'Color box', basis: boxed ? `${qty.toLocaleString('en-US')} 盒 · ${boxUnit.toFixed(2)} 元/盒` : '未选择彩盒', total: boxUnit * qty },
-    { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${qty <= 1000 ? '≤1000' : '>1000'} 个 · ${trayUnit.toFixed(2)} 元/个` : '未添加内托', total: trayUnit * qty },
-    { key: 'labor', name: '装盒人工', nameEn: 'Assembly labor', basis: boxed ? '0.80 元/盒' : '袋装/裸罐无装盒人工', total: laborUnit * qty },
+    { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${trayUnit.toFixed(2)} 元/个 × ${qty.toLocaleString('en-US')} 个` : '未添加内托', total: trayUnit * qty },
+    { key: 'labor', name: '装盒人工', nameEn: 'Assembly labor', basis: boxed ? `${C.laborPerBox.toFixed(2)} 元/盒` : '袋装/裸罐无装盒人工', total: laborUnit * qty },
   ]
-  if (form === '袋装' && qty < 10000) warnings.push('铝箔袋起订 10,000 个：不足 1 万袋按 1 万个总价 ¥3,000 平摊。')
+  if (form === '袋装' && qty < CC.bag.minQty) warnings.push(`铝箔袋起订 ${CC.bag.minQty.toLocaleString('en-US')} 个：不足按总价 ¥${CC.bag.minTotal.toLocaleString('en-US')} 平摊。`)
   if (form === '罐装' && qty < 500) warnings.push('密封罐 500 个起订，低于起订量仍按起订价核算。')
   if (form === '袋装') notes.push('袋装自带专版彩色印刷，瓶标/丝印均为 0 元；每袋 1 件，无装盒人工。')
-  if (input.material === '冰冰棉') notes.push('冰冰棉亲肤锁水，基布 0.06 元/片，适合中高端定位。')
+  if (input.material === '冰冰棉') notes.push(`冰冰棉亲肤锁水，基布 ${padPrice.toFixed(2)} 元/片，适合中高端定位。`)
 
   return finalize({
     qty,
@@ -406,25 +425,26 @@ function oilAt(input: QuoteInput, qty: number, fx: number, marginOverride: numbe
   const margin = marginOverride == null ? autoMargin : marginOverride
   const bulkRate = O.bulk[String(input.category)] || O.bulk['精华类']
   const bulk = cap * bulkRate
+  const OC = O.costs
   const boxed = input.colorBox === '是'
   const boxUnit = boxed ? boxPriceFor(cap, qty, O.box) : 0
   const print = input.print
-  const label = print === '瓶标' ? (qty <= 3000 ? 800 / qty : qty >= 5000 ? 0.24 : 0.25) : 0
-  const silk = print === '丝印' ? (qty <= 2500 ? 1000 / qty : qty <= 4999 ? 0.4 : qty <= 9999 ? 0.3 : 0.2) : 0
-  const trayUnit = boxed && input.innerTray === '是' ? (cap <= 100 ? 0.1 : cap <= 200 ? 0.15 : 0.2) : 0
-  const laborUnit = boxed ? 0.8 : print === '无' ? 0.1 : 0.3
+  const label = print === '瓶标' ? setupUnit(OC.label, qty) : 0
+  const silk = print === '丝印' ? setupUnit(OC.silk, qty) : 0
+  const trayUnit = boxed && input.innerTray === '是' ? pickAsc(OC.tray.tiers, cap) : 0
+  const laborUnit = boxed ? OC.labor.boxed : print === '无' ? OC.labor.plain : OC.labor.decorated
   const rows = [
     { key: 'bottle', name: '瓶身容器', nameEn: 'Bottle', basis: `${input.bottle} · ${cap}ml · 官方核定 ${(bottle || 0).toFixed(2)} 元/套`, total: (bottle || 0) * qty },
     { key: 'bulk', name: '原液料体', nameEn: 'Bulk liquid', basis: `${input.category} · ${(bulkRate * 1000).toFixed(0)} 元/升 = ${bulkRate.toFixed(3)} 元/ml × ${cap}ml`, total: bulk * qty },
     { key: 'box', name: '外彩盒', nameEn: 'Color box', basis: boxed ? `${cap <= 150 ? '≤150ml' : cap <= 250 ? '151–250ml' : '>250ml'} · ${qty <= 500 ? '≤500 盒固定费平摊' : boxUnit.toFixed(2) + ' 元/盒'}（${qty.toLocaleString('en-US')} 盒）` : '未选择彩盒', total: boxUnit * qty },
-    { key: 'label', name: '瓶标', nameEn: 'Label', basis: print === '瓶标' ? (qty <= 3000 ? '≤3000 瓶固定 ¥800 平摊' : qty >= 5000 ? '≥5000 瓶 0.24 元/张' : '3001–4999 瓶 0.25 元/张') : '未选择瓶标', total: label * qty },
-    { key: 'silk', name: '丝印', nameEn: 'Silkscreen', basis: print === '丝印' ? (qty <= 2500 ? '≤2500 瓶固定 ¥1,000 平摊' : qty <= 4999 ? '2501–4999 瓶 0.40 元/个' : qty <= 9999 ? '5000–9999 瓶 0.30 元/个' : '≥10000 瓶 0.20 元/个') : '未选择丝印', total: silk * qty },
-    { key: 'tray', name: '防护内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${cap <= 100 ? '≤100ml' : cap <= 200 ? '101–200ml' : '>200ml'} · ${trayUnit.toFixed(2)} 元/个` : '未添加内托', total: trayUnit * qty },
-    { key: 'labor', name: '装配人工', nameEn: 'Assembly labor', basis: boxed ? '配彩盒全工序 0.80 元/瓶' : print === '无' ? '裸瓶简装 0.10 元/瓶' : '裸瓶印刷装配 0.30 元/瓶', total: laborUnit * qty },
+    { key: 'label', name: '瓶标', nameEn: 'Label', basis: print === '瓶标' ? setupBasis(OC.label, qty, `${label.toFixed(2)} 元/张`) : '未选择瓶标', total: label * qty },
+    { key: 'silk', name: '丝印', nameEn: 'Silkscreen', basis: print === '丝印' ? setupBasis(OC.silk, qty, `${silk.toFixed(2)} 元/个`) : '未选择丝印', total: silk * qty },
+    { key: 'tray', name: '防护内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${trayUnit.toFixed(2)} 元/个（按容量分段）` : '未添加内托', total: trayUnit * qty },
+    { key: 'labor', name: '装配人工', nameEn: 'Assembly labor', basis: boxed ? `配彩盒全工序 ${OC.labor.boxed.toFixed(2)} 元/瓶` : print === '无' ? `裸瓶简装 ${OC.labor.plain.toFixed(2)} 元/瓶` : `裸瓶印刷装配 ${OC.labor.decorated.toFixed(2)} 元/瓶`, total: laborUnit * qty },
   ]
   if (qty < 500) warnings.push('低于 500 瓶试单门槛，按小单阶梯核算。')
-  if (print === '瓶标' && qty <= 3000) notes.push('瓶标开机费 ¥800 平摊；超过 3,000 瓶改按 0.25 元/张计。')
-  if (print === '丝印' && qty <= 2500) notes.push('丝印开机费 ¥1,000 平摊；超过 2,500 瓶进入 0.40 元档。')
+  if (print === '瓶标' && qty <= OC.label.setupQty) notes.push(`瓶标开机费 ¥${OC.label.setupFee} 平摊；超过 ${OC.label.setupQty.toLocaleString('en-US')} 瓶改按阶梯单价计。`)
+  if (print === '丝印' && qty <= OC.silk.setupQty) notes.push(`丝印开机费 ¥${OC.silk.setupFee} 平摊；超过 ${OC.silk.setupQty.toLocaleString('en-US')} 瓶进入阶梯单价。`)
   if (qty > 5000) notes.push('已跨入 >5,000 瓶战略阶梯，料体与包材边际成本最低。')
 
   return finalize({
@@ -481,7 +501,8 @@ function creamAt(input: QuoteInput, qty: number, fx: number, marginOverride: num
   if (!bulkCfg) errors.push(`参数字典中暂无「${input.bulkType}」的料体基准价。`)
   if (idx < 0) errors.push(`容量 ${cap}ml/g 不在官方规格表内（5–300ml/g）。`)
   const bottle = arr && idx >= 0 ? arr[idx] : 0
-  const discount = qty >= 10000 ? 0.85 : qty >= 3000 ? 0.9 : 1
+  const CC = C.costs
+  const discount = pickDesc(CC.discount.tiers, qty)
   const autoMargin = qty >= 10000 ? 0.16 : qty >= 5000 ? 0.2 : qty >= 2000 ? 0.3 : 0.35
   const margin = marginOverride == null ? autoMargin : marginOverride
   const perG = bulkCfg ? bulkCfg.perG : 0
@@ -489,24 +510,24 @@ function creamAt(input: QuoteInput, qty: number, fx: number, marginOverride: num
   const boxed = input.colorBox === '是'
   const boxUnit = boxed ? boxPriceFor(cap, qty, C.box) : 0
   const print = input.print
-  const label = print === '瓶标' ? (qty <= 3000 ? 800 / qty : qty <= 4999 ? 0.25 : 0.24) : 0
-  const silk = print === '丝印' ? (qty <= 2500 ? 1000 / qty : qty <= 4999 ? 0.4 : qty <= 9999 ? 0.3 : 0.2) : 0
-  const trayUnit = boxed && input.innerTray === '是' ? (cap <= 100 ? 0.1 : cap <= 200 ? 0.15 : 0.2) : 0
-  const laborUnit = boxed ? 0.8 : 0.4
+  const label = print === '瓶标' ? setupUnit(CC.label, qty) : 0
+  const silk = print === '丝印' ? setupUnit(CC.silk, qty) : 0
+  const trayUnit = boxed && input.innerTray === '是' ? pickAsc(CC.tray.tiers, cap) : 0
+  const laborUnit = boxed ? CC.labor.boxed : CC.labor.plain
   const rows = [
     { key: 'container', name: '包装容器', nameEn: 'Container', basis: `${input.container} · ${cap}ml/g · 基准 ${bottle.toFixed(2)} 元 × ${discount === 1 ? '无折扣' : discount === 0.9 ? '9折' : '85折'}`, total: bottle * discount * qty },
     { key: 'bulk', name: '料体', nameEn: 'Bulk formula', basis: `${input.bulkType} · ${bulkCfg ? bulkCfg.kg : 0} 元/kg = ${perG.toFixed(3)} 元/g × ${cap}`, total: bulk * qty },
     { key: 'box', name: '外彩盒', nameEn: 'Color box', basis: boxed ? `${cap <= 150 ? '≤150ml' : cap <= 250 ? '151–250ml' : '>250ml'} · ${qty <= 500 ? '≤500 盒固定费平摊' : boxUnit.toFixed(2) + ' 元/盒'}` : '未选择彩盒', total: boxUnit * qty },
-    { key: 'label', name: '瓶标', nameEn: 'Label', basis: print === '瓶标' ? (qty <= 3000 ? '≤3000 瓶固定 ¥800 平摊' : qty <= 4999 ? '3001–4999 瓶 0.25 元/张' : '≥5000 瓶 0.24 元/张') : '未选择瓶标', total: label * qty },
-    { key: 'silk', name: '丝印', nameEn: 'Silkscreen', basis: print === '丝印' ? (qty <= 2500 ? '≤2500 瓶固定 ¥1,000 平摊' : qty <= 4999 ? '2501–4999 瓶 0.40 元/个' : qty <= 9999 ? '5000–9999 瓶 0.30 元/个' : '≥10000 瓶 0.20 元/个') : '未选择丝印', total: silk * qty },
-    { key: 'tray', name: '彩盒内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${cap <= 100 ? '≤100ml' : cap <= 200 ? '101–200ml' : '>200ml'} · ${trayUnit.toFixed(2)} 元/个` : '未添加内托', total: trayUnit * qty },
-    { key: 'labor', name: '灌装组装人工', nameEn: 'Assembly labor', basis: boxed ? '配彩盒 0.80 元/盒' : '裸瓶 0.40 元/瓶', total: laborUnit * qty },
+    { key: 'label', name: '瓶标', nameEn: 'Label', basis: print === '瓶标' ? setupBasis(CC.label, qty, `${label.toFixed(2)} 元/张`) : '未选择瓶标', total: label * qty },
+    { key: 'silk', name: '丝印', nameEn: 'Silkscreen', basis: print === '丝印' ? setupBasis(CC.silk, qty, `${silk.toFixed(2)} 元/个`) : '未选择丝印', total: silk * qty },
+    { key: 'tray', name: '彩盒内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${trayUnit.toFixed(2)} 元/个（按容量分段）` : '未添加内托', total: trayUnit * qty },
+    { key: 'labor', name: '灌装组装人工', nameEn: 'Assembly labor', basis: boxed ? `配彩盒 ${CC.labor.boxed.toFixed(2)} 元/盒` : `裸瓶 ${CC.labor.plain.toFixed(2)} 元/瓶`, total: laborUnit * qty },
   ]
   if (qty < 500) warnings.push('低于 500 支试单门槛，按小单阶梯核算。')
   if (qty >= 3000 && qty < 10000) notes.push('包材已享 9 折（×0.90），3,000 支是核心推荐起订档。')
   if (qty >= 10000) notes.push('包材已享 85 折（×0.85），丝印 0.20 元、彩盒 0.70 元，均进入底价档。')
-  if (print === '瓶标' && qty <= 3000) notes.push('瓶标开机费 ¥800 平摊，小单优先推荐瓶标。')
-  if (print === '丝印' && qty <= 2500) notes.push('丝印开机费 ¥1,000 平摊；大单切换丝印更划算。')
+  if (print === '瓶标' && qty <= CC.label.setupQty) notes.push(`瓶标开机费 ¥${CC.label.setupFee} 平摊，小单优先推荐瓶标；超过 ${CC.label.setupQty.toLocaleString('en-US')} 瓶进入阶梯单价。`)
+  if (print === '丝印' && qty <= CC.silk.setupQty) notes.push(`丝印开机费 ¥${CC.silk.setupFee} 平摊；超过 ${CC.silk.setupQty.toLocaleString('en-US')} 瓶进入阶梯单价。`)
 
   return finalize({
     qty,
@@ -581,7 +602,8 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
   }
   const packs = ceil(pairs / pack.perPack)
   const billedPairs = packs * pack.perPack
-  const membranePerPair = m.kind === 'silicone' ? (pairs >= 10000 ? 1.74 : 2.0) : Math.max(m.floorPrice, m.floorTotal / pairs)
+  const EC = E.costs
+  const membranePerPair = m.kind === 'silicone' ? pickDesc(EC.silicone.tiers, pairs) : Math.max(m.floorPrice, m.floorTotal / pairs)
   const membranePerPack = membranePerPair * pack.perPack
 
   let bagPerPair = 0
@@ -594,28 +616,28 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
   const plateTotal = colors * E.platePerColor
   let label = 0
   let silk = 0
-  if (pack.isJar && input.print === '瓶标') label = packs <= 3000 ? 800 / packs : packs >= 5000 ? 0.25 : 0.30
-  if (pack.isJar && input.print === '丝印') silk = packs <= 2500 ? 1000 / packs : packs <= 4999 ? 0.4 : packs <= 9999 ? 0.3 : 0.2
+  if (pack.isJar && input.print === '瓶标') label = setupUnit(EC.label, packs)
+  if (pack.isJar && input.print === '丝印') silk = setupUnit(EC.silk, packs)
   const boxUnit = pack.boxed ? pickAsc(E.box, packs) : 0
   const trayOn = pack.boxed && input.innerTray === '是'
-  const trayUnit = trayOn ? (packs <= 1000 ? 0.2 : 0.1) : 0
+  const trayUnit = trayOn ? pickAsc(EC.tray.tiers, packs) : 0
   const laborUnit = pack.boxed ? E.laborPerBox : 0
   const autoMargin = pairs >= 120000 ? 0.35 : pairs >= 30000 ? 0.47 : 0.53
   const margin = marginOverride == null ? autoMargin : marginOverride
 
   const rows = [
-    { key: 'membrane', name: '膜材', nameEn: 'Mask patch', basis: `${input.material} · ${membranePerPair.toFixed(3)} 元/对 × ${pack.perPack} 对/件${m.kind === 'silicone' ? '（≥1万对 1.74 元）' : m.floorTotal > 0 ? `（批次底价 ¥${m.floorTotal.toLocaleString('en-US')} 平摊）` : '（平价 0.30 元/对）'}`, total: membranePerPack * packs },
+    { key: 'membrane', name: '膜材', nameEn: 'Mask patch', basis: `${input.material} · ${membranePerPair.toFixed(3)} 元/对 × ${pack.perPack} 对/件${m.kind === 'silicone' ? `（≥${EC.silicone.tiers[0][0].toLocaleString('en-US')} 对 ${EC.silicone.tiers[0][1]} 元）` : m.floorTotal > 0 ? `（批次底价 ¥${m.floorTotal.toLocaleString('en-US')} 平摊）` : '（平价 0.30 元/对）'}`, total: membranePerPack * packs },
     { key: 'container', name: pack.isJar ? '罐体包材' : '袋装包材', nameEn: 'Container', basis: pack.isJar ? `${input.jar} · ${pack.jarPrice!.toFixed(2)} 元/罐` : `${pack.kind === 'waterbag' ? '水凝胶袋' : '凝胶/硅胶袋'} · ${bagPerPair.toFixed(2)} 元/对 × ${pack.perPack} 对/件`, total: containerPerPack * packs },
     { key: 'plate', name: '袋子版费', nameEn: 'Bag plate fee', basis: pack.isJar ? '罐装免版费' : `${colors} 色 × ¥${E.platePerColor} = ¥${plateTotal.toLocaleString('en-US')}，按 ${packs.toLocaleString('en-US')} 件平摊`, total: plateTotal },
-    { key: 'print', name: '瓶标 / 丝印', nameEn: 'Decoration', basis: pack.isJar ? (input.print === '瓶标' ? (packs <= 3000 ? '≤3000 瓶固定 ¥800 平摊' : '瓶标 0.25–0.30 元/件') : (packs <= 2500 ? '≤2500 瓶固定 ¥1,000 平摊' : '丝印 0.20–0.40 元/件')) : '袋装自带专版印刷', total: (label + silk) * packs },
+    { key: 'print', name: '瓶标 / 丝印', nameEn: 'Decoration', basis: pack.isJar ? (input.print === '瓶标' ? setupBasis(EC.label, packs, `${label.toFixed(2)} 元/件`) : input.print === '丝印' ? setupBasis(EC.silk, packs, `${silk.toFixed(2)} 元/件`) : '未选择印刷') : '袋装自带专版印刷', total: (label + silk) * packs },
     { key: 'box', name: '外彩盒', nameEn: 'Color box', basis: pack.boxed ? `${packs.toLocaleString('en-US')} 件 · ${boxUnit.toFixed(2)} 元/件` : '未选外彩盒', total: boxUnit * packs },
-    { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: trayOn ? `${packs <= 1000 ? '≤1000' : '>1000'} 件 · ${trayUnit.toFixed(2)} 元/件` : pack.boxed ? '未加内托' : '无彩盒不加内托', total: trayUnit * packs },
-    { key: 'labor', name: '组装人工', nameEn: 'Assembly labor', basis: pack.boxed ? '盒装 0.50 元/件' : '散装/裸罐无装盒人工', total: laborUnit * packs },
+    { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: trayOn ? `${trayUnit.toFixed(2)} 元/件（按件数分段）` : pack.boxed ? '未加内托' : '无彩盒不加内托', total: trayUnit * packs },
+    { key: 'labor', name: '组装人工', nameEn: 'Assembly labor', basis: pack.boxed ? `盒装 ${E.laborPerBox.toFixed(2)} 元/件` : '散装/裸罐无装盒人工', total: laborUnit * packs },
   ]
   if (m.floorTotal > 0 && pairs < m.moq) warnings.push(`低于该膜材起订量 ${m.moq.toLocaleString('en-US')} 对，膜材按批次底价 ¥${m.floorTotal.toLocaleString('en-US')} 平摊。`)
   if (pairs % pack.perPack !== 0) warnings.push(`订购对数不是 ${pack.perPack} 对/件的整数倍，按 ${packs.toLocaleString('en-US')} 件整件计费（折合 ${billedPairs.toLocaleString('en-US')} 对）。`)
-  if (pack.isJar && input.print === '瓶标' && packs <= 3000) notes.push('瓶标开机费 ¥800 平摊；超过 3,000 件改按 0.25–0.30 元/件计。')
-  if (pack.isJar && input.print === '丝印' && packs <= 2500) notes.push('丝印开机费 ¥1,000 平摊；超过 2,500 件进入 0.40 元档。')
+  if (pack.isJar && input.print === '瓶标' && packs <= EC.label.setupQty) notes.push(`瓶标开机费 ¥${EC.label.setupFee} 平摊；超过 ${EC.label.setupQty.toLocaleString('en-US')} 件进入阶梯单价。`)
+  if (pack.isJar && input.print === '丝印' && packs <= EC.silk.setupQty) notes.push(`丝印开机费 ¥${EC.silk.setupFee} 平摊；超过 ${EC.silk.setupQty.toLocaleString('en-US')} 件进入阶梯单价。`)
   if (!pack.isJar) notes.push('袋装自带专版印刷，按色数收取 ¥300/色版费；罐装免版费。')
   if (pairs >= 120000) notes.push('已进入 12 万对战略阶梯，享 35% 官方底价毛利。')
   else if (pairs >= 30000) notes.push('已达 3 万对档，进入 47% 官方毛利阶梯。')
