@@ -191,7 +191,7 @@ export function QuoteResult({
         </div>
 
         <div className="quote-kpis">
-          <div className="quote-kpi">
+          <div className="quote-kpi is-fob">
             <div className="text-[10.5px] font-medium text-muted-foreground">
               单{result.unitLabel} FOB{' '}
               <span className="text-[9px] uppercase tracking-[.3px]">unit price</span>
@@ -206,7 +206,7 @@ export function QuoteResult({
               出厂价 ¥{fmt(result.unitPrice)} / {result.unitLabel}
             </div>
           </div>
-          <div className="quote-kpi">
+          <div className="quote-kpi is-boxfob">
             <div className="text-[10.5px] font-medium text-muted-foreground">
               {secondary.label}{' '}
               <span className="text-[9px] uppercase tracking-[.3px]">{secondary.en}</span>
@@ -227,7 +227,7 @@ export function QuoteResult({
               ¥{fmt(result.revenueRMB)} · {qtyText(categoryId, result)}
             </div>
           </div>
-          <div className="quote-kpi">
+          <div className="quote-kpi is-profit">
             <div className="text-[10.5px] font-medium text-muted-foreground">
               毛利总额 <span className="text-[9px] uppercase tracking-[.3px]">gross profit</span>
             </div>
