@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, Pencil, Trash2, X } from 'lucide-react'
+import { Check, ExternalLink, Pencil, Trash2, X, ZoomIn } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -366,7 +366,7 @@ interface ImageAttachmentBlockProps {
   onRename?: (name: string) => Promise<RenameResult>
 }
 
-/** 弹窗内查看大图：名称与上传时间置于图片上方。 */
+/** 弹窗内查看大图：名称与上传时间置于图片上方，点图可全屏查看或打开原图。 */
 export function ImageAttachmentBlock({
   src,
   name,
@@ -374,6 +374,9 @@ export function ImageAttachmentBlock({
   disabled = false,
   onRename,
 }: ImageAttachmentBlockProps) {
+  const [open, setOpen] = useState(false)
+  const label = name?.trim() || '图片'
+
   return (
     <div className="space-y-2 rounded-md border p-2">
       <div className="flex items-start justify-between gap-3 text-sm">
@@ -389,8 +392,40 @@ export function ImageAttachmentBlock({
         </span>
       </div>
       {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={name?.trim() || '图片'} className="w-full rounded-md border" />
+        <>
+          <button
+            type="button"
+            aria-label="查看大图"
+            title="查看大图"
+            onClick={() => setOpen(true)}
+            className="group relative block w-full cursor-zoom-in"
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt={label} className="w-full rounded-md border" />
+            <span className="pointer-events-none absolute right-2 top-2 flex items-center gap-1 rounded bg-black/60 px-2 py-1 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100">
+              <ZoomIn className="h-3.5 w-3.5" /> 查看大图
+            </span>
+          </button>
+          <Dialog open={open} onOpenChange={setOpen}>
+            <DialogContent className="flex max-h-[95vh] w-auto max-w-[96vw] items-center justify-center border-none bg-black/90 p-2">
+              <DialogTitle className="sr-only">{label}</DialogTitle>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={label}
+                className="max-h-[92vh] max-w-[94vw] rounded object-contain"
+              />
+              <a
+                href={src}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="absolute right-12 top-3 flex items-center gap-1 rounded bg-black/60 px-2 py-1 text-xs text-white hover:bg-black/80"
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> 打开原图
+              </a>
+            </DialogContent>
+          </Dialog>
+        </>
       ) : (
         <div className="text-sm text-destructive">图片链接生成失败，请稍后重试</div>
       )}

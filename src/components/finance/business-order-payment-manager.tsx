@@ -1610,7 +1610,7 @@ export function BusinessOrderPaymentManager({
         open={Boolean(viewingProof)}
         onOpenChange={(open) => !open && setViewingProof(null)}
       >
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-[min(1400px,96vw)]">
           <DialogHeader>
             <DialogTitle>收款截图（{viewingProof?.items.length ?? 0} 张）</DialogTitle>
           </DialogHeader>
