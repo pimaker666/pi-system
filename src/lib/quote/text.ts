@@ -46,7 +46,6 @@ export const TIER_NOTES: Record<CategoryId, string[]> = {
 }
 
 export const EN = {
-  packageType: { 盒装: 'Boxed', 片装: 'Single sachet' },
   packForm: { 罐装: 'Jar', 袋装: 'Sachet' },
   material: {
     '无纺布（传统棉）': 'Non-woven cotton',
@@ -160,7 +159,7 @@ function en(v: unknown, map?: Record<string, string>) {
 
 export function specLine(categoryId: CategoryId, input: QuoteInput) {
   if (categoryId === 'mask') {
-    const pt = input.packageType === '盒装' ? `Boxed · ${input.piecesPerBox} pcs/box` : 'Single sachet'
+    const pt = input.colorBox === '否' ? 'Single sachet' : `Boxed · ${input.piecesPerBox} pcs/box`
     return `Sheet Mask · ${pt} · ${input.colors}-color printing`
   }
   if (categoryId === 'cotton') {

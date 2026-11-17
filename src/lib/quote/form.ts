@@ -15,6 +15,8 @@ export interface FormField {
   min?: number
   presets?: number[]
   options?: FormOption[]
+  /** Number input suggestions (native datalist); typing any other value still works. */
+  datalist?: number[]
   visible?: (input: QuoteInput) => boolean
 }
 
@@ -31,26 +33,26 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
   if (categoryId === 'mask') {
     return [
       {
-        type: 'select', key: 'packageType', label: '包装形态', labelEn: 'Package form',
-        options: [opt('盒装', '盒装 Boxed'), opt('片装', '片装 Single sachet')],
-        hint: '片装自动免除彩盒、内托与 0.80 元/盒装盒人工。',
-      },
-      {
-        type: 'select', key: 'piecesPerBox', label: '每盒片数', labelEn: 'Pieces / box',
-        options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => opt(v, v + ' 片' + (v === 4 ? '（默认）' : ''))),
-        hint: '默认 4 片；4 / 5 片有专属彩盒价，其余片数按 10 片装彩盒价计。',
-        visible: (s) => s.packageType === '盒装',
-      },
-      {
-        type: 'number', key: 'totalPieces', label: '定制总片数', labelEn: 'Total pieces', unit: '片',
+        type: 'number', key: 'totalPieces', label: '定制片数总量', labelEn: 'Total pieces', unit: '片',
         presets: DATA.mask.tiers.map((t) => t[0]), min: 100,
         hint: '彩盒与 350 元/色版费按总片数平摊，盒数向上取整。',
       },
       {
-        type: 'select', key: 'innerTray', label: '彩盒内托', labelEn: 'Inner tray',
+        type: 'select', key: 'colorBox', label: '是否配备外彩盒', labelEn: 'Color box',
+        options: [opt('是', '配彩盒'), opt('否', '不配彩盒 · 单片袋装')],
+        hint: '默认配彩盒；选「否」即单片袋装出厂，彩盒、内托与 0.80 元/盒装盒人工自动不计。',
+      },
+      {
+        type: 'number', key: 'piecesPerBox', label: '每盒片数', labelEn: 'Pieces / box', unit: '片/盒',
+        min: 1, datalist: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        hint: '默认 4 片，可下拉 1–10 或直接输入；4 / 5 片有专属彩盒价，其余片数按 10 片装彩盒价计。',
+        visible: (s) => s.colorBox !== '否',
+      },
+      {
+        type: 'select', key: 'innerTray', label: '彩盒是否加内托', labelEn: 'Inner tray',
         options: [opt('否', '不加内托'), opt('是', '加吸塑内托')],
-        hint: '≤1,000 盒 0.20 元/盒；>1,000 盒 0.10 元/盒。',
-        visible: (s) => s.packageType === '盒装',
+        hint: '默认不加；≤1,000 盒 0.20 元/盒，>1,000 盒 0.10 元/盒。',
+        visible: (s) => s.colorBox !== '否',
       },
       {
         type: 'select', key: 'colors', label: '印刷色版数', labelEn: 'Print colors',
@@ -234,6 +236,13 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
 /** Keep dependent selects coherent when the category switch makes them meaningless. */
 export function normalizeInput(categoryId: CategoryId, input: QuoteInput): QuoteInput {
   const next = { ...input }
+  if (categoryId === 'mask') {
+    if (next.packageType != null) {
+      next.colorBox = next.packageType === '片装' ? '否' : '是'
+      delete next.packageType
+    }
+    if (next.colorBox === '否') next.innerTray = '否'
+  }
   if (categoryId === 'eyemask') {
     const m = DATA.eyemask.membranes[String(next.material)]
     if (m && m.kind !== 'jar') next.packMode = next.colorBox === '是' ? '6对盒装' : '单袋散装'

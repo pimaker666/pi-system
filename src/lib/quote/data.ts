@@ -42,9 +42,9 @@ interface MaskData {
 
 const mask: MaskData = {
   defaults: {
-    packageType: '盒装',
-    piecesPerBox: 4,
     totalPieces: 3000,
+    colorBox: '是',
+    piecesPerBox: 4,
     innerTray: '否',
     colors: 4,
   },

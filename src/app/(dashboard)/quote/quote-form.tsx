@@ -38,9 +38,11 @@ function NumberField({
   return (
     <div className="flex gap-2">
       <Input
+        id={`qf-${field.key}`}
         inputMode="numeric"
         value={draft}
         min={min}
+        list={field.datalist ? `qf-${field.key}-list` : undefined}
         aria-label={field.label}
         onChange={(e) => {
           const raw = e.target.value.replace(/[^\d]/g, '')
@@ -62,6 +64,13 @@ function NumberField({
         }}
         className="font-mono text-[15px] font-semibold tracking-wide"
       />
+      {field.datalist && (
+        <datalist id={`qf-${field.key}-list`}>
+          {field.datalist.map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
+      )}
       <span className="flex shrink-0 items-center text-xs text-muted-foreground">
         {field.unit}
       </span>

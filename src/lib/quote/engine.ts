@@ -246,8 +246,8 @@ function maskAt(input: QuoteInput, qty: number, fx: number, marginOverride: numb
   const notes: string[] = []
   if (!(qty > 0)) errors.push('订购数量必须大于 0')
   qty = Math.max(1, Math.floor(qty))
-  const boxed = input.packageType === '盒装'
-  const ppb = boxed ? num(input.piecesPerBox, 4) : 1
+  const boxed = input.colorBox !== '否'
+  const ppb = boxed ? Math.max(1, Math.floor(num(input.piecesPerBox, 4))) : 1
   const boxes = boxed ? ceil(qty / ppb) : 0
   const autoMargin = qty > 20000 ? 0.15 : qty > 10000 ? 0.25 : 0.35
   const margin = marginOverride == null ? autoMargin : marginOverride
@@ -268,7 +268,7 @@ function maskAt(input: QuoteInput, qty: number, fx: number, marginOverride: numb
   ]
   if (qty < 10000) warnings.push('铝箔袋起订 10,000 个：本单不足 1 万片，袋子按 1 万个总价 ¥3,000 平摊。')
   if (boxed && qty % ppb !== 0) warnings.push(`总片数不是 ${ppb} 的整数倍，按 ${boxes} 盒整盒计费。`)
-  if (!boxed) notes.push('片装为单片袋装，已自动免除彩盒、内托与 0.80 元/盒装盒人工。')
+  if (!boxed) notes.push('已选择不配彩盒：彩盒、内托与 0.80 元/盒装盒人工自动不计。')
   if (qty >= 100000) notes.push('膜片与袋子均已进入 10 万片极限阶梯，适合品牌大单。')
 
   return finalize({
@@ -288,9 +288,9 @@ function maskAt(input: QuoteInput, qty: number, fx: number, marginOverride: numb
     errors,
     warnings,
     notes,
-    description: `${input.packageType === '片装' ? '片装单片' : ppb + '片盒装'} · 面膜`,
+    description: `${boxed ? ppb + '片盒装' : '单片袋装'} · 面膜`,
     specs: [
-      ['包装形态', input.packageType === '片装' ? '片装（单片袋）' : `盒装 · ${ppb} 片/盒`],
+      ['包装形式', boxed ? `配彩盒 · ${ppb} 片/盒` : '不配彩盒（单片袋装）'],
       ['定制总量', `${qty.toLocaleString('en-US')} 片${boxed ? `（${boxes.toLocaleString('en-US')} 盒）` : ''}`],
       ['内托', boxed ? String(input.innerTray) : '不适用'],
       ['印刷', `${colors} 色 · 版费 ¥${plateTotal.toLocaleString('en-US')}`],
