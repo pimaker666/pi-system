@@ -25,8 +25,11 @@ export const CATEGORIES: readonly {
   { id: 'eyemask', cn: '眼膜 / 唇膜', en: 'Eye & Lip Masks', code: 'EYE', qtyKey: 'qtyPairs', qtyUnit: '对' },
 ]
 
-export const FX_DEFAULT = 6.4
-export const PLATE_COLOR_PRICE = 350
+const BASE_FX = 6.4
+const BASE_PLATE = 350
+// `let` + live bindings: applyQuoteOverrides can swap these at runtime (DB overrides).
+export let FX_DEFAULT = BASE_FX
+export let PLATE_COLOR_PRICE = BASE_PLATE
 
 export const COMPANY = {
   cn: '佛山京妍生物制品有限公司',
@@ -38,6 +41,11 @@ interface MaskData {
   box: Record<number, DescTier[]>
   laborPerBox: number
   tiers: TierMeta[]
+  costs: {
+    film: TieredCost
+    bag: FoilBagCost
+    tray: AscCost
+  }
 }
 
 const mask: MaskData = {
@@ -62,6 +70,11 @@ const mask: MaskData = {
     [50000, '大宗采购', 'Bulk purchase'],
     [100000, '战略大客户', 'Strategic key account'],
   ],
+  costs: {
+    film: { tiers: [[100000, 1.2], [0, 1.33]] },
+    bag: { minQty: 10000, minTotal: 3000, tiers: [[100000, 0.25], [50000, 0.28], [0, 0.3]] },
+    tray: { tiers: [[1000, 0.2], [Infinity, 0.1]] },
+  },
 }
 
 interface CottonData {
@@ -75,6 +88,12 @@ interface CottonData {
   box: AscTier[]
   laborPerBox: number
   tiers: TierMeta[]
+  costs: {
+    bag: FoilBagCost
+    tray: AscCost
+    label: SetupCost
+    silk: SetupCost
+  }
 }
 
 const cotton: CottonData = {
@@ -103,6 +122,12 @@ const cotton: CottonData = {
     [10000, '大宗采购', 'Bulk purchase'],
     [20000, '战略大客户', 'Strategic key account'],
   ],
+  costs: {
+    bag: { minQty: 10000, minTotal: 3000, tiers: [[100000, 0.25], [50000, 0.28], [0, 0.3]] },
+    tray: { tiers: [[1000, 0.2], [Infinity, 0.1]] },
+    label: { setupQty: 3000, setupFee: 800, tiers: [[5000, 0.25], [3000, 0.3]] },
+    silk: { setupQty: 2500, setupFee: 1000, tiers: [[10000, 0.2], [5000, 0.3], [2500, 0.4]] },
+  },
 }
 
 interface CartonBand {
@@ -117,6 +142,12 @@ interface OilData {
   bulk: Record<string, number>
   box: { small: CartonBand; mid: CartonBand; large: CartonBand }
   tiers: TierMeta[]
+  costs: {
+    label: SetupCost
+    silk: SetupCost
+    tray: AscCost
+    labor: { boxed: number; plain: number; decorated: number }
+  }
 }
 
 const oil: OilData = {
@@ -159,6 +190,12 @@ const oil: OilData = {
     [5000, '规模定制', 'Volume order'],
     [10000, '战略大单', 'Strategic bulk'],
   ],
+  costs: {
+    label: { setupQty: 3000, setupFee: 800, tiers: [[5000, 0.24], [3000, 0.25]] },
+    silk: { setupQty: 2500, setupFee: 1000, tiers: [[10000, 0.2], [5000, 0.3], [2500, 0.4]] },
+    tray: { tiers: [[100, 0.1], [200, 0.15], [Infinity, 0.2]] },
+    labor: { boxed: 0.8, plain: 0.1, decorated: 0.3 },
+  },
 }
 
 interface CreamData {
@@ -168,6 +205,13 @@ interface CreamData {
   containers: Record<string, number[]>
   box: { small: CartonBand; mid: CartonBand; large: CartonBand }
   tiers: TierMeta[]
+  costs: {
+    discount: TieredCost
+    label: SetupCost
+    silk: SetupCost
+    tray: AscCost
+    labor: { boxed: number; plain: number }
+  }
 }
 
 const cream: CreamData = {
@@ -212,9 +256,37 @@ const cream: CreamData = {
     [10000, '大宗爆款', 'Bulk bestseller'],
     [20000, '战略集采', 'Strategic sourcing'],
   ],
+  costs: {
+    discount: { tiers: [[10000, 0.85], [3000, 0.9], [0, 1]] },
+    label: { setupQty: 3000, setupFee: 800, tiers: [[5000, 0.24], [3000, 0.25]] },
+    silk: { setupQty: 2500, setupFee: 1000, tiers: [[10000, 0.2], [5000, 0.3], [2500, 0.4]] },
+    tray: { tiers: [[100, 0.1], [200, 0.15], [Infinity, 0.2]] },
+    labor: { boxed: 0.8, plain: 0.4 },
+  },
 }
 
 export type MembraneKind = 'jar' | 'waterbag' | 'gelbag' | 'silicone'
+
+/** ≥ 数量阶梯成本（第一个达到的门槛生效），如膜片、硅胶膜材。 */
+export interface TieredCost {
+  tiers: DescTier[]
+}
+/** ≤ 数量阶梯成本（第一个没超的门槛生效），如内托。 */
+export interface AscCost {
+  tiers: AscTier[]
+}
+/** 开机费成本：≤ setupQty 按 setupFee 平摊，超过后走 ≥ 阶梯。 */
+export interface SetupCost {
+  setupQty: number
+  setupFee: number
+  tiers: DescTier[]
+}
+/** 铝箔袋：不足 minQty 个按 minTotal 总价平摊，达到后走 ≥ 阶梯。 */
+export interface FoilBagCost {
+  minQty: number
+  minTotal: number
+  tiers: DescTier[]
+}
 
 interface EyemaskData {
   defaults: QuoteInput
@@ -228,6 +300,12 @@ interface EyemaskData {
   box: AscTier[]
   laborPerBox: number
   tiers: TierMeta[]
+  costs: {
+    silicone: TieredCost
+    label: SetupCost
+    silk: SetupCost
+    tray: AscCost
+  }
 }
 
 const eyemask: EyemaskData = {
@@ -271,9 +349,90 @@ const eyemask: EyemaskData = {
     [60000, '规模定制', 'Volume order'],
     [120000, '战略大单', 'Strategic bulk'],
   ],
+  costs: {
+    silicone: { tiers: [[10000, 1.74], [0, 2.0]] },
+    label: { setupQty: 3000, setupFee: 800, tiers: [[5000, 0.25], [3000, 0.30]] },
+    silk: { setupQty: 2500, setupFee: 1000, tiers: [[10000, 0.2], [5000, 0.3], [2500, 0.4]] },
+    tray: { tiers: [[1000, 0.2], [Infinity, 0.1]] },
+  },
 }
 
 export const DATA = { mask, cotton, oil, cream, eyemask }
+
+export type QuoteData = typeof DATA
+
+/** Pristine code defaults; applyQuoteOverrides always merges from a fresh clone of this. */
+const BASE_DATA: QuoteData = structuredClone(DATA)
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
+/** Deep-merge: plain objects merge recursively, arrays/scalars replace wholesale. */
+export function deepMerge<T>(base: T, overrides: unknown): T {
+  if (!isPlainObject(base) || !isPlainObject(overrides)) {
+    return overrides === undefined ? base : (overrides as T)
+  }
+  const out: Record<string, unknown> = { ...base }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v === undefined) continue
+    out[k] = k in out ? deepMerge(out[k], v) : v
+  }
+  return out as T
+}
+
+export interface QuoteGlobals {
+  FX_DEFAULT?: number
+  PLATE_COLOR_PRICE?: number
+}
+
+/**
+ * jsonb/JSON round-trip turns Infinity (open end of an ascending tier) into
+ * null; restore it so engine tier lookups keep working on DB-loaded overrides.
+ */
+export function reviveInfTiers(v: unknown): unknown {
+  if (Array.isArray(v)) {
+    if (v.length === 2 && v[0] === null && typeof v[1] === 'number') return [Infinity, v[1]]
+    return v.map(reviveInfTiers)
+  }
+  if (isPlainObject(v)) {
+    const out: Record<string, unknown> = {}
+    for (const [k, x] of Object.entries(v)) out[k] = reviveInfTiers(x)
+    return out
+  }
+  return v
+}
+
+export type QuoteOverrides = Partial<Record<CategoryId, unknown>> & QuoteGlobals
+
+/**
+ * Swap the module-level DATA / globals to DB-stored overrides so engine, form and
+ * text lookups all pick them up. Pass null (or omit a category) to restore code defaults.
+ */
+export function applyQuoteOverrides(overrides: QuoteOverrides | null): void {
+  const src = overrides ?? {}
+  for (const c of CATEGORIES) {
+    const o = src[c.id]
+    const base = structuredClone(BASE_DATA[c.id])
+    ;(DATA as Record<string, unknown>)[c.id] = o === undefined ? base : deepMerge(base, o)
+  }
+  const fx = Number(src.FX_DEFAULT)
+  FX_DEFAULT = Number.isFinite(fx) && fx > 0 ? fx : BASE_FX
+  const plate = Number(src.PLATE_COLOR_PRICE)
+  PLATE_COLOR_PRICE = Number.isFinite(plate) && plate >= 0 ? plate : BASE_PLATE
+}
+
+export function quoteDefaults(): QuoteOverrides {
+  return {
+    FX_DEFAULT: BASE_FX,
+    PLATE_COLOR_PRICE: BASE_PLATE,
+    mask: structuredClone(BASE_DATA.mask),
+    cotton: structuredClone(BASE_DATA.cotton),
+    oil: structuredClone(BASE_DATA.oil),
+    cream: structuredClone(BASE_DATA.cream),
+    eyemask: structuredClone(BASE_DATA.eyemask),
+  }
+}
 
 export function defaultsFor(categoryId: CategoryId): QuoteInput {
   return { ...DATA[categoryId].defaults }

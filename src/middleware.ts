@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { SUPABASE_SERVER_URL, SUPABASE_STORAGE_KEY } from './lib/supabase/urls'
 
-const PUBLIC_PATHS = ['/login', '/signup', '/auth']
+const PUBLIC_PATHS = ['/login', '/signup', '/auth', '/api/quote-params']
 
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request })
