@@ -95,12 +95,13 @@ const customerCustomOrderCommissionRatesSchema = z
     })
   })
 
-/** 提成结清提交：财务选择一组产品行并指定归属年月。 */
+/** 提成结清提交：财务选择一组产品行并指定归属年月；direct=true 时财务直接结清，不再走业务确认。 */
 const businessOrderCommissionClearanceSubmitSchema = z.object({
   business_order_item_ids: z
     .array(z.string().uuid('订单明细行 ID 无效'))
     .min(1, '至少选择一条订单明细行'),
   period: z.string().regex(/^\d{4}-\d{2}$/, '请选择有效年月'),
+  direct: z.boolean().optional(),
 })
 
 /** 业务员确认结清。 */
@@ -569,6 +570,7 @@ function clearancePeriodToDate(period: string): string {
 export async function submitBusinessOrderCommissionClearance(input: {
   business_order_item_ids: string[]
   period: string
+  direct?: boolean
 }): Promise<ActionResult> {
   const profile = await requireFinanceAccess()
   const parsed = businessOrderCommissionClearanceSubmitSchema.safeParse(input)
@@ -578,6 +580,7 @@ export async function submitBusinessOrderCommissionClearance(input: {
 
   const supabase = await createClient()
   const itemIds = parsed.data.business_order_item_ids
+  const direct = parsed.data.direct === true
 
   const items = []
   for (const chunk of chunkIds(itemIds)) {
@@ -681,14 +684,15 @@ export async function submitBusinessOrderCommissionClearance(input: {
   }
 
   const periodDate = clearancePeriodToDate(parsed.data.period)
+  const now = new Date().toISOString()
   const rows = itemIds.map((id) => ({
     business_order_item_id: id,
     period: periodDate,
-    status: 'pending' as const,
+    status: (direct ? 'confirmed' : 'pending') as 'confirmed' | 'pending',
     submitted_by: profile.id,
-    submitted_at: new Date().toISOString(),
-    confirmed_by: null,
-    confirmed_at: null,
+    submitted_at: now,
+    confirmed_by: direct ? profile.id : null,
+    confirmed_at: direct ? now : null,
     rejected_reason: null,
     rejected_read_at: null,
   }))

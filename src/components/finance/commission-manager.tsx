@@ -1255,7 +1255,7 @@ export function CommissionManager({
     })
   }
 
-  function confirmSubmitClearance() {
+  function confirmSubmitClearance(direct = false) {
     const itemIds = [...selectedItemIds]
     if (itemIds.length === 0) {
       toast.error('请先勾选产品行')
@@ -1265,13 +1265,18 @@ export function CommissionManager({
       const result = await submitBusinessOrderCommissionClearance({
         business_order_item_ids: itemIds,
         period,
+        direct,
       })
       if (!result.ok) {
         const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
         toast.error(firstFieldError ?? result.error ?? '提交结清失败')
         return
       }
-      toast.success(`已提交 ${selectedCount} 个产品行结清至 ${period}`)
+      toast.success(
+        direct
+          ? `已由财务直接结清 ${selectedCount} 个产品行`
+          : `已提交 ${selectedCount} 个产品行结清至 ${period}`,
+      )
       setSelectedItemIds(new Set())
       setDialogOpen(false)
       router.refresh()
@@ -1453,7 +1458,7 @@ export function CommissionManager({
             提交结清
           </Button>
           <span className="text-xs text-muted-foreground">
-            仅“已收齐且已发货”的产品行可提交；已结清行不可重复选择。
+            仅“已收齐且已发货”的产品行可提交；提交时可选择交给业务确认，或由财务直接结清。
           </span>
         </div>
       )}
@@ -1919,7 +1924,10 @@ export function CommissionManager({
           </DialogHeader>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
-              已选择 {selectedCount} 个产品行，请选择结清归属年月后提交。
+              已选择 {selectedCount} 个产品行，请选择结清归属年月。
+            </p>
+            <p className="text-xs text-muted-foreground">
+              提交给业务确认：业务可确认或驳回；财务直接结清：立即生效并锁定金额，之后如需修改须先取消结清。
             </p>
             <div>
               <label htmlFor="clearance-period" className="block text-sm font-medium">
@@ -1938,9 +1946,14 @@ export function CommissionManager({
             <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
               取消
             </Button>
-            <Button type="button" disabled={submitPending} onClick={confirmSubmitClearance}>
-              确认提交
+            <Button type="button" variant="outline" disabled={submitPending} onClick={() => confirmSubmitClearance()}>
+              提交给业务确认
             </Button>
+            {canDirectSettle && (
+              <Button type="button" disabled={submitPending} onClick={() => confirmSubmitClearance(true)}>
+                财务直接结清
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
