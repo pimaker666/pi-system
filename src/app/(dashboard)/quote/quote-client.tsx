@@ -185,7 +185,7 @@ export function QuoteClient() {
         ))}
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 min-[1280px]:grid-cols-[320px_minmax(0,1fr)] min-[1280px]:items-start">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 min-[1280px]:grid-cols-[340px_minmax(0,1fr)] min-[1280px]:items-start">
         <div className="print-hidden min-w-0 min-[1280px]:sticky min-[1280px]:top-0">
           <QuoteForm
             categoryId={categoryId}
