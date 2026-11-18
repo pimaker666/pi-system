@@ -33,6 +33,7 @@ export default async function SettledCommissionPage({
         categoryRates={commissions.categoryRates}
         customerTags={commissions.customerTags}
         customOrderRates={commissions.customOrderRates}
+        commissionRules={commissions.commissionRules}
         defaultFreightCommissionRate={commissions.defaultFreightCommissionRate}
         canManageCategoryRates={false}
         canManageExchangeRate={false}

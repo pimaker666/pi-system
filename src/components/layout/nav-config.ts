@@ -34,6 +34,8 @@ export interface NavItem {
   allowedRoles?: UserRole[]
   requiredFinancePage?: FinancePage
   attentionBadge?: 'commission' | 'approval'
+  /** 角标只对部分角色展示（额度来源不同，如运营读运营提成待确认数）。 */
+  attentionBadgeRoles?: UserRole[]
   match?: (pathname: string) => boolean
 }
 
@@ -65,7 +67,7 @@ export const NAV: NavItem[] = [
     href: '/finance/daily-orders',
     label: '每日订单',
     icon: FileText,
-    allowedRoles: ['sales', 'supervisor', 'admin', 'finance'],
+    allowedRoles: ['sales', 'supervisor', 'admin', 'finance', 'operations'],
   },
   {
     href: '/finance/costs',
@@ -111,13 +113,17 @@ export const NAV: NavItem[] = [
     href: '/finance/commission',
     label: '提成计算',
     icon: BadgeDollarSign,
+    allowedRoles: ['admin', 'finance', 'sales', 'supervisor'],
     attentionBadge: 'commission',
+    attentionBadgeRoles: ['sales', 'supervisor'],
   },
   {
     href: '/finance/my-commission',
     label: '我的提成',
     icon: HandCoins,
-    allowedRoles: ['sales', 'supervisor'],
+    allowedRoles: ['sales', 'supervisor', 'operations'],
+    attentionBadge: 'commission',
+    attentionBadgeRoles: ['operations'],
   },
   {
     href: '/finance/commission/settled',

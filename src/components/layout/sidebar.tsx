@@ -125,7 +125,8 @@ export function Sidebar({
               const badgeCount =
                 item.attentionBadge === 'approval'
                   ? approvalPendingCount
-                  : item.attentionBadge === 'commission'
+                  : item.attentionBadge === 'commission' &&
+                      (!item.attentionBadgeRoles || item.attentionBadgeRoles.includes(role))
                     ? commissionAttentionCount
                     : 0
               return (
@@ -172,7 +173,9 @@ export function Sidebar({
                   ? '财务'
                   : role === 'supervisor'
                     ? '业务主管'
-                    : '业务员'}
+                    : role === 'operations'
+                      ? '运营'
+                      : '业务员'}
             </div>
           </div>
         </div>

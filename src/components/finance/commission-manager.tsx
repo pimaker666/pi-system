@@ -15,6 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
+import { CommissionRuleSettings } from '@/components/finance/commission-rule-settings'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
@@ -63,6 +64,7 @@ import type {
   BusinessOrderCommissionClearanceStatus,
   BusinessOrderCommissionRow,
   CommissionCategoryRate,
+  CommissionRule,
   CustomerCommissionTag,
   CustomerCustomOrderCommissionRate,
   DailyOrderShippingCategory,
@@ -183,11 +185,15 @@ function RateEditor({ row, readOnly }: { row: BusinessOrderCommissionRow; readOn
           ? '定制单数'
           : row.product_commission_rate_source === 'shipping_category'
             ? '分类默认'
-            : '未设置'
+            : row.product_commission_rate_source === 'rule'
+              ? '提成规则'
+              : '未设置'
   const sourceDetail =
     row.product_commission_rate_source === 'customer_tag' && row.customer_tag_label
       ? `${sourceLabel}：${row.customer_tag_label}`
-      : sourceLabel
+      : row.product_commission_rule_name
+        ? `${sourceLabel}：${row.product_commission_rule_name}`
+        : sourceLabel
 
   if (!row.commission_calculable) {
     return <span className="text-sm text-muted-foreground">待补客户</span>
@@ -1027,6 +1033,7 @@ export interface CommissionManagerProps {
   categoryRates: CommissionCategoryRate[]
   customerTags: CustomerCommissionTag[]
   customOrderRates: CustomerCustomOrderCommissionRate[]
+  commissionRules: CommissionRule[]
   defaultFreightCommissionRate: number
   canManageCategoryRates: boolean
   canManageExchangeRate: boolean
@@ -1048,6 +1055,7 @@ export function CommissionManager({
   categoryRates,
   customerTags,
   customOrderRates,
+  commissionRules,
   defaultFreightCommissionRate,
   canManageCategoryRates,
   canManageExchangeRate,
@@ -1399,9 +1407,16 @@ export function CommissionManager({
         <p className="text-sm text-muted-foreground">
           已收齐且已发货的产品行自动进入本页；未关联客户的订单仅供补充客户信息，不能计算或结清提成。
           产品提成 = 产品实收金额 × 产品提点%；运费利润 = 运费实收 − 运费成本；运费提成 = 运费利润 × 运费提点%。
-          产品提点优先级：手动逐行 &gt; 客户标记 &gt; 定制单数（仅定制发货分类）&gt; 发货分类默认。
+          产品提点优先级：手动逐行 &gt; 提成规则（按规则顺序，命中第一条即采用）。旧设置中的客户标记 / 定制单数 / 发货分类会自动同步为规则。
         </p>
         <div className="flex flex-wrap gap-2">
+          {!readOnly && canManageCategoryRates && (
+            <CommissionRuleSettings
+              line="business"
+              rules={commissionRules}
+              tagOptions={customerTags.map((tag) => ({ color: tag.tag_color, label: tag.label }))}
+            />
+          )}
           {!readOnly && isAdmin && <CustomerTagsDialog customerTags={customerTags} />}
           {!readOnly && canManageCategoryRates && <CustomOrderCountRatesDialog rates={customOrderRates} />}
           {!readOnly && canManageCategoryRates && <CategoryRatesDialog categoryRates={categoryRates} />}

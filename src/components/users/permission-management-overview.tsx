@@ -14,6 +14,7 @@ const roles: { value: UserRole; label: string }[] = [
   { value: 'finance', label: '财务' },
   { value: 'supervisor', label: '业务主管' },
   { value: 'sales', label: '业务员' },
+  { value: 'operations', label: '运营' },
 ]
 
 const scopes: { value: PermissionDataScope; label: string }[] = [

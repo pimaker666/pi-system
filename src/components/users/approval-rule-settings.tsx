@@ -22,7 +22,10 @@ const ROLE_LABELS: Record<UserRole, string> = {
   finance: '财务',
   supervisor: '业务主管',
   sales: '业务员',
+  operations: '运营',
 }
+// 运营不参与订单/成本/报销审核，审批角色只能从这四类中选。
+const APPROVER_ROLES: UserRole[] = ['admin', 'finance', 'supervisor', 'sales']
 
 const ACTION_META: { key: ApprovalActionKey; label: string; description: string }[] = [
   {
@@ -217,7 +220,7 @@ export function ApprovalRuleSettings({
               <div className="space-y-2">
                 <p className={fieldLabel}>审核角色</p>
                 <div className="flex flex-wrap gap-4">
-                  {(Object.keys(ROLE_LABELS) as UserRole[]).map((role) => (
+                  {APPROVER_ROLES.map((role) => (
                     <label key={role} className="flex items-center gap-2 text-sm">
                       <input
                         type="checkbox"

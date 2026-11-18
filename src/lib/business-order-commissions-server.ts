@@ -1,12 +1,21 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type {
   BusinessOrderCommissionClearanceDetail,
+  BusinessOrderCommissionRateSource,
   BusinessOrderCommissionRow,
   CommissionCategoryRate,
+  CommissionRule,
+  CommissionRuleLegacySource,
   CustomerCommissionTag,
   CustomerCustomOrderCommissionRate,
   DailyOrderShippingCategory,
 } from '@/types'
+import { matchCommissionRule, type CommissionRuleContext } from '@/lib/commission-rules'
+import {
+  fetchCommissionOrderContext,
+  fetchCommissionRules,
+  type CommissionOrderContext,
+} from '@/lib/commission-rules-server'
 import type { BusinessOrderCommissionFilters } from '@/lib/business-order-commission'
 import { displayProfileName } from '@/lib/utils'
 import { customerNameFromSnapshot, customerTagColorFromOrder } from '@/lib/customer-snapshot'
@@ -430,7 +439,23 @@ function round4(value: number) {
   return Math.round(value * 10000) / 10000
 }
 
+const LEGACY_RULE_SOURCES: Record<CommissionRuleLegacySource, BusinessOrderCommissionRateSource> = {
+  tag: 'customer_tag',
+  custom_tier: 'custom_order_count',
+  category: 'shipping_category',
+}
+
+/** 旧设置入口播种的规则沿用原有来源标签，新建规则统一显示为 rule。 */
+function legacyRuleSource(
+  source: CommissionRuleLegacySource | null,
+): BusinessOrderCommissionRateSource {
+  return source ? LEGACY_RULE_SOURCES[source] : 'rule'
+}
+
 interface CommissionBuildContext {
+  /** 业务线提成规则，已按 priority 升序；旧设置入口通过 legacy_source 同步。 */
+  businessRules: CommissionRule[]
+  orderContext: Map<string, CommissionOrderContext>
   categoryRates: CommissionCategoryRate[]
   customerTags: CustomerCommissionTag[]
   customOrderRates: CustomerCustomOrderCommissionRate[]
@@ -475,8 +500,10 @@ async function loadCommissionContext(
     ),
   ]
 
-  const [categoryRates, customerTags, customOrderRates, defaultFreightCommissionRate, itemCommissions, orderCommissions, clearances, financialLabels, customOrderCounts, customerTagColors] =
+  const [businessRules, orderContext, categoryRates, customerTags, customOrderRates, defaultFreightCommissionRate, itemCommissions, orderCommissions, clearances, financialLabels, customOrderCounts, customerTagColors] =
     await Promise.all([
+      fetchCommissionRules(supabase, 'business'),
+      fetchCommissionOrderContext(supabase, orderIds),
       fetchAllCategoryRates(supabase),
       fetchAllCustomerCommissionTags(supabase),
       fetchAllCustomerCustomOrderCommissionRates(supabase),
@@ -490,6 +517,8 @@ async function loadCommissionContext(
     ])
 
   return {
+    businessRules,
+    orderContext,
     categoryRates,
     customerTags,
     customOrderRates,
@@ -510,8 +539,8 @@ function buildCommissionRows(
   ctx: CommissionBuildContext,
 ): BusinessOrderCommissionRow[] {
   const {
-    categoryRates,
-    customOrderRates,
+    businessRules,
+    orderContext,
     defaultFreightCommissionRate,
     itemRateMap,
     orderFreightMap,
@@ -521,7 +550,6 @@ function buildCommissionRows(
     customOrderCounts,
     customerTagColors,
   } = ctx
-  const categoryRateMap = new Map(categoryRates.map((row) => [row.category, row.product_commission_rate]))
   const builtRows: BusinessOrderCommissionRow[] = []
 
   for (const { order, items: mergedItems } of buildOrders) {
@@ -548,40 +576,41 @@ function buildCommissionRows(
         : customerTagColorFromOrder(order)
       : null
     const tag = tagColor ? tagMap.get(tagColor.toLowerCase()) ?? null : null
-    const tagRate = tag ? tag.product_commission_rate : null
     const customOrderCount = order.customer_id ? customOrderCounts.get(order.customer_id) ?? 0 : 0
+    const orderWindow = orderContext.get(order.id)
     const orderRowSpan = mergedItems.length
 
     mergedItems.forEach((item, index) => {
       const category = item.daily_shipping_category
-      const categoryDefault = category ? categoryRateMap.get(category) ?? null : null
       // 与台账/成本页展示口径一致：财务维护了产品名称才整套换成财务名+财务编号。
       const displayFinancial =
         category !== 'custom' && item.product_id
           ? financialLabelMap.get(item.product_id)
           : undefined
-      const customOrderRate = commissionCalculable && category === 'custom'
-        ? customOrderRates
-          .find((rate) => rate.maximum_custom_order_count >= customOrderCount)?.product_commission_rate ?? null
-        : null
       const overrideRates = item.item_ids
         .map((id) => itemRateMap.get(id))
         .filter((value): value is number => value !== undefined)
       const uniqueOverrides = new Set(overrideRates)
       const overriddenRate =
         overrideRates.length > 0 && uniqueOverrides.size === 1 ? overrideRates[0] : undefined
-      const productCommissionRateSource =
+      const ruleContext: CommissionRuleContext = {
+        tagColor: tagColor ? tagColor.toLowerCase() : null,
+        shippingCategory: category ?? null,
+        customOrderCount: order.customer_id ? customOrderCount : null,
+        orderIndex: orderWindow?.orderIndex ?? null,
+        tenureMonths: orderWindow?.tenureMonths ?? null,
+      }
+      const matchedRule = commissionCalculable
+        ? matchCommissionRule(businessRules, ruleContext)
+        : null
+      const productCommissionRateSource: BusinessOrderCommissionRateSource =
         overriddenRate !== undefined
           ? 'override'
-          : tagRate !== null
-            ? 'customer_tag'
-            : customOrderRate !== null
-              ? 'custom_order_count'
-              : categoryDefault !== null
-                ? 'shipping_category'
-                : 'none'
+          : matchedRule
+            ? legacyRuleSource(matchedRule.rule.legacy_source)
+            : 'none'
       const effectiveRate = commissionCalculable
-        ? overriddenRate ?? tagRate ?? customOrderRate ?? categoryDefault ?? 0
+        ? overriddenRate ?? matchedRule?.rate ?? 0
         : 0
       const productReceived = Number(item.product_received_amount)
       const productCommission = round4((productReceived * effectiveRate) / 100)
@@ -631,8 +660,11 @@ function buildCommissionRows(
         product_commission_rate: effectiveRate,
         product_commission_rate_source: productCommissionRateSource,
         product_commission_rate_overridden: overriddenRate !== undefined,
-        category_default_rate: categoryDefault,
-        custom_order_count_rate: customOrderRate,
+        product_commission_rule_name: matchedRule ? matchedRule.rule.name : null,
+        category_default_rate:
+          matchedRule?.rule.legacy_source === 'category' ? matchedRule.rate : null,
+        custom_order_count_rate:
+          matchedRule?.rule.legacy_source === 'custom_tier' ? matchedRule.rate : null,
         product_commission_amount: productCommission,
         freight_received_amount: freightReceived,
         freight_cost: freightCost,
@@ -663,6 +695,8 @@ export async function fetchBusinessOrderCommissions(
   /** 仅在 includeSummary 时返回：全量已结清行的服务端汇总，不再把明细行整体下发给浏览器。 */
   summary?: CommissionSummaryTotal[]
   totalCount: number
+  /** 业务线提成规则（按 priority 升序），供规则设置界面回填。 */
+  commissionRules: CommissionRule[]
   categoryRates: CommissionCategoryRate[]
   customerTags: CustomerCommissionTag[]
   customOrderRates: CustomerCustomOrderCommissionRate[]
@@ -702,11 +736,32 @@ export async function fetchBusinessOrderCommissions(
     rows: includeSummary ? builtRows.slice(offset, offset + pageSize) : builtRows,
     summary: includeSummary ? summarizeCommissionByPeriod(builtRows) : undefined,
     totalCount: scopedOrders.length,
+    commissionRules: ctx.businessRules,
     categoryRates: ctx.categoryRates,
     customerTags: ctx.customerTags,
     customOrderRates: ctx.customOrderRates,
     defaultFreightCommissionRate: ctx.defaultFreightCommissionRate,
   }
+}
+
+/**
+ * 拉取筛选范围内全部合格订单的提成产品行（不分页、不按结清状态过滤）。
+ * 运营提成按「订单 × 运营人」聚合产品实收，需要一次性拿到同一批筛选口径下的全部行。
+ */
+export async function fetchEligibleCommissionRows(
+  supabase: SupabaseClient,
+  filters: BusinessOrderCommissionFilters,
+): Promise<BusinessOrderCommissionRow[]> {
+  const allOrders = await fetchMatchingOrders(supabase, filters)
+  const eligibleOrders = allOrders
+    .map((order) => ({ order, items: filterMergedItemsByCategoryCompletion(order) }))
+    .filter((entry) => !entry.order.voided_at && entry.items.length > 0)
+  if (eligibleOrders.length === 0) return []
+  const ctx = await loadCommissionContext(
+    supabase,
+    eligibleOrders.map(({ order }) => order),
+  )
+  return buildCommissionRows(eligibleOrders, ctx)
 }
 
 /**

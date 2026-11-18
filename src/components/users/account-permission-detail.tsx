@@ -15,7 +15,7 @@ import { AccountPermissionOverrideForm } from './account-permission-override-for
 import type { JsonObject } from './permission-catalog'
 import type { Profile, ProfilePermissionOverride, ResolvedProfilePermission } from '@/types'
 
-const roleLabels = { admin: '管理员', finance: '财务', supervisor: '业务主管', sales: '业务员' } as const
+const roleLabels = { admin: '管理员', finance: '财务', supervisor: '业务主管', sales: '业务员', operations: '运营' } as const
 const dataScopeLabels = { self: '仅本人', self_and_subordinates: '本人及下级', team: '指定团队', all: '全部数据' } as const
 const permissionRows = [
   ['查看订单', 'orders.view'],

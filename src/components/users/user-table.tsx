@@ -108,6 +108,7 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
     finance: '财务',
     sales: '业务员',
     supervisor: '业务主管',
+    operations: '运营',
   }
 
   const NO_MANAGER = '__none__'
@@ -222,6 +223,7 @@ export function UserTable({ users, currentUserId, currentUserRole }: UserTablePr
                           <SelectItem value="finance">财务</SelectItem>
                           <SelectItem value="sales">业务员</SelectItem>
                           <SelectItem value="supervisor">业务主管</SelectItem>
+                          <SelectItem value="operations">运营</SelectItem>
                         </SelectContent>
                       </Select>
                     ) : (

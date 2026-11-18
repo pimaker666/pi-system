@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers'
 import { getFinancePageAccess, requireApproved } from '@/lib/auth'
 import { getApprovalTodoCounts } from '@/lib/approvals-server'
+import { fetchOperatorCommissionAttentionCount } from '@/lib/operator-commission-server'
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
 import { Sidebar, type SidebarMode } from '@/components/layout/sidebar'
@@ -31,7 +32,9 @@ export default async function DashboardLayout({
           if (error) throw new Error(`提成提醒读取失败：${error.message}`)
           return count ?? 0
         })
-      : Promise.resolve(0),
+      : profile.role === 'operations'
+        ? fetchOperatorCommissionAttentionCount(supabase, profile.id)
+        : Promise.resolve(0),
     getApprovalTodoCounts(),
   ])
 

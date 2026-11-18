@@ -54,8 +54,8 @@ const financeNavGroups = [
   {
     borderClass: 'bg-sky-50',
     items: [
-      { href: '/finance/commission', label: '提成计算' },
-      { href: '/finance/my-commission', label: '我的提成', salesOnly: true },
+      { href: '/finance/commission', label: '提成计算', hideForOperations: true },
+      { href: '/finance/my-commission', label: '我的提成', salesOnly: true, includeOperations: true },
       { href: '/finance/commission/settled', label: '已结清订单', financePage: 'commissionSettled' },
     ],
   },
@@ -79,15 +79,25 @@ export function FinanceNav({
 }) {
   const pathname = usePathname()
   const commissionBadge = commissionAttentionCount > 99 ? '99+' : commissionAttentionCount
-  const showCommissionBadge = role === 'sales' || role === 'supervisor'
+  const showCommissionBadge =
+    role === 'sales' || role === 'supervisor' || role === 'operations'
+  // 业务/主管的待确认在「提成计算」，运营的待确认在「我的提成」。
+  const commissionBadgeHref =
+    role === 'operations' ? '/finance/my-commission' : '/finance/commission'
   const groups = financeNavGroups
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
+        if ('hideForOperations' in item && item.hideForOperations && role === 'operations')
+          return false
         if ('supervisorOnly' in item && item.supervisorOnly)
           return role === 'supervisor'
         if ('salesOnly' in item && item.salesOnly)
-          return role === 'sales' || role === 'supervisor'
+          return (
+            role === 'sales' ||
+            role === 'supervisor' ||
+            ('includeOperations' in item && item.includeOperations && role === 'operations')
+          )
         if ('financePage' in item && item.financePage) return financeAccess[item.financePage]
         return true
       }),
@@ -135,7 +145,7 @@ export function FinanceNav({
                   )}
                 >
                   {item.label}
-                  {showCommissionBadge && item.href === '/finance/commission' && commissionAttentionCount > 0 && (
+                  {showCommissionBadge && item.href === commissionBadgeHref && commissionAttentionCount > 0 && (
                     <span className="absolute -right-2 -top-2 inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-xs font-semibold leading-5 text-destructive-foreground">
                       {commissionBadge}
                     </span>

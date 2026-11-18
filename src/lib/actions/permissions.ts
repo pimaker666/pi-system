@@ -19,7 +19,7 @@ const jsonObject = z.record(z.unknown()).default({})
 const permissionPathList = z.array(z.string().trim().regex(/^[a-z_]+(?:\.[a-z_]+)*$/, '权限标识格式无效').max(120)).max(100).default([])
 
 const permissionTemplateSchema = z.object({
-  system_role: z.enum(['admin', 'finance', 'sales', 'supervisor']),
+  system_role: z.enum(['admin', 'finance', 'sales', 'supervisor', 'operations']),
   name: z.string().trim().min(1, '请输入模板名称').max(80),
   description: z.string().trim().max(500).default(''),
   permissions: jsonObject,

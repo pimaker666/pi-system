@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'finance' | 'sales' | 'supervisor'
+export type UserRole = 'admin' | 'finance' | 'sales' | 'supervisor' | 'operations'
 export type UserStatus = 'pending' | 'approved' | 'disabled'
 export type PermissionDataScope = 'self' | 'self_and_subordinates' | 'team' | 'all'
 export type PermissionAuditEntityType =
@@ -514,7 +514,44 @@ export type BusinessOrderCommissionRateSource =
   | 'customer_tag'
   | 'custom_order_count'
   | 'shipping_category'
+  | 'rule'
   | 'none'
+
+export type CommissionRuleLine = 'business' | 'operator'
+
+/** 旧设置入口同步到规则表的来源键。 */
+export type CommissionRuleLegacySource = 'tag' | 'category' | 'custom_tier'
+
+/**
+ * 提成规则。同一 line 内按 priority 升序逐条匹配，第一条命中即采用；
+ * 业务与运营各自独立排序；业务行级手填提点始终高于规则。
+ */
+export interface CommissionRule {
+  id: string
+  line: CommissionRuleLine
+  name: string
+  enabled: boolean
+  priority: number
+  /** 客户标记颜色（小写 #rrggbb）；null 表示不限。 */
+  tag_color: string | null
+  /** 发货分类；业务线按产品行匹配，运营线按订单是否含该分类匹配。null 表示不限。 */
+  shipping_category: DailyOrderShippingCategory | null
+  /** 客户累计定制订单数上限（含）；仅业务线支持，null 表示不限。 */
+  custom_order_count_max: number | null
+  /** 客户第 N 单上限（按成交单计，含本单）；null 表示不限。 */
+  order_index_max: number | null
+  /** 客户年限上限（月，含本单下单时点）；null 表示不限。 */
+  tenure_months_max: number | null
+  /** 产品提点（百分数，例如 5 表示 5%）。 */
+  product_commission_rate: number
+  legacy_source: CommissionRuleLegacySource | null
+  legacy_key: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type OperatorRateMode = 'fixed' | 'rules'
 
 export interface BusinessOrderCommissionRow {
   order_id: string
@@ -552,6 +589,8 @@ export interface BusinessOrderCommissionRow {
   product_commission_rate_source: BusinessOrderCommissionRateSource
   /** 该行是否单独设置过产品提点（覆盖）。 */
   product_commission_rate_overridden: boolean
+  /** 命中的提成规则名称；手填覆盖或未命中时为 null。 */
+  product_commission_rule_name: string | null
   /** 该行发货分类的默认产品提点（百分数），无默认时为 null。 */
   category_default_rate: number | null
   /** 仅定制发货分类按定制订单数匹配到的提点（百分数），未命中时为 null。 */
@@ -582,6 +621,85 @@ export interface BusinessOrderCommissionRow {
 
 export type CommissionClearanceStatus = 'pending' | 'confirmed' | 'rejected'
 export type BusinessOrderCommissionClearanceStatus = CommissionClearanceStatus
+
+export interface ShopOperatorRule {
+  id: string
+  shop_id: string
+  operator_id: string
+  /** 本店铺该运营的提成份额（百分数，按人独立：可多人合计 100%，也可每人 100%）。 */
+  share_percent: number
+  /** 运营产品提点（百分数，基数为产品实收）；rate_mode='rules' 时按运营规则线匹配。 */
+  product_commission_rate: number
+  /** fixed=固定点数；rules=按运营提成规则逐条匹配。 */
+  rate_mode: OperatorRateMode
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BusinessOrderOperatorAssignment {
+  id: string
+  business_order_id: string
+  operator_id: string
+  share_percent: number
+  product_commission_rate: number
+  rate_mode: OperatorRateMode
+  assigned_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface BusinessOrderOperatorCommissionClearance {
+  business_order_id: string
+  operator_id: string
+  period: string
+  status: CommissionClearanceStatus
+  settlement_exchange_rate_to_cny: number | null
+  submitted_by: string | null
+  submitted_at: string
+  confirmed_by: string | null
+  confirmed_at: string | null
+  rejected_reason: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** 运营提成页一行 = 订单 × 运营人。 */
+export interface OperatorCommissionRow {
+  order_id: string
+  order_number: string
+  order_date: string
+  shop_id: string | null
+  shop_name: string | null
+  customer_name: string | null
+  salesperson_name: string
+  operator_id: string
+  operator_name: string
+  share_percent: number
+  /** 实际生效的产品提点（rate_mode='rules' 时为规则命中值）。 */
+  product_commission_rate: number
+  /** 该归属的提点方式：固定点数或按运营规则线匹配。 */
+  rate_mode: OperatorRateMode
+  /** 命中运营规则名称；固定点数或未命中时为 null。 */
+  commission_rule_name: string | null
+  /** 订单产品实收合计（原币）。 */
+  product_received_amount: number
+  /** 运营提成（原币）= 产品实收 × 提点% × 份额%。 */
+  commission_amount: number
+  currency: CurrencyCode
+  settlement_exchange_rate_to_cny: number | null
+  clearance_status: CommissionClearanceStatus | null
+  clearance_period: string | null
+  /** true = 该订单来自订单级指定；false = 来自店铺规则。 */
+  has_assignment: boolean
+}
+
+export interface OperatorCommissionSummaryTotal {
+  operatorName: string
+  period: string
+  amount: number
+  missingRateCount: number
+}
 
 export interface BusinessOrderCommissionClearance {
   business_order_item_id: string

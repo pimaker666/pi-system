@@ -54,7 +54,7 @@ export async function setUserRole(
 ): Promise<ActionResult> {
   const me = await requireAdmin()
 
-  if (!(['admin', 'finance', 'sales', 'supervisor'] as const).includes(role)) {
+  if (!(['admin', 'finance', 'sales', 'supervisor', 'operations'] as const).includes(role)) {
     return { ok: false, error: '无效的用户角色' }
   }
   if (userId === me.id) return { ok: false, error: '不能修改自己的角色' }

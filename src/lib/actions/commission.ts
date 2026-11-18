@@ -465,6 +465,79 @@ const categoryRatesInput = z.object({
   rates: z.array(commissionCategoryRateSchema).min(1, '至少设置一个发货分类'),
 })
 
+/**
+ * 旧设置入口（分类 / 定制单数 / 客户标记）继续可用，但提点值同步写入提成规则表，
+ * 避免规则表与旧表各存一套真相。已有规则保留用户调整过的顺序与启用状态。
+ */
+type LegacyRuleSeed = {
+  legacy_key: string
+  name: string
+  priority: number
+  tag_color: string | null
+  shipping_category: string | null
+  custom_order_count_max: number | null
+  product_commission_rate: number
+}
+
+async function syncLegacyBusinessRules(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  source: 'tag' | 'category' | 'custom_tier',
+  seeds: LegacyRuleSeed[],
+  replace: boolean,
+): Promise<string | null> {
+  const { data: existing, error } = await supabase
+    .from('finance_commission_rules')
+    .select('id, legacy_key')
+    .eq('line', 'business')
+    .eq('legacy_source', source)
+  if (error) return error.message
+  const current = (existing ?? []) as Array<{ id: string; legacy_key: string }>
+  const keep = new Set(seeds.map((seed) => seed.legacy_key))
+
+  if (replace) {
+    const removeIds = current.filter((row) => !keep.has(row.legacy_key)).map((row) => row.id)
+    for (const id of removeIds) {
+      const { error: deleteError } = await supabase
+        .from('finance_commission_rules')
+        .delete()
+        .eq('id', id)
+      if (deleteError) return deleteError.message
+    }
+  }
+
+  const byKey = new Map(current.map((row) => [row.legacy_key, row.id]))
+  for (const seed of seeds) {
+    const id = byKey.get(seed.legacy_key)
+    if (id) {
+      const { error: updateError } = await supabase
+        .from('finance_commission_rules')
+        .update({
+          name: seed.name,
+          tag_color: seed.tag_color,
+          shipping_category: seed.shipping_category,
+          custom_order_count_max: seed.custom_order_count_max,
+          product_commission_rate: seed.product_commission_rate,
+        })
+        .eq('id', id)
+      if (updateError) return updateError.message
+    } else {
+      const { error: insertError } = await supabase.from('finance_commission_rules').insert({
+        line: 'business',
+        name: seed.name,
+        priority: seed.priority,
+        tag_color: seed.tag_color,
+        shipping_category: seed.shipping_category,
+        custom_order_count_max: seed.custom_order_count_max,
+        product_commission_rate: seed.product_commission_rate,
+        legacy_source: source,
+        legacy_key: seed.legacy_key,
+      })
+      if (insertError) return insertError.message
+    }
+  }
+  return null
+}
+
 export async function saveCommissionCategoryRates(input: {
   rates: Array<{ category: string; product_commission_rate: number }>
 }): Promise<ActionResult> {
@@ -484,6 +557,22 @@ export async function saveCommissionCategoryRates(input: {
     .from('finance_commission_category_rates')
     .upsert(rows, { onConflict: 'category' })
   if (error) return { ok: false, error: error.message }
+
+  const syncError = await syncLegacyBusinessRules(
+    supabase,
+    'category',
+    parsed.data.rates.map((row) => ({
+      legacy_key: row.category,
+      name: row.category,
+      priority: 300,
+      tag_color: null,
+      shipping_category: row.category,
+      custom_order_count_max: null,
+      product_commission_rate: row.product_commission_rate,
+    })),
+    false,
+  )
+  if (syncError) return { ok: false, error: syncError }
 
   revalidateCommission()
   return { ok: true }
@@ -513,6 +602,24 @@ export async function saveCustomerCustomOrderCommissionRates(input: {
     )
     if (error) return { ok: false, error: error.message }
   }
+
+  const syncError = await syncLegacyBusinessRules(
+    supabase,
+    'custom_tier',
+    [...parsed.data.rates]
+      .sort((a, b) => a.maximum_custom_order_count - b.maximum_custom_order_count)
+      .map((rate, index) => ({
+        legacy_key: String(rate.maximum_custom_order_count),
+        name: `定制订单 ≤ ${rate.maximum_custom_order_count} 单`,
+        priority: 200 + index + 1,
+        tag_color: null,
+        shipping_category: 'custom',
+        custom_order_count_max: rate.maximum_custom_order_count,
+        product_commission_rate: rate.product_commission_rate,
+      })),
+    true,
+  )
+  if (syncError) return { ok: false, error: syncError }
 
   revalidateCommission()
   return { ok: true }
@@ -550,6 +657,25 @@ export async function saveCustomerCommissionTags(input: {
     const { error } = await supabase.from('finance_customer_commission_tags').insert(rows)
     if (error) return { ok: false, error: error.message }
   }
+
+  const syncError = await syncLegacyBusinessRules(
+    supabase,
+    'tag',
+    tags.map((tag, index) => {
+      const sortOrder = tag.sort_order ?? index
+      return {
+        legacy_key: tag.tag_color.toLowerCase(),
+        name: tag.label,
+        priority: 100 + sortOrder,
+        tag_color: tag.tag_color.toLowerCase(),
+        shipping_category: null,
+        custom_order_count_max: null,
+        product_commission_rate: tag.product_commission_rate,
+      }
+    }),
+    true,
+  )
+  if (syncError) return { ok: false, error: syncError }
 
   revalidateCommission()
   revalidatePath('/customers')

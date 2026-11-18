@@ -1,6 +1,7 @@
 import { FinanceNav } from '@/components/finance/finance-nav'
 import { getFinancePageAccess, requireApproved } from '@/lib/auth'
 import { fetchCommissionAttentionCount } from '@/lib/business-order-commissions-server'
+import { fetchOperatorCommissionAttentionCount } from '@/lib/operator-commission-server'
 import { createClient } from '@/lib/supabase/server'
 
 export default async function FinanceLayout({ children }: { children: React.ReactNode }) {
@@ -9,7 +10,9 @@ export default async function FinanceLayout({ children }: { children: React.Reac
   const supabase = await createClient()
   const commissionAttentionCount = isSalesperson
     ? await fetchCommissionAttentionCount(supabase, profile.id)
-    : 0
+    : profile.role === 'operations'
+      ? await fetchOperatorCommissionAttentionCount(supabase, profile.id)
+      : 0
   const financeAccess = await getFinancePageAccess()
 
   return (

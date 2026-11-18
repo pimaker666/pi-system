@@ -22,6 +22,7 @@ import {
   fetchDashboardReceivables,
 } from '@/lib/dashboard-todos-server'
 import { getApprovalTodoCounts } from '@/lib/approvals-server'
+import { fetchOperatorCommissionAttentionCount } from '@/lib/operator-commission-server'
 import { fetchBusinessOrderCostTodoSummary } from '@/lib/business-order-costs-server'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ const ROLE_LABELS: Record<UserRole, string> = {
   finance: '财务',
   supervisor: '业务主管',
   sales: '业务员',
+  operations: '运营',
 }
 
 interface TodoRowData {
@@ -191,6 +193,7 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const financeAccess = await getFinancePageAccess()
   const isSalesperson = profile.role === 'sales' || profile.role === 'supervisor'
+  const isOperations = profile.role === 'operations'
   const monthRange = currentMonthDateRange()
 
   const [stats, pisResult, approvals, receivables, monthOrders, commissionPending, ordersResult] =
@@ -205,7 +208,11 @@ export default async function DashboardPage() {
       getApprovalTodoCounts(),
       fetchDashboardReceivables(supabase),
       fetchDashboardMonthOrders(supabase),
-      isSalesperson ? fetchDashboardPendingCommissionCount(supabase) : Promise.resolve(0),
+      isSalesperson
+        ? fetchDashboardPendingCommissionCount(supabase)
+        : isOperations
+          ? fetchOperatorCommissionAttentionCount(supabase, profile.id)
+          : Promise.resolve(0),
       supabase
         .from('business_orders')
         .select(
@@ -311,14 +318,14 @@ export default async function DashboardPage() {
       tone: approvals.total > 0 ? 'info' : 'neutral',
     },
   ]
-  if (isSalesperson) {
+  if (isSalesperson || isOperations) {
     tailTodos.push({
       key: 'commission',
       label: '待确认提成',
       hint: commissionPending > 0 ? '有提成待确认' : '提成已全部确认',
       value: commissionPending,
-      unit: '行',
-      href: '/finance/commission',
+      unit: isOperations ? '笔' : '行',
+      href: isOperations ? '/finance/my-commission' : '/finance/commission',
       icon: BadgeDollarSign,
       tone: 'neutral',
     })
