@@ -5,6 +5,7 @@ import { fetchOperatorCommissionAttentionCount } from '@/lib/operator-commission
 import { createClient } from '@/lib/supabase/server'
 import { displayProfileName } from '@/lib/utils'
 import { Sidebar, type SidebarMode } from '@/components/layout/sidebar'
+import { MobileNav } from '@/components/layout/mobile-nav'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { NavigationProgress } from '@/components/layout/navigation-progress'
 import { LogoutButton } from '@/components/auth/logout-button'
@@ -51,9 +52,18 @@ export default async function DashboardLayout({
       />
       <div className="app-column flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="print-chrome flex h-16 shrink-0 items-center justify-between gap-3 border-b bg-card px-4 md:px-6">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">工作空间</p>
-            <p className="hidden text-xs text-muted-foreground sm:block">订单 · 产品 · 客户 · 财务</p>
+          <div className="flex min-w-0 items-center gap-1">
+            <MobileNav
+              role={profile.role}
+              fullName={displayProfileName(profile)}
+              financeAccess={financeAccess}
+              commissionAttentionCount={commissionAttentionCount}
+              approvalPendingCount={approvalCounts.total}
+            />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold">工作空间</p>
+              <p className="hidden text-xs text-muted-foreground sm:block">订单 · 产品 · 客户 · 财务</p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <CommandPalette role={profile.role} financeAccess={financeAccess} />

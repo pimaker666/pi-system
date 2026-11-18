@@ -73,6 +73,14 @@ const EXPAND_BTN_CLASS: Record<SidebarMode, string> = {
   collapsed: 'hidden h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-white/10 hover:text-white md:inline-flex',
 }
 
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: '管理员',
+  finance: '财务',
+  supervisor: '业务主管',
+  sales: '业务员',
+  operations: '运营',
+}
+
 export function Sidebar({
   role,
   fullName,
@@ -111,7 +119,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'print-chrome flex h-full shrink-0 flex-col border-r border-white/10 bg-[hsl(var(--sidebar-background))] text-slate-200 transition-[width] duration-200',
+        'print-chrome hidden h-full shrink-0 flex-col border-r border-white/10 bg-[hsl(var(--sidebar-background))] text-slate-200 transition-[width] duration-200 md:flex',
         WIDTH_CLASS[mode],
       )}
     >
@@ -166,17 +174,7 @@ export function Sidebar({
           </div>
           <div className={cn('min-w-0', USER_TEXT_CLASS[mode])}>
             <div className="truncate text-sm font-medium text-white" title={fullName ?? '用户'}>{fullName ?? '用户'}</div>
-            <div className="text-xs text-slate-400">
-              {role === 'admin'
-                ? '管理员'
-                : role === 'finance'
-                  ? '财务'
-                  : role === 'supervisor'
-                    ? '业务主管'
-                    : role === 'operations'
-                      ? '运营'
-                      : '业务员'}
-            </div>
+            <div className="text-xs text-slate-400">{ROLE_LABELS[role]}</div>
           </div>
         </div>
         <button

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
 import './globals.css'
 import { DynamicPageTitle } from '@/components/layout/dynamic-page-title'
@@ -19,6 +19,11 @@ const inter = localFont({
 // document.title 永远读到静态值。
 export const metadata: Metadata = {
   description: '产品库与 Proforma Invoice 自动生成系统',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
