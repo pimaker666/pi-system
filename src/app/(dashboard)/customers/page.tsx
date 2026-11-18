@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
 import { cn, displayProfileName } from '@/lib/utils'
+import { customerTenureMonths } from '@/lib/customer-tenure'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NewCustomerButton } from '@/components/customers/new-customer-button'
@@ -20,7 +21,14 @@ import {
 import type { OwnerOption } from '@/components/shared/owner-filter'
 import type { CustomerCommissionTag, CustomerGroup, Profile } from '@/types'
 
-const customerSortFields: CustomerSortField[] = ['amount', 'lastOrder', 'createdAt', 'customOrderCount']
+const customerSortFields: CustomerSortField[] = [
+  'amount',
+  'lastOrder',
+  'createdAt',
+  'tenure',
+  'customOrderCount',
+  'dealOrderCount',
+]
 
 const CUSTOMER_STATS_TTL_SECONDS = 30
 
@@ -45,12 +53,16 @@ async function fetchCustomerOrderStats(
         last_year_amount_usd: number | string | null
         last_order_date: string | null
         custom_order_count: number | null
+        first_order_date: string | null
+        deal_order_count: number | null
       }[]) {
         map[s.customer_id] = {
           lastYearAmountCny: Number(s.last_year_amount_cny ?? 0),
           lastYearAmountUsd: Number(s.last_year_amount_usd ?? 0),
           lastOrderDate: s.last_order_date,
           customOrderCount: Number(s.custom_order_count ?? 0),
+          firstOrderDate: s.first_order_date,
+          dealOrderCount: Number(s.deal_order_count ?? 0),
         }
       }
       return map
@@ -168,6 +180,8 @@ export default async function CustomersPage({
         if (sortBy === 'amount') return stats?.lastYearAmountCny || stats?.lastYearAmountUsd || 0
         if (sortBy === 'lastOrder') return stats?.lastOrderDate ?? undefined
         if (sortBy === 'createdAt') return customer.created_at
+        if (sortBy === 'tenure') return customerTenureMonths(stats?.firstOrderDate)
+        if (sortBy === 'dealOrderCount') return stats?.dealOrderCount ?? 0
         return stats?.customOrderCount ?? 0
       }
       const leftValue = sortValue(left)

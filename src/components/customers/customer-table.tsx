@@ -45,6 +45,7 @@ import { CustomerRowActions } from './customer-row-actions'
 import { CountryFlag } from '@/components/shared/country-flag'
 import { formatCountryName } from '@/lib/country-flags'
 import { formatDate, formatAmount as formatNumber } from '@/lib/utils'
+import { formatCustomerTenure } from '@/lib/customer-tenure'
 import {
   bulkTransferCustomers,
   bulkCopyCustomers,
@@ -64,10 +65,18 @@ export interface CustomerOrderStats {
   lastYearAmountUsd: number
   lastOrderDate: string | null
   customOrderCount: number
+  firstOrderDate: string | null
+  dealOrderCount: number
 }
 
 export type CustomerOrderStatsMap = Record<string, CustomerOrderStats>
-export type CustomerSortField = 'amount' | 'lastOrder' | 'createdAt' | 'customOrderCount'
+export type CustomerSortField =
+  | 'amount'
+  | 'lastOrder'
+  | 'createdAt'
+  | 'tenure'
+  | 'customOrderCount'
+  | 'dealOrderCount'
 export type CustomerSortDirection = 'asc' | 'desc'
 
 const KEEP = '__keep__'
@@ -125,7 +134,7 @@ export function CustomerTable({
   const allChecked = customers.length > 0 && selected.size === customers.length
   const someChecked = selected.size > 0 && !allChecked
   const ids = useMemo(() => Array.from(selected), [selected])
-  const colCount = isAdmin ? 12 : 11
+  const colCount = isAdmin ? 14 : 13
 
   function toggleAll() {
     setSelected(allChecked ? new Set() : new Set(customers.map((c) => c.id)))
@@ -253,10 +262,13 @@ export function CustomerTable({
     router.push(`/customers?${params.toString()}`)
   }
 
-  function sortableHeader(label: string, field: CustomerSortField, align = 'left') {
+  function sortableHeader(label: string, field: CustomerSortField, align = 'left', title?: string) {
     const Icon = sortBy === field ? (sortDirection === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
     return (
-      <TableHead className={`sticky top-0 z-20 bg-background whitespace-nowrap shadow-sm ${align === 'right' ? 'text-right' : ''}`}>
+      <TableHead
+        title={title}
+        className={`sticky top-0 z-20 bg-background whitespace-nowrap shadow-sm ${align === 'right' ? 'text-right' : ''}`}
+      >
         <Button
           type="button"
           variant="ghost"
@@ -325,7 +337,7 @@ export function CustomerTable({
         </div>
       )}
 
-      <Card className="min-w-[1480px]">
+      <Card className="min-w-[1660px]">
         <CardContent className="p-0">
           <Table containerClassName="overflow-visible">
             <TableHeader>
@@ -350,7 +362,9 @@ export function CustomerTable({
                 {sortableHeader('近一年下单金额', 'amount', 'right')}
                 {sortableHeader('上次下单时间', 'lastOrder')}
                 {sortableHeader('新建客户时间', 'createdAt')}
+                {sortableHeader('客户年限', 'tenure', 'right', '从第一次下单起算，按自然月折算（6个月=0.5年），每月1号统一更新')}
                 {sortableHeader('定制订单数', 'customOrderCount', 'right')}
+                {sortableHeader('成交单数', 'dealOrderCount', 'right', '只含现货样品或定制打样的订单不计入')}
                 {isAdmin && <TableHead className="sticky top-0 z-20 whitespace-nowrap bg-background shadow-sm">归属账号</TableHead>}
                 <TableHead className="sticky top-0 z-20 bg-background text-right shadow-sm">操作</TableHead>
               </TableRow>
@@ -413,8 +427,14 @@ export function CustomerTable({
                   <TableCell className="text-sm text-muted-foreground tabular-nums whitespace-nowrap">
                     {formatDate(c.created_at)}
                   </TableCell>
+                  <TableCell className="text-right tabular-nums whitespace-nowrap">
+                    {formatCustomerTenure(stats[c.id]?.firstOrderDate)}
+                  </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {stats[c.id]?.customOrderCount ?? 0}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {stats[c.id]?.dealOrderCount ?? 0}
                   </TableCell>
                   {isAdmin && (
                     <TableCell className="text-sm text-muted-foreground">
