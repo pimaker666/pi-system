@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import localFont from 'next/font/local'
 import './globals.css'
 import { Toaster } from '@/components/ui/sonner'
@@ -16,6 +16,11 @@ const inter = localFont({
 export const metadata: Metadata = {
   title: 'PI 自动生成系统',
   description: '产品库与 Proforma Invoice 自动生成系统',
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
