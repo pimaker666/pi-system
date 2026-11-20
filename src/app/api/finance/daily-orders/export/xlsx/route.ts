@@ -12,6 +12,7 @@ import {
   fetchConfirmedCommissionItemIdsForOrders,
   fetchSettledItemIdsForOrders,
 } from '@/lib/business-daily-orders-server'
+import { isImageAttachmentMime, orderAttachmentKindLabel } from '@/lib/attachment-mime'
 import {
   DAILY_ORDER_COLUMNS,
   formatDailyMoney,
@@ -28,15 +29,15 @@ import { displayProfileName } from '@/lib/utils'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-/** 导出列把「截图」挪到表尾：截图横向延伸时不会盖住结算/提成列。 */
+/** 导出列把「附件」挪到表尾：图片横向延伸时不会盖住结算/提成列。 */
 const EXPORT_COLUMNS = [
-  ...DAILY_ORDER_COLUMNS.filter((name) => name !== '截图').flatMap((name) =>
+  ...DAILY_ORDER_COLUMNS.filter((name) => name !== '附件').flatMap((name) =>
     name === '订单总金额' ? [name, '币种'] : [name],
   ),
-  '截图',
+  '附件',
 ]
-/** 截图列的 0 基列号，用于 addImage 定位。 */
-const SCREENSHOT_COLUMN_INDEX = EXPORT_COLUMNS.indexOf('截图')
+/** 附件列的 0 基列号，用于 addImage 定位。 */
+const SCREENSHOT_COLUMN_INDEX = EXPORT_COLUMNS.indexOf('附件')
 /** 「订单总金额」「币种」是订单级字段，同一订单的多行产品合并成一个单元格。 */
 const ORDER_LEVEL_COLUMNS = ['订单总金额', '币种'].map(
   (name) => EXPORT_COLUMNS.indexOf(name) + 1,
@@ -132,11 +133,18 @@ async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilte
         lastRow: row.number,
       })
 
-    // attachments 只挂在订单第一行，截图贴在该行向右横向排开。
+    // attachments 只挂在订单第一行：图片贴在该行向右横向排开，文档在单元格里写附件名。
     for (let shotIndex = 0; shotIndex < attachments.length; shotIndex += 1) {
       const attachment = attachments[shotIndex]
       const column = SCREENSHOT_COLUMN_INDEX + shotIndex
-      if (shotIndex > 0) sheet.getColumn(column + 1).width = 26
+      const isImage = isImageAttachmentMime(attachment.mime_type)
+      if (shotIndex > 0 || !isImage) sheet.getColumn(column + 1).width = 26
+      if (!isImage) {
+        const cell = sheet.getCell(row.number, column + 1)
+        cell.value = `${orderAttachmentKindLabel(attachment.mime_type)}：${attachment.original_name}`
+        cell.alignment = { vertical: 'top', wrapText: true }
+        continue
+      }
       const { data, error } = await supabase.storage
         .from('finance-daily-order-screenshots')
         .download(attachment.object_path)
@@ -149,7 +157,7 @@ async function buildXlsxResponse(filters: ReturnType<typeof parseDailyOrderFilte
       if (downloadedImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
         return NextResponse.json(
           {
-            error: `实际下载的截图总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
+            error: `实际下载的图片附件总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
           },
           { status: 413 },
         )

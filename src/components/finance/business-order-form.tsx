@@ -14,6 +14,8 @@ import { useRouter } from 'next/navigation'
 import { AlertTriangle, Loader2, LockKeyhole, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
+  DocumentAttachmentRow,
+  formatFileSize,
   ImageAttachmentRow,
   PendingImageRow,
 } from '@/components/shared/image-attachment-items'
@@ -50,6 +52,13 @@ import {
 } from '@/lib/actions/business-orders'
 import { useImageUpload } from '@/lib/hooks/use-image-upload'
 import { useFilePaste } from '@/lib/hooks/use-file-drop'
+import {
+  isImageAttachmentMime,
+  ORDER_ATTACHMENT_ACCEPT,
+  orderAttachmentExtension,
+  resolveOrderAttachmentMime,
+  type OrderAttachmentMimeType,
+} from '@/lib/attachment-mime'
 import { getBusinessDateKey } from '@/lib/business-orders'
 import { createClient } from '@/lib/supabase/client'
 import { cn, displayProfileName, formatCurrency, formatAmount, roundToScale } from '@/lib/utils'
@@ -101,6 +110,8 @@ interface PendingAttachment {
   file: File
   /** 展示名，默认取文件名，上传前可修改。 */
   name: string
+  /** 解析后的 MIME：Office 文件在部分浏览器里为空或 octet-stream，按扩展名回退。 */
+  mime: OrderAttachmentMimeType
 }
 
 interface BusinessOrderFormProps {
@@ -781,19 +792,27 @@ export function BusinessOrderForm({
     const selected = Array.from(next ?? [])
     if (selected.length === 0) return
     if (attachments.length + files.length + selected.length > 10) {
-      toast.error('每条订单最多 10 张截图')
+      toast.error('每条订单最多 10 个附件')
       return
     }
-    const invalid = selected.find(
-      (file) => !['image/jpeg', 'image/png'].includes(file.type) || file.size > 20 * 1024 * 1024,
+    const resolved = selected.map((file) => ({ file, mime: resolveOrderAttachmentMime(file) }))
+    const invalid = resolved.find(
+      (item) => !item.mime || item.file.size > 20 * 1024 * 1024,
     )
     if (invalid) {
-      toast.error(`${invalid.name} 不是 JPEG/PNG 或超过 20MB`)
+      toast.error(
+        `${invalid.file.name} 不是支持的附件类型（图片/PDF/Excel/Word/CSV）或超过 20MB`,
+      )
       return
     }
     setFiles((current) => [
       ...current,
-      ...selected.map((file) => ({ id: newLocalId(), file, name: file.name })),
+      ...resolved.map((item) => ({
+        id: newLocalId(),
+        file: item.file,
+        name: item.file.name,
+        mime: item.mime as OrderAttachmentMimeType,
+      })),
     ])
   }
 
@@ -808,11 +827,15 @@ export function BusinessOrderForm({
     const failures: string[] = []
     for (const pendingFile of files) {
       const { file } = pendingFile
-      const extension = file.type === 'image/png' ? 'png' : file.name.toLowerCase().endsWith('.jpeg') ? 'jpeg' : 'jpg'
+      const extension = orderAttachmentExtension(pendingFile.mime)
+      if (!extension) {
+        failures.push(`${file.name}：不支持的附件类型`)
+        continue
+      }
       const objectPath = `${profile.id}/${orderId}/${pendingFile.id}.${extension}`
       const { error: uploadError } = await supabase.storage
         .from('finance-daily-order-screenshots')
-        .upload(objectPath, file, { contentType: file.type, upsert: false })
+        .upload(objectPath, file, { contentType: pendingFile.mime, upsert: false })
       if (uploadError) {
         failures.push(`${file.name}：${uploadError.message}`)
         continue
@@ -821,7 +844,7 @@ export function BusinessOrderForm({
         order_id: orderId,
         object_path: objectPath,
         original_name: pendingFile.name.trim() || file.name,
-        mime_type: file.type,
+        mime_type: pendingFile.mime,
         size_bytes: file.size,
       })
       if (!result.ok) {
@@ -847,15 +870,15 @@ export function BusinessOrderForm({
   }
 
   function removeAttachment(id: string) {
-    if (!initialOrder || !window.confirm('确定移除这张截图吗？原文件将保留用于审计。')) return
+    if (!initialOrder || !window.confirm('确定移除这个附件吗？原文件将保留用于审计。')) return
     startTransition(async () => {
       const result = await removeBusinessOrderAttachment(id)
       if (!result.ok) {
-        toast.error(result.error ?? '移除截图失败')
+        toast.error(result.error ?? '移除附件失败')
         return
       }
       setAttachments((current) => current.filter((item) => item.id !== id))
-      toast.success('截图已移除')
+      toast.success('附件已移除')
     })
   }
 
@@ -1018,7 +1041,7 @@ export function BusinessOrderForm({
       }
       const uploadFailures = files.length > 0 ? await uploadAttachments(orderId) : []
       if (uploadFailures.length > 0) {
-        window.alert(`订单已保存，但以下截图上传失败，请在编辑页重新选择：\n${uploadFailures.join('\n')}`)
+        window.alert(`订单已保存，但以下附件上传失败，请在编辑页重新选择：\n${uploadFailures.join('\n')}`)
         window.location.assign(`/finance/daily-orders/${orderId}/edit`)
         return
       }
@@ -1699,7 +1722,7 @@ export function BusinessOrderForm({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">订单截图</CardTitle>
+          <CardTitle className="text-base">订单附件</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div
@@ -1715,10 +1738,12 @@ export function BusinessOrderForm({
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
           >
-            <div>拖拽、粘贴或选择 JPEG/PNG 截图，单张不超过 20MB，每单最多 10 张。</div>
+            <div>
+              拖拽或选择图片、PDF、Excel、Word、CSV 文件，截图也可直接粘贴；单个不超过 20MB，每单最多 10 个。
+            </div>
             <Input
               type="file"
-              accept="image/jpeg,image/png"
+              accept={ORDER_ATTACHMENT_ACCEPT}
               multiple
               className="mt-2"
               onChange={(event) => {
@@ -1728,57 +1753,98 @@ export function BusinessOrderForm({
               disabled={pending || lifecycleLocked}
             />
             {!initialOrder && (
-              <div className="mt-2 text-xs">截图将在订单创建成功后自动上传并绑定。</div>
+              <div className="mt-2 text-xs">附件将在订单创建成功后自动上传并绑定。</div>
             )}
           </div>
 
           {files.length > 0 && (
             <div className="space-y-2">
               <div className="text-sm font-medium">待上传（{files.length}）</div>
-              {files.map((pendingFile) => (
-                <PendingImageRow
-                  key={pendingFile.id}
-                  file={pendingFile.file}
-                  name={pendingFile.name}
-                  disabled={pending}
-                  onRename={(nextName) =>
-                    setFiles((current) =>
-                      current.map((item) =>
-                        item.id === pendingFile.id ? { ...item, name: nextName } : item,
-                      ),
-                    )
-                  }
-                  onRemove={() =>
-                    setFiles((current) => current.filter((item) => item.id !== pendingFile.id))
-                  }
-                />
-              ))}
+              {files.map((pendingFile) =>
+                isImageAttachmentMime(pendingFile.mime) ? (
+                  <PendingImageRow
+                    key={pendingFile.id}
+                    file={pendingFile.file}
+                    name={pendingFile.name}
+                    disabled={pending}
+                    onRename={(nextName) =>
+                      setFiles((current) =>
+                        current.map((item) =>
+                          item.id === pendingFile.id ? { ...item, name: nextName } : item,
+                        ),
+                      )
+                    }
+                    onRemove={() =>
+                      setFiles((current) => current.filter((item) => item.id !== pendingFile.id))
+                    }
+                  />
+                ) : (
+                  <DocumentAttachmentRow
+                    key={pendingFile.id}
+                    mimeType={pendingFile.mime}
+                    name={pendingFile.name}
+                    fallbackName={pendingFile.file.name}
+                    sizeLabel={formatFileSize(pendingFile.file.size)}
+                    pending
+                    disabled={pending}
+                    onRename={async (nextName) => {
+                      setFiles((current) =>
+                        current.map((item) =>
+                          item.id === pendingFile.id ? { ...item, name: nextName } : item,
+                        ),
+                      )
+                      return { ok: true }
+                    }}
+                    onRemove={() =>
+                      setFiles((current) => current.filter((item) => item.id !== pendingFile.id))
+                    }
+                    removeLabel="移除待上传附件"
+                  />
+                ),
+              )}
             </div>
           )}
 
           {attachments.length > 0 && (
             <div className="space-y-2">
-              <div className="text-sm font-medium">已绑定截图（{attachments.length}）</div>
-              {attachments.map((attachment) => (
-                <ImageAttachmentRow
-                  key={attachment.id}
-                  src={attachmentPreviews[attachment.id] ?? null}
-                  thumbSrc={attachmentThumbs[attachment.id] ?? null}
-                  rawSrc
-                  name={attachment.original_name}
-                  uploadedAt={attachment.created_at}
-                  disabled={pending || lifecycleLocked}
-                  onRename={(nextName) => renameAttachment(attachment.id, nextName)}
-                  onRemove={() => removeAttachment(attachment.id)}
-                  removeLabel="移除截图"
-                  removeDisabled={lifecycleLocked}
-                />
-              ))}
+              <div className="text-sm font-medium">已绑定附件（{attachments.length}）</div>
+              {attachments.map((attachment) =>
+                isImageAttachmentMime(attachment.mime_type) ? (
+                  <ImageAttachmentRow
+                    key={attachment.id}
+                    src={attachmentPreviews[attachment.id] ?? null}
+                    thumbSrc={attachmentThumbs[attachment.id] ?? null}
+                    rawSrc
+                    name={attachment.original_name}
+                    uploadedAt={attachment.created_at}
+                    disabled={pending || lifecycleLocked}
+                    onRename={(nextName) => renameAttachment(attachment.id, nextName)}
+                    onRemove={() => removeAttachment(attachment.id)}
+                    removeLabel="移除附件"
+                    removeDisabled={lifecycleLocked}
+                  />
+                ) : (
+                  <DocumentAttachmentRow
+                    key={attachment.id}
+                    mimeType={attachment.mime_type}
+                    name={attachment.original_name}
+                    fallbackName="未命名附件"
+                    sizeLabel={formatFileSize(attachment.size_bytes)}
+                    uploadedAt={attachment.created_at}
+                    href={attachmentPreviews[attachment.id] ?? null}
+                    disabled={pending || lifecycleLocked}
+                    onRename={(nextName) => renameAttachment(attachment.id, nextName)}
+                    onRemove={() => removeAttachment(attachment.id)}
+                    removeLabel="移除附件"
+                    removeDisabled={lifecycleLocked}
+                  />
+                ),
+              )}
             </div>
           )}
 
           {files.length === 0 && attachments.length === 0 && (
-            <div className="text-sm text-muted-foreground">暂无截图</div>
+            <div className="text-sm text-muted-foreground">暂无附件</div>
           )}
         </CardContent>
       </Card>

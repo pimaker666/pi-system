@@ -12,6 +12,7 @@ import {
   fetchConfirmedCommissionItemIdsForOrders,
   fetchSettledItemIdsForOrders,
 } from '@/lib/business-daily-orders-server'
+import { isImageAttachmentMime, orderAttachmentKindLabel } from '@/lib/attachment-mime'
 import { chinaToday } from '@/lib/china-date'
 import { isRenderableExportImage } from '@/lib/export-image-guard'
 import {
@@ -63,13 +64,20 @@ async function buildPdfResponse(filters: ReturnType<typeof parseDailyOrderFilter
   const rows: DailyOrderPdfRow[] = []
   let downloadedImageBytes = 0
   for (const exportRow of exportRows) {
-    const imageSources: Array<string | null> = []
+    const attachmentPreviews: DailyOrderPdfRow['attachmentPreviews'] = []
     for (const attachment of exportRow.attachments) {
+      if (!isImageAttachmentMime(attachment.mime_type)) {
+        attachmentPreviews.push({
+          src: null,
+          label: `${orderAttachmentKindLabel(attachment.mime_type)}：${attachment.original_name}`,
+        })
+        continue
+      }
       const { data, error } = await supabase.storage
         .from('finance-daily-order-screenshots')
         .download(attachment.object_path)
       if (error || !data) {
-        imageSources.push(null)
+        attachmentPreviews.push({ src: null, label: '图片不可用' })
         continue
       }
       const imageBuffer = Buffer.from(await data.arrayBuffer())
@@ -77,18 +85,19 @@ async function buildPdfResponse(filters: ReturnType<typeof parseDailyOrderFilter
       if (downloadedImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
         return NextResponse.json(
           {
-            error: `实际下载的截图总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
+            error: `实际下载的图片附件总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
           },
           { status: 413 },
         )
       }
-      imageSources.push(
-        (await isRenderableExportImage(imageBuffer))
+      attachmentPreviews.push({
+        src: (await isRenderableExportImage(imageBuffer))
           ? `data:${attachment.mime_type};base64,${imageBuffer.toString('base64')}`
           : null,
-      )
+        label: '图片不可用',
+      })
     }
-    rows.push({ ...exportRow, imageSources })
+    rows.push({ ...exportRow, attachmentPreviews })
   }
 
   const [{ renderToBuffer }, { DailyOrdersPdf }] = await Promise.all([

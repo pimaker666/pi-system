@@ -8,17 +8,24 @@ registerPdfFonts()
 
 /**
  * PDF 台账行：与 XLSX 共用 buildBusinessDailyExportRows 的输出，
- * 只把截图替换成已下载的 data URL（下载失败时为 null）。
+ * 图片附件换成已下载的 data URL；文档附件只显示附件名。
  */
+export interface DailyOrderPdfAttachment {
+  /** 图片 data URL；文档或下载失败时为 null。 */
+  src: string | null
+  /** 文档附件名，或图片不可用时的占位文案。 */
+  label: string
+}
+
 export interface DailyOrderPdfRow extends BusinessDailyExportRow {
-  imageSources: Array<string | null>
+  attachmentPreviews: DailyOrderPdfAttachment[]
 }
 
 /** PDF 表头比台账多一列「币种」，紧跟在订单总金额右侧。 */
 const PDF_COLUMNS = DAILY_ORDER_COLUMNS.flatMap((name) =>
   name === '订单总金额' ? [name, '币种'] : [name],
 )
-const SCREENSHOT_COLUMN = PDF_COLUMNS.indexOf('截图')
+const SCREENSHOT_COLUMN = PDF_COLUMNS.indexOf('附件')
 const SETTLEMENT_COLUMN = PDF_COLUMNS.indexOf('结算状态')
 const COMMISSION_COLUMN = PDF_COLUMNS.indexOf('提成')
 
@@ -55,7 +62,7 @@ export function DailyOrdersPdf({ orders }: { orders: DailyOrderPdfRow[] }) {
         ]
         return <View key={`${row.orderId}-${rowIndex}`} style={styles.row} wrap={false}>
           {values.map((value, index) => <Cell key={index} index={index}><Text>{value}</Text></Cell>)}
-          <Cell index={SCREENSHOT_COLUMN}><View style={styles.images}>{row.imageSources.map((source, index) => source ? <Image key={index} src={source} style={styles.image} /> : <Text key={index} style={styles.unavailable}>图片不可用</Text>)}</View></Cell>
+          <Cell index={SCREENSHOT_COLUMN}><View style={styles.images}>{row.attachmentPreviews.map((preview, index) => preview.src ? <Image key={index} src={preview.src} style={styles.image} /> : <Text key={index} style={styles.unavailable}>{preview.label}</Text>)}</View></Cell>
           <Cell index={SETTLEMENT_COLUMN}><Text>{row.settlementStatus}</Text></Cell>
           <Cell index={COMMISSION_COLUMN}><Text>{row.commissionClearanceStatus}</Text></Cell>
         </View>

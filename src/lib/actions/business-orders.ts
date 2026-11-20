@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { imageThumbTransform } from '@/lib/supabase/image'
+import { isImageAttachmentMime } from '@/lib/attachment-mime'
 import { getCurrentSensitiveFields, hasCurrentPermission, requireAdmin, requireApproved, requireFinanceAccess } from '@/lib/auth'
 import {
   businessCustomerTransferAllocationInputSchema,
@@ -736,7 +737,7 @@ export async function getBusinessOrderAttachmentUrls(
   const supabase = await createClient()
   const { data: attachments, error } = await supabase
     .from('business_order_attachments')
-    .select('id, object_path')
+    .select('id, object_path, mime_type')
     .in('id', validIds)
     .eq('status', 'active')
   if (error || !attachments) return new Map()
@@ -759,10 +760,17 @@ export async function getBusinessOrderAttachmentUrls(
   )
 
   // createSignedUrls 目前不支持 transform，缩略图逐张签发（单张订单附件数量很小）。
+  // 文档类附件不能走图片变换，只签原图。
+  const imagePaths = attachments
+    .filter(
+      (attachment) =>
+        attachment.object_path && isImageAttachmentMime(attachment.mime_type),
+    )
+    .map((attachment) => attachment.object_path as string)
   const thumbByPath = new Map<string, string>()
-  if (thumbSizePx) {
+  if (thumbSizePx && imagePaths.length > 0) {
     const thumbs = await Promise.all(
-      paths.map(async (path) => {
+      imagePaths.map(async (path) => {
         const { data } = await admin.storage
           .from('finance-daily-order-screenshots')
           .createSignedUrl(path, ATTACHMENT_URL_TTL_SECONDS, {
@@ -845,12 +853,12 @@ export async function renameBusinessOrderAttachment(
 ): Promise<BusinessOrderAttachmentActionResult> {
   const profile = await requireApproved()
   if (!['sales', 'supervisor', 'admin', 'finance'].includes(profile.role)) {
-    return { ok: false, error: '仅业务员、业务主管、管理员或财务可以修改截图名称' }
+    return { ok: false, error: '仅业务员、业务主管、管理员或财务可以修改附件名称' }
   }
   const parsed = z
     .object({
       id: z.string().uuid('附件 ID 不合法'),
-      name: z.string().trim().min(1, '截图名称不能为空').max(255, '截图名称不能超过 255 个字符'),
+      name: z.string().trim().min(1, '附件名称不能为空').max(255, '附件名称不能超过 255 个字符'),
     })
     .safeParse({ id: attachmentId, name })
   if (!parsed.success) return { ok: false, error: firstValidationError(parsed.error) }
@@ -860,7 +868,7 @@ export async function renameBusinessOrderAttachment(
     p_attachment_id: parsed.data.id,
     p_original_name: parsed.data.name,
   })
-  if (error) return { ok: false, error: businessOrderError(error.message, '修改截图名称失败') }
+  if (error) return { ok: false, error: businessOrderError(error.message, '修改附件名称失败') }
 
   const attachment = firstRpcRow<BusinessOrderAttachment>(data)
   if (!attachment) return { ok: false, error: '数据库未返回订单附件信息' }
@@ -868,7 +876,7 @@ export async function renameBusinessOrderAttachment(
   return { ok: true, attachment }
 }
 
-/** 供客户端表单一次性取回多张截图的查看链接（服务端 Action 无法返回 Map）。 */
+/** 供客户端表单一次性取回多个附件的查看链接（服务端 Action 无法返回 Map）。 */
 export async function getBusinessOrderAttachmentPreviews(
   attachmentIds: string[],
 ): Promise<{ urls: Record<string, string>; thumbs: Record<string, string>; error?: string }> {

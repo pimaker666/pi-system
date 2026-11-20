@@ -1,7 +1,17 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Check, ExternalLink, Pencil, Trash2, X, ZoomIn } from 'lucide-react'
+import {
+  Check,
+  ExternalLink,
+  File as FileIcon,
+  FileSpreadsheet,
+  FileText,
+  Pencil,
+  Trash2,
+  X,
+  ZoomIn,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -12,6 +22,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { ImagePreview } from '@/components/ui/image-preview'
+import { orderAttachmentKindLabel } from '@/lib/attachment-mime'
 import { cn, formatDate } from '@/lib/utils'
 
 export interface RenameResult {
@@ -27,7 +38,7 @@ export function formatUploadedAt(value?: string | null): string {
   return formatDate(date, true)
 }
 
-function formatFileSize(bytes: number): string {
+export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`
@@ -66,7 +77,7 @@ export function EditableImageName({
     }
     const next = draft.trim()
     if (!next) {
-      toast.error('图片名称不能为空')
+      toast.error('名称不能为空')
       return
     }
     if (next === (value ?? '').trim()) {
@@ -90,8 +101,8 @@ export function EditableImageName({
         {onRename && (
           <button
             type="button"
-            aria-label="修改图片名称"
-            title="修改图片名称"
+            aria-label="修改名称"
+            title="修改名称"
             disabled={disabled}
             onClick={() => setEditing(true)}
             className="shrink-0 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
@@ -292,6 +303,107 @@ export function PendingImageRow({
       >
         <Trash2 className="h-4 w-4" />
       </Button>
+    </div>
+  )
+}
+
+interface DocumentAttachmentRowProps {
+  mimeType: string
+  name?: string | null
+  fallbackName?: string
+  /** 已格式化的大小文案，待上传与已上传都可传。 */
+  sizeLabel?: string
+  uploadedAt?: string | null
+  /** 已上传附件的签名链接；PDF/Office 文件由浏览器或本机应用打开。 */
+  href?: string | null
+  pending?: boolean
+  disabled?: boolean
+  onRename?: (name: string) => Promise<RenameResult>
+  onRemove?: () => void
+  removeLabel?: string
+  removeDisabled?: boolean
+}
+
+/** 非图片附件（PDF / Excel / Word / CSV）：类型图标 + 可改名称 + 打开/移除。 */
+export function DocumentAttachmentRow({
+  mimeType,
+  name,
+  fallbackName,
+  sizeLabel,
+  uploadedAt,
+  href,
+  pending = false,
+  disabled = false,
+  onRename,
+  onRemove,
+  removeLabel = '删除附件',
+  removeDisabled = false,
+}: DocumentAttachmentRowProps) {
+  const kind = orderAttachmentKindLabel(mimeType)
+  const Icon =
+    kind === 'Excel' || kind === 'CSV'
+      ? FileSpreadsheet
+      : kind === 'PDF' || kind === 'Word'
+        ? FileText
+        : FileIcon
+
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-3 rounded-md border px-3 py-2 text-sm',
+        pending && 'border-dashed',
+      )}
+    >
+      <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded border bg-muted text-muted-foreground">
+        <Icon className="h-7 w-7" />
+      </span>
+      <div className="min-w-0 flex-1 space-y-1">
+        <EditableImageName
+          value={name}
+          fallback={fallbackName ?? '未命名附件'}
+          disabled={disabled}
+          onRename={onRename}
+          className="font-medium"
+        />
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+            {kind}
+          </Badge>
+          {pending ? (
+            <>
+              <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                待上传
+              </Badge>
+              {sizeLabel && <span>{sizeLabel}</span>}
+            </>
+          ) : (
+            <>
+              <span>上传时间：{formatUploadedAt(uploadedAt)}</span>
+              {sizeLabel && <span>{sizeLabel}</span>}
+            </>
+          )}
+        </div>
+      </div>
+      {href && (
+        <Button asChild variant="ghost" size="icon" aria-label="打开附件" title="打开附件">
+          <a href={href} target="_blank" rel="noopener noreferrer">
+            <ExternalLink className="h-4 w-4" />
+          </a>
+        </Button>
+      )}
+      {onRemove && (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={removeLabel}
+          title={removeLabel}
+          disabled={disabled || removeDisabled}
+          onClick={onRemove}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      )}
     </div>
   )
 }

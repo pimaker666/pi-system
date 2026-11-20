@@ -2,7 +2,16 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react'
-import { Download, Eye, Save, CheckCircle2, Bookmark, BookmarkX } from 'lucide-react'
+import {
+  Bookmark,
+  BookmarkX,
+  CheckCircle2,
+  Download,
+  Eye,
+  FileSpreadsheet,
+  FileText,
+  Save,
+} from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -27,6 +36,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { pendingApprovalMessage } from '@/lib/approval-gate'
+import { isImageAttachmentMime, orderAttachmentKindLabel } from '@/lib/attachment-mime'
 import { getBusinessOrderAttachmentUrl, setBusinessOrderCostMarks } from '@/lib/actions/business-orders'
 import {
   settleBusinessOrderItems,
@@ -395,7 +405,7 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
     startTransition(async () => {
       const result = await getBusinessOrderAttachmentUrl(attachmentId)
       if (result.url) window.open(result.url, '_blank', 'noopener,noreferrer')
-      else toast.error(result.error ?? '无法查看截图')
+      else toast.error(result.error ?? '无法打开附件')
     })
   }
 
@@ -745,19 +755,30 @@ export function DailyOrderCostManager({ rows, totalCount, filters, options }: Da
                         <TableCell rowSpan={rowSpan} className={mergedCn(23, undefined, marked)}>
                           {row.attachments.length === 0
                             ? '—'
-                            : row.attachments.map((attachment, attachmentIndex) => (
-                                <Button
-                                  key={attachment.id}
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={pending}
-                                  onClick={() => viewAttachment(attachment.id)}
-                                >
-                                  {attachmentIndex + 1}
-                                  <Eye className="ml-1 h-3 w-3" />
-                                </Button>
-                              ))}
+                            : row.attachments.map((attachment, attachmentIndex) => {
+                                const DocumentIcon = /(sheet|excel|csv)/.test(attachment.mime_type)
+                                  ? FileSpreadsheet
+                                  : FileText
+                                return (
+                                  <Button
+                                    key={attachment.id}
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={pending}
+                                    title={`${orderAttachmentKindLabel(attachment.mime_type)}：${attachment.original_name}`}
+                                    aria-label={`打开附件 ${attachment.original_name}`}
+                                    onClick={() => viewAttachment(attachment.id)}
+                                  >
+                                    {attachmentIndex + 1}
+                                    {isImageAttachmentMime(attachment.mime_type) ? (
+                                      <Eye className="ml-1 h-3 w-3" />
+                                    ) : (
+                                      <DocumentIcon className="ml-1 h-3 w-3" />
+                                    )}
+                                  </Button>
+                                )
+                              })}
                         </TableCell>
                       </>
                     )}

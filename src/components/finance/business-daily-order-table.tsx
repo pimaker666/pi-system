@@ -7,6 +7,7 @@ import {
   BookmarkX,
   Download,
   Eye,
+  FileSpreadsheet,
   FileText,
   Pencil,
   Truck,
@@ -62,6 +63,7 @@ import {
   businessOrderItemDisplayName,
   businessOrderItemDisplaySku,
 } from '@/lib/business-order-financials'
+import { isImageAttachmentMime, orderAttachmentKindLabel } from '@/lib/attachment-mime'
 import { chinaToday } from '@/lib/china-date'
 import { DAILY_ORDER_COLUMNS, formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { cn, displayProfileName, formatAmount } from '@/lib/utils'
@@ -321,7 +323,15 @@ export function BusinessDailyOrderTable({
     startTransition(async () => {
       const result = await getBusinessOrderAttachmentUrl(attachmentId)
       if (result.url) setAttachmentUrl(result.url)
-      else toast.error(result.error ?? '无法查看截图')
+      else toast.error(result.error ?? '无法查看附件')
+    })
+  }
+
+  function openDocumentAttachment(attachmentId: string) {
+    startTransition(async () => {
+      const result = await getBusinessOrderAttachmentUrl(attachmentId)
+      if (result.url) window.open(result.url, '_blank', 'noopener,noreferrer')
+      else toast.error(result.error ?? '无法打开附件')
     })
   }
 
@@ -772,19 +782,36 @@ export function BusinessDailyOrderTable({
                         <TableCell rowSpan={rowSpan} className={mergedCn(20)}>
                           {attachments.length === 0
                             ? '—'
-                            : attachments.map((attachment, attachmentIndex) => (
-                                <Button
-                                  key={attachment.id}
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  disabled={pending}
-                                  onClick={() => viewAttachment(attachment.id)}
-                                >
-                                  {attachmentIndex + 1}
-                                  <Eye className="ml-1 h-3 w-3" />
-                                </Button>
-                              ))}
+                            : attachments.map((attachment, attachmentIndex) => {
+                                const isImage = isImageAttachmentMime(attachment.mime_type)
+                                const Icon = /(sheet|excel|csv)/.test(attachment.mime_type)
+                                  ? FileSpreadsheet
+                                  : FileText
+                                const kindLabel = orderAttachmentKindLabel(attachment.mime_type)
+                                return (
+                                  <Button
+                                    key={attachment.id}
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={pending}
+                                    title={`${kindLabel}：${attachment.original_name}`}
+                                    aria-label={`${isImage ? '预览' : '打开'}${kindLabel} ${attachment.original_name}`}
+                                    onClick={() =>
+                                      isImage
+                                        ? viewAttachment(attachment.id)
+                                        : openDocumentAttachment(attachment.id)
+                                    }
+                                  >
+                                    {attachmentIndex + 1}
+                                    {isImage ? (
+                                      <Eye className="ml-1 h-3 w-3" />
+                                    ) : (
+                                      <Icon className="ml-1 h-3 w-3" />
+                                    )}
+                                  </Button>
+                                )
+                              })}
                         </TableCell>
                       </>
                     )}
@@ -892,14 +919,14 @@ export function BusinessDailyOrderTable({
       <Dialog open={Boolean(attachmentUrl)} onOpenChange={(open) => !open && setAttachmentUrl(null)}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
-            <DialogTitle>订单截图</DialogTitle>
+            <DialogTitle>附件预览</DialogTitle>
           </DialogHeader>
           {attachmentUrl && (
             // Signed Storage URLs cannot be optimized by next/image.
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={attachmentUrl}
-              alt="订单截图"
+              alt="订单附件"
               className="mx-auto h-auto max-h-[75vh] max-w-full object-contain"
             />
           )}

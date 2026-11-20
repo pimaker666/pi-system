@@ -1,3 +1,5 @@
+import type { OrderAttachmentMimeType } from '@/lib/attachment-mime'
+
 export type UserRole = 'admin' | 'finance' | 'sales' | 'supervisor' | 'operations'
 export type UserStatus = 'pending' | 'approved' | 'disabled'
 export type PermissionDataScope = 'self' | 'self_and_subordinates' | 'team' | 'all'
@@ -1015,7 +1017,7 @@ export interface BusinessOrderAttachment {
   order_id: string
   object_path: string
   original_name: string | null
-  mime_type: 'image/jpeg' | 'image/png'
+  mime_type: OrderAttachmentMimeType
   size_bytes: number
   status: FinanceRecordStatus
   created_by: string | null

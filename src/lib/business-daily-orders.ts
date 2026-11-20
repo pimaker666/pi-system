@@ -1,3 +1,4 @@
+import { isImageAttachmentMime } from '@/lib/attachment-mime'
 import type {
   BusinessOrder,
   BusinessOrderAttachment,
@@ -493,7 +494,7 @@ export interface BusinessDailyExportRow {
   outstandingAmount: string
   paymentCategory: string
   remarks: string
-  /** 订单截图只挂在该订单的第一行，避免同一订单重复导出图片。 */
+  /** 订单附件只挂在该订单的第一行，避免同一订单重复导出图片。 */
   attachments: BusinessOrderAttachment[]
   /** 产品行成本结算状态：是 / 否。 */
   settlementStatus: string
@@ -501,22 +502,24 @@ export interface BusinessDailyExportRow {
   commissionClearanceStatus: string
 }
 
-/** 单次导出的截图数量与体积上限：每日订单与订单成本两个导出共用。 */
+/** 单次导出的图片附件数量与体积上限：每日订单与订单成本两个导出共用。 */
 export const BUSINESS_DAILY_EXPORT_MAX_IMAGES = 1000
 export const BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES = 400 * 1024 * 1024
-/** 每张订单最多导出的截图数量，与建单时的 10 张上限一致。 */
+/** 每张订单最多导出的附件数量，与建单时的 10 个上限一致。 */
 export const BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER = 10
 
 export function businessDailyExportLimitError(orders: BusinessDailyLedgerOrder[]) {
-  const attachments = orders.flatMap((order) =>
-    activeBusinessOrderAttachments(order).slice(0, BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER),
-  )
+  const attachments = orders
+    .flatMap((order) =>
+      activeBusinessOrderAttachments(order).slice(0, BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER),
+    )
+    .filter((attachment) => isImageAttachmentMime(attachment.mime_type))
   const totalBytes = attachments.reduce((sum, attachment) => sum + Number(attachment.size_bytes), 0)
   if (attachments.length > BUSINESS_DAILY_EXPORT_MAX_IMAGES) {
-    return `筛选结果包含 ${attachments.length} 张截图，单次最多导出 ${BUSINESS_DAILY_EXPORT_MAX_IMAGES} 张，请缩小筛选范围`
+    return `筛选结果包含 ${attachments.length} 张图片附件，单次最多导出 ${BUSINESS_DAILY_EXPORT_MAX_IMAGES} 张，请缩小筛选范围`
   }
   if (totalBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
-    return `筛选结果的截图总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`
+    return `筛选结果的图片附件总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`
   }
   return null
 }

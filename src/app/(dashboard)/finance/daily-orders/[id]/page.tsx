@@ -769,10 +769,10 @@ export default async function BusinessOrderDetailPage({
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-base">订单截图</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">订单附件</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               {attachmentLinks.length === 0 && (
-                <div className="text-muted-foreground">暂无截图，可在订单编辑页补传。</div>
+                <div className="text-muted-foreground">暂无附件，可在订单编辑页补传。</div>
               )}
               {attachmentLinks.length > 0 && (
                 <BusinessOrderAttachmentList

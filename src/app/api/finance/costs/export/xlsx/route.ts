@@ -8,6 +8,7 @@ import {
   BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES,
   BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER,
 } from '@/lib/business-daily-orders'
+import { isImageAttachmentMime, orderAttachmentKindLabel } from '@/lib/attachment-mime'
 import { chinaToday } from '@/lib/daily-order-costs-server'
 import { formatDailyMoney, PAYMENT_LABELS, SHIPPING_LABELS } from '@/lib/daily-orders'
 import { FINANCE_COST_LABELS } from '@/lib/finance'
@@ -161,9 +162,9 @@ async function buildCostsXlsx(
     }
   })
 
-  const exportAttachments = orderGroups.flatMap((group) =>
-    group.attachments.slice(0, BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER),
-  )
+  const exportAttachments = orderGroups
+    .flatMap((group) => group.attachments.slice(0, BUSINESS_DAILY_EXPORT_MAX_IMAGES_PER_ORDER))
+    .filter((attachment) => isImageAttachmentMime(attachment.mime_type))
   const declaredImageBytes = exportAttachments.reduce(
     (sum, attachment) => sum + Number(attachment.size_bytes),
     0,
@@ -171,7 +172,7 @@ async function buildCostsXlsx(
   if (exportAttachments.length > BUSINESS_DAILY_EXPORT_MAX_IMAGES) {
     return NextResponse.json(
       {
-        error: `筛选结果包含 ${exportAttachments.length} 张截图，单次最多导出 ${BUSINESS_DAILY_EXPORT_MAX_IMAGES} 张，请缩小筛选范围`,
+        error: `筛选结果包含 ${exportAttachments.length} 张图片附件，单次最多导出 ${BUSINESS_DAILY_EXPORT_MAX_IMAGES} 张，请缩小筛选范围`,
       },
       { status: 413 },
     )
@@ -179,7 +180,7 @@ async function buildCostsXlsx(
   if (declaredImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
     return NextResponse.json(
       {
-        error: `筛选结果的截图总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
+        error: `筛选结果的图片附件总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
       },
       { status: 413 },
     )
@@ -194,7 +195,7 @@ async function buildCostsXlsx(
   styleHeader(dailySheet.addRow([
     '序号', '下单日期', '店铺', '业务员', '订单号', '发货日期', '发货单号', '收款账户',
     '发货分类', '产品名称', '数量', '成本', '总成本', '发货进度', '销售单价', '产品实收金额',
-    '运费实收金额', '订单总金额', '币种', '未收尾款', '收款分类', '备注', '截图数',
+    '运费实收金额', '订单总金额', '币种', '未收尾款', '收款分类', '备注', '附件数',
   ]))
 
   dailyCosts.forEach((item, index) => {
@@ -248,7 +249,7 @@ async function buildCostsXlsx(
     }
   }
 
-  // 每单截图嵌在订单第一行，从「截图数」右侧第一个空列起横向排开。
+  // 每单附件写在订单第一行：图片从「附件数」右侧第一个空列起横向排开，文档写附件名。
   const IMAGE_START_COLUMN = 24
   let downloadedImageBytes = 0
   for (const group of orderGroups) {
@@ -260,6 +261,12 @@ async function buildCostsXlsx(
       const column = IMAGE_START_COLUMN + shotIndex
       dailySheet.getColumn(column).width = 26
       const attachment = attachments[shotIndex]
+      if (!isImageAttachmentMime(attachment.mime_type)) {
+        const cell = dailySheet.getCell(group.firstRow, column)
+        cell.value = `${orderAttachmentKindLabel(attachment.mime_type)}：${attachment.original_name}`
+        cell.alignment = { vertical: 'top', wrapText: true }
+        continue
+      }
       const { data, error } = await supabase.storage
         .from('finance-daily-order-screenshots')
         .download(attachment.object_path)
@@ -272,7 +279,7 @@ async function buildCostsXlsx(
       if (downloadedImageBytes > BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES) {
         return NextResponse.json(
           {
-            error: `实际下载的截图总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
+            error: `实际下载的图片附件总大小超过 ${BUSINESS_DAILY_EXPORT_MAX_IMAGE_BYTES / 1024 / 1024}MB，请缩小筛选范围`,
           },
           { status: 413 },
         )

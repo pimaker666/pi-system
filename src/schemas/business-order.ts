@@ -1,4 +1,8 @@
 import { z } from 'zod'
+import {
+  ORDER_ATTACHMENT_EXTENSION_PATTERN,
+  ORDER_ATTACHMENT_MIME_TYPES,
+} from '@/lib/attachment-mime'
 import { roundToScale } from '@/lib/utils'
 import { CURRENCIES } from './product'
 
@@ -35,7 +39,7 @@ const ORDER_TRANSFER_PROOF_PATTERN = new RegExp(
   'i',
 )
 const BUSINESS_ORDER_ATTACHMENT_PATTERN = new RegExp(
-  `^${UUID_PATTERN}/${UUID_PATTERN}/${UUID_PATTERN}\\.(?:jpe?g|png)$`,
+  `^${UUID_PATTERN}/${UUID_PATTERN}/${UUID_PATTERN}\\.(?:${ORDER_ATTACHMENT_EXTENSION_PATTERN})$`,
   'i',
 )
 
@@ -423,7 +427,7 @@ export const businessOrderAttachmentInputSchema = z
       .max(500, '附件路径不能超过 500 字')
       .regex(BUSINESS_ORDER_ATTACHMENT_PATTERN, '附件路径格式不正确'),
     original_name: z.string().trim().max(255, '附件名称不能超过 255 字'),
-    mime_type: z.enum(['image/jpeg', 'image/png']),
+    mime_type: z.enum(ORDER_ATTACHMENT_MIME_TYPES),
     size_bytes: z.number().int('附件大小无效').positive('附件不能为空').max(MAX_ATTACHMENT_SIZE, '附件不能超过 20MB'),
   })
   .strict()
