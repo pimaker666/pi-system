@@ -317,6 +317,8 @@ export function PerformanceManager({
 
   const [dateFrom, setDateFrom] = useState(filters.dateFrom ?? '')
   const [dateTo, setDateTo] = useState(filters.dateTo ?? '')
+  const [receivedFrom, setReceivedFrom] = useState(filters.receivedFrom ?? '')
+  const [receivedTo, setReceivedTo] = useState(filters.receivedTo ?? '')
   const [selectedSalespeople, setSelectedSalespeople] = useState(
     filters.salespersonIds ?? [],
   )
@@ -345,6 +347,8 @@ export function PerformanceManager({
     const params = new URLSearchParams()
     if (dateFrom) params.set('dateFrom', dateFrom)
     if (dateTo) params.set('dateTo', dateTo)
+    if (receivedFrom) params.set('receivedFrom', receivedFrom)
+    if (receivedTo) params.set('receivedTo', receivedTo)
     if (selectedSalespeople.length > 0) {
       params.set('salesperson', selectedSalespeople.join(','))
     }
@@ -382,6 +386,8 @@ export function PerformanceManager({
   function clearFilters() {
     setDateFrom('')
     setDateTo('')
+    setReceivedFrom('')
+    setReceivedTo('')
     setSelectedSalespeople([])
     setSelectedShops([])
     setSelectedProductGroups([])
@@ -874,6 +880,13 @@ export function PerformanceManager({
             <DateRangePicker from={dateFrom} to={dateTo} onChange={({ from, to }) => {
               setDateFrom(from)
               setDateTo(to)
+            }} className="w-full" />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-xs font-medium text-muted-foreground">收款日期</label>
+            <DateRangePicker from={receivedFrom} to={receivedTo} onChange={({ from, to }) => {
+              setReceivedFrom(from)
+              setReceivedTo(to)
             }} className="w-full" />
           </div>
           <div className="space-y-1.5">

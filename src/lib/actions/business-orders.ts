@@ -1551,6 +1551,8 @@ export async function getBusinessOrderEditConstraints(
 export interface BusinessPerformanceFilters {
   dateFrom?: string
   dateTo?: string
+  receivedFrom?: string
+  receivedTo?: string
   createdFrom?: string
   createdTo?: string
   salespersonIds?: string[]
@@ -1567,6 +1569,8 @@ export async function getBusinessPerformanceSummary(
   const { data, error } = await supabase.rpc('get_business_performance_summary', {
     p_date_from: filters.dateFrom ?? null,
     p_date_to: filters.dateTo ?? null,
+    p_received_from: filters.receivedFrom ?? null,
+    p_received_to: filters.receivedTo ?? null,
     p_created_from: filters.createdFrom ?? null,
     p_created_to: filters.createdTo ?? null,
     p_salesperson_ids: filters.salespersonIds ?? null,
@@ -1663,6 +1667,8 @@ export async function getBusinessPerformanceByGroup(
     p_group_by: groupBy,
     p_date_from: filters.dateFrom ?? null,
     p_date_to: filters.dateTo ?? null,
+    p_received_from: filters.receivedFrom ?? null,
+    p_received_to: filters.receivedTo ?? null,
     p_created_from: filters.createdFrom ?? null,
     p_created_to: filters.createdTo ?? null,
     p_salesperson_ids: filters.salespersonIds ?? null,

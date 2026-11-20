@@ -63,6 +63,8 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
   const { start, end } = getCurrentMonthRange()
   const dateFrom = scalar('dateFrom') || start
   const dateTo = scalar('dateTo') || end
+  const receivedFrom = scalar('receivedFrom') || start
+  const receivedTo = scalar('receivedTo') || end
 
   const validGroups: BusinessPerformanceGroupBy[] = [
     'salesperson',
@@ -109,6 +111,8 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
   return {
     dateFrom,
     dateTo,
+    receivedFrom,
+    receivedTo,
     salespersonIds: parseListParam(raw, 'salesperson'),
     shopIds: parseListParam(raw, 'shop'),
     productGroupIds: parseListParam(raw, 'productGroup'),
@@ -130,6 +134,8 @@ export default async function FinancePerformancePage({
   const {
     dateFrom,
     dateTo,
+    receivedFrom,
+    receivedTo,
     salespersonIds,
     shopIds,
     productGroupIds,
@@ -165,6 +171,8 @@ export default async function FinancePerformancePage({
   const filters = {
     dateFrom,
     dateTo,
+    receivedFrom,
+    receivedTo,
     salespersonIds: canViewProfit
       ? salespersonIds
       : restrictedSalespersonIds?.length
