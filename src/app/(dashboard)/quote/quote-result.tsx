@@ -193,8 +193,8 @@ export function QuoteResult({
         <div className="quote-kpis">
           <div className="quote-kpi is-fob">
             <div className="text-[10.5px] font-medium text-muted-foreground">
-              单{result.unitLabel} FOB{' '}
-              <span className="text-[9px] uppercase tracking-[.3px]">unit price</span>
+              单{result.unitLabel}报价{' '}
+              <span className="text-[9px] uppercase tracking-[.3px]">unit price (USD)</span>
             </div>
             <div className="k-value mt-1 font-mono text-xl font-semibold tracking-tight">
               {money3(result.unitFob)}
@@ -373,9 +373,8 @@ export function QuoteResult({
                 {packed && <th>折合{result.packLabel}</th>}
                 <th>毛利率</th>
                 <th>单{result.unitLabel}成本 ¥</th>
-                <th>单{result.unitLabel}报价 ¥</th>
-                <th>{result.unitLabel} FOB</th>
-                {mini && <th>{miniRmb ? `折合单${result.miniLabel}价 ¥` : `${result.miniLabel} FOB`}</th>}
+                <th className="is-usd">{result.unitLabel}报价 $</th>
+                {mini && <th className={miniRmb ? undefined : 'is-usd'}>{miniRmb ? `折合单${result.miniLabel}价 ¥` : `${result.miniLabel}报价 $`}</th>}
                 <th>总货值 USD</th>
                 <th className="is-left print-col hidden min-[1440px]:table-cell min-w-[130px]">谈判与锁客策略</th>
               </tr>
@@ -401,9 +400,8 @@ export function QuoteResult({
                     {packed && <td>{fmtInt(t.packs)}</td>}
                     <td>{pct(t.margin)}</td>
                     <td>{fmt(t.unitCost)}</td>
-                    <td>{fmt(t.unitPrice)}</td>
-                    <td className="font-medium">{fmt(t.unitFob, 3)}</td>
-                    {mini && <td>{miniRmb ? fmt(t.miniPrice) : fmt(t.miniPrice / result.fx, 3)}</td>}
+                    <td className="is-usd font-medium">{fmt(t.unitFob, 3)}</td>
+                    {mini && <td className={miniRmb ? undefined : 'is-usd'}>{miniRmb ? fmt(t.miniPrice) : fmt(t.miniPrice / result.fx, 3)}</td>}
                     <td>{fmt(t.totalUSD)}</td>
                     <td className="is-left print-col hidden min-[1440px]:table-cell min-w-[130px] max-w-[180px] text-[10.5px] leading-relaxed text-muted-foreground">
                       {note}
