@@ -1393,7 +1393,7 @@ export function BusinessOrderForm({
                               </Button>
                             </div>
                             <p className="text-xs text-muted-foreground">
-                              {item.image_url ? '点击图片可查看大图；' : '暂未上传图片。'}可拖放图片到此处或点击上传；修改编码或图片后保存，会留存为同一产品的新版本。
+                              {item.image_url ? '点击图片可查看大图；' : '暂未上传图片。'}可拖放图片到此处或点击上传；修改编码或图片后保存，会留存为同一产品的新版本，并同步到进行中的订单。
                             </p>
                           </div>
                         </div>
