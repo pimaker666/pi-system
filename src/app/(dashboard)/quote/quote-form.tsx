@@ -31,11 +31,11 @@ function NumberField({
   emphasis?: boolean
   onCommit: (v: number) => void
 }) {
-  const [draft, setDraft] = useState(String(value))
+  const [draft, setDraft] = useState(value ? String(value) : '')
   const [synced, setSynced] = useState(value)
   if (value !== synced) {
     setSynced(value)
-    setDraft(String(value))
+    setDraft(value ? String(value) : '')
   }
   const min = Math.max(1, field.min ?? 1)
 
@@ -62,7 +62,7 @@ function NumberField({
             draft === '' || !Number.isFinite(n)
               ? value
               : Math.min(10_000_000, Math.max(min, n))
-          setDraft(String(next))
+          setDraft(next ? String(next) : '')
           setSynced(next)
           if (next !== value) onCommit(next)
         }}

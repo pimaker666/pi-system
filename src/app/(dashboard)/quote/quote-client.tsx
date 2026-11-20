@@ -220,7 +220,7 @@ export function QuoteClient({ isAdmin = false }: { isAdmin?: boolean }) {
             onChange={(key, value) =>
               setInputs((prev) => ({
                 ...prev,
-                [categoryId]: normalizeInput(categoryId, { ...prev[categoryId], [key]: value }),
+                [categoryId]: normalizeInput(categoryId, { ...prev[categoryId], [key]: value }, prev[categoryId]),
               }))
             }
             onManualChange={(v) =>

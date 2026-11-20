@@ -157,8 +157,11 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
       },
       {
         type: 'select', key: 'capacity', label: '容量规格', labelEn: 'Capacity',
-        options: DATA.cream.capacities.map((v) => opt(v, v + ' ml/g')),
-        hint: '容量价格取自官方《参数字典》器型 × 容量矩阵。',
+        options: Object.keys(DATA.cream.containers[String(input.container)] || {})
+          .map(Number)
+          .sort((a, b) => a - b)
+          .map((v) => opt(v, v + ' ml/g')),
+        hint: '容量选项随器型切换，单价取自该器型的规格表。',
       },
       {
         type: 'number', key: 'qty', label: '定制总量', labelEn: 'Order quantity', unit: '支/罐',
@@ -198,8 +201,19 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
     },
     {
       type: 'select', key: 'jar', label: '罐装容器', labelEn: 'Jar',
-      options: Object.keys(DATA.eyemask.jars).map((v) => opt(v, `${v} · ${DATA.eyemask.jars[v].price.toFixed(2)} 元`)),
-      hint: '仅罐装膜材使用；50g / 100g / 120g 常规罐与高档旋转罐。',
+      options: Object.keys(DATA.eyemask.jars).map((v) => {
+        const jar = DATA.eyemask.jars[v]
+        // 罐型后带每罐对数，报价时不用再翻表换算；客户自备罐对数由客户决定，不展示。
+        const pairs = jar.price > 0 ? `${jar.pairs}对/罐 · ` : ''
+        return opt(v, `${v} · ${pairs}${jar.price.toFixed(2)} 元`)
+      }),
+      hint: '仅罐装膜材使用；50g / 100g / 120g 常规罐、36 对高档旋转罐，或客户自备罐。',
+      visible: isJarKind,
+    },
+    {
+      type: 'number', key: 'pairsPerJar', label: '每罐对数', labelEn: 'Pairs / jar', unit: '对/罐',
+      min: 1, datalist: [15, 30, 36, 40],
+      hint: '默认取所选罐型的标准对数，可按客户要求修改；总对数 ÷ 每罐对数 = 罐 / 盒数量。选「无需包材」时必填。',
       visible: isJarKind,
     },
     {
@@ -234,7 +248,7 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
 }
 
 /** Keep dependent selects coherent when the category switch makes them meaningless. */
-export function normalizeInput(categoryId: CategoryId, input: QuoteInput): QuoteInput {
+export function normalizeInput(categoryId: CategoryId, input: QuoteInput, prev?: QuoteInput): QuoteInput {
   const next = { ...input }
   if (categoryId === 'mask') {
     if (next.packageType != null) {
@@ -246,13 +260,24 @@ export function normalizeInput(categoryId: CategoryId, input: QuoteInput): Quote
   if (categoryId === 'eyemask') {
     const m = DATA.eyemask.membranes[String(next.material)]
     if (m && m.kind !== 'jar') next.packMode = next.colorBox === '是' ? '6对盒装' : '单袋散装'
-    if (m && m.kind === 'jar') next.print = next.print === '无' || next.print == null ? '丝印' : next.print
+    if (m && m.kind === 'jar') {
+      next.print = next.print === '无' || next.print == null ? '丝印' : next.print
+      const jar = DATA.eyemask.jars[String(next.jar)]
+      const jarSwitched = prev != null && prev.jar !== next.jar
+      if (jar && jar.price > 0) {
+        // 换罐型即回到该罐的标准对数，用户改过的值只在同罐型下保留。
+        if (!(Number(next.pairsPerJar) > 0) || jarSwitched) next.pairsPerJar = jar.pairs
+      } else if (jar && jarSwitched) {
+        // 客户自备罐没有标准对数，换罐型时清空，必须由用户填写。
+        delete next.pairsPerJar
+      }
+    }
   }
   if (categoryId === 'oil' || categoryId === 'cream') {
     const caps = categoryId === 'oil'
       ? Object.keys(DATA.oil.bottles[String(next.bottle)] || {}).map(Number)
-      : DATA.cream.capacities
-    if (caps.length && !caps.includes(Number(next.capacity))) next.capacity = caps[0]
+      : Object.keys(DATA.cream.containers[String(next.container)] || {}).map(Number)
+    if (caps.length && !caps.includes(Number(next.capacity))) next.capacity = caps.sort((a, b) => a - b)[0]
   }
   return next
 }

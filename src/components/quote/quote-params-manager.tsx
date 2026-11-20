@@ -278,48 +278,6 @@ function TierMetaTable({
   )
 }
 
-/** Comma-separated number list editor (for parallel price arrays). */
-function NumList({
-  values,
-  onCommit,
-  expect,
-}: {
-  values: number[]
-  onCommit: (v: number[]) => void
-  expect?: number
-}) {
-  const text = values.join(', ')
-  const [draft, setDraft] = useState(text)
-  const [synced, setSynced] = useState(text)
-  if (text !== synced) {
-    setSynced(text)
-    setDraft(text)
-  }
-  const bad = expect != null && values.length !== expect
-  return (
-    <div>
-      <Textarea
-        value={draft}
-        spellCheck={false}
-        onChange={(e) => {
-          setDraft(e.target.value)
-          const nums = e.target.value
-            .split(/[,，、\s]+/)
-            .filter((s) => s !== '')
-            .map(Number)
-          if (nums.every((n) => Number.isFinite(n))) onCommit(nums)
-        }}
-        className={cn('min-h-[60px] resize-y font-mono text-[12px] leading-relaxed', bad && 'border-destructive')}
-      />
-      {bad && (
-        <p className="mt-1 text-[10.5px] text-destructive">
-          当前 {values.length} 项，须与容量规格数量一致（{expect} 项）
-        </p>
-      )}
-    </div>
-  )
-}
-
 const MEMBRANE_KINDS = ['jar', 'waterbag', 'gelbag', 'silicone']
 
 // ------------------------------------------------------------------ manager
@@ -902,6 +860,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
   const renderCream = (d: any) => {
     const containers = Object.keys(d.containers ?? {})
     const cur = curKey(containers, selContainer)
+    const caps = cur ? Object.keys(d.containers[cur]).map(Number).sort((a, b) => a - b) : []
     return (
       <>
         <Section title="默认参数" en="Defaults">
@@ -947,15 +906,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
             }}
           />
         </Section>
-        <Section title="容量规格" en="capacities · ml/g">
-          <div className="px-3.5 py-3">
-            <NumList values={d.capacities} onCommit={(v) => (d.capacities = v)} />
-            <p className="mt-1 text-[10.5px] text-muted-foreground">
-              逗号分隔。下面每种容器的价格数组长度必须与此一致。
-            </p>
-          </div>
-        </Section>
-        <Section title="容器价格" en="containers · 与容量规格对齐">
+        <Section title="容器价格" en="containers · 容量 → 元/个">
           <Row label="器型" en="点击切换">
             <div className="flex flex-wrap gap-1">
               {containers.map((b) => (
@@ -976,10 +927,52 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
             </div>
           </Row>
           {cur && (
-            <Row label={`「${cur}」价格`} en="元/个">
+            <Row label={`「${cur}」规格`} en="容量 → 元/个">
               <div className="space-y-1.5">
-                <NumList values={d.containers[cur]} expect={d.capacities.length} onCommit={(v) => (d.containers[cur] = v)} />
-                <Del title={`删除「${cur}」`} onClick={() => { delete d.containers[cur]; setSelContainer('') }} />
+                <div className="grid grid-cols-[88px_1fr_28px] items-center gap-2 text-[10px] text-muted-foreground">
+                  <span>容量 ml/g</span>
+                  <span>单价（元/个）</span>
+                  <span />
+                </div>
+                {caps.map((cap) => (
+                  <div key={cap} className="grid grid-cols-[88px_1fr_28px] items-center gap-2">
+                    <Num
+                      value={cap}
+                      onCommit={(v) => {
+                        const old = d.containers[cur][cap]
+                        delete d.containers[cur][cap]
+                        d.containers[cur][v] = old
+                      }}
+                    />
+                    <Num value={Number(d.containers[cur][cap])} onCommit={(v) => (d.containers[cur][cap] = v)} />
+                    <Del onClick={() => delete d.containers[cur][cap]} />
+                  </div>
+                ))}
+                <Add
+                  label="添加规格"
+                  onClick={() => {
+                    const last = caps[caps.length - 1] ?? 0
+                    d.containers[cur][String(last + 10)] = 0
+                  }}
+                />
+                {caps.length === 0 && (
+                  <p className="text-[10.5px] text-muted-foreground">
+                    还没有规格，点击「添加规格」录入第一个容量与单价。
+                  </p>
+                )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 gap-1 px-2 text-[11px] font-normal text-muted-foreground hover:text-destructive"
+                  onClick={() => {
+                    delete d.containers[cur]
+                    setSelContainer('')
+                  }}
+                >
+                  <Trash2 className="h-3 w-3" />
+                  删除「{cur}」器型
+                </Button>
               </div>
             </Row>
           )}
@@ -990,7 +983,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
                 label="添加"
                 onClick={() => {
                   if (newContainer && !(newContainer in (d.containers ?? {}))) {
-                    d.containers[newContainer] = d.capacities.map(() => 0)
+                    d.containers[newContainer] = {}
                     setSelContainer(newContainer)
                     setNewContainer('')
                   }

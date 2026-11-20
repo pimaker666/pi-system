@@ -84,9 +84,9 @@ export const EN = {
   print: { 瓶标: 'Label', 丝印: 'Silkscreen', 无: 'None', 无印刷: 'None' },
   product: { 眼膜: 'Eye Mask', 唇膜: 'Lip Mask' },
   jar: {
-    '50g常规罐': '50 g jar · 15 pairs',
-    '100g常规罐': '100 g jar · 30 pairs',
-    '120g常规罐': '120 g jar · 40 pairs',
+    '50g常规罐': '50 g jar',
+    '100g常规罐': '100 g jar',
+    '120g常规罐': '120 g jar',
     '36对高档旋转罐': '36-pair rotating jar',
     '无需包材（客户自备）': 'Customer-supplied jar',
   },
@@ -168,7 +168,8 @@ export function specLine(categoryId: CategoryId, input: QuoteInput) {
   if (categoryId === 'oil') return `${en(input.category, EN.category)} · ${en(input.bottle, EN.bottle)} · ${input.capacity} ml · ${en(input.print, EN.print)}`
   if (categoryId === 'cream') return `${en(input.bulkType, EN.bulkType)} · ${en(input.container, EN.container)} · ${input.capacity} ml/g · ${en(input.print, EN.print)}`
   const m = DATA.eyemask.membranes[String(input.material)] || ({} as { kind?: string })
-  const pack = m.kind === 'jar' ? en(input.jar, EN.jar) : input.colorBox === '是' ? '6 pairs / box' : 'Single sachet'
+  const perJar = Math.floor(Number(input.pairsPerJar)) || DATA.eyemask.jars[String(input.jar)]?.pairs || 1
+  const pack = m.kind === 'jar' ? `${en(input.jar, EN.jar)} · ${perJar} pairs / jar` : input.colorBox === '是' ? '6 pairs / box' : 'Single sachet'
   return `${en(input.product, EN.product)} · ${en(input.material, EN.material)} · ${pack}`
 }
 
