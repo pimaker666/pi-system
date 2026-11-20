@@ -61,10 +61,21 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
   }
 
   const { start, end } = getCurrentMonthRange()
-  const dateFrom = scalar('dateFrom') || start
-  const dateTo = scalar('dateTo') || end
-  const receivedFrom = scalar('receivedFrom') || start
-  const receivedTo = scalar('receivedTo') || end
+  const rawDateFrom = scalar('dateFrom')
+  const rawDateTo = scalar('dateTo')
+  const rawReceivedFrom = scalar('receivedFrom')
+  const rawReceivedTo = scalar('receivedTo')
+  // 两个日期筛选互相独立：只有显式传了日期才限制；两者都没选时默认本月。
+  const useDefaultMonth =
+    scalar('allDates') !== '1' &&
+    !rawDateFrom &&
+    !rawDateTo &&
+    !rawReceivedFrom &&
+    !rawReceivedTo
+  const dateFrom = rawDateFrom || (useDefaultMonth ? start : undefined)
+  const dateTo = rawDateTo || (useDefaultMonth ? end : undefined)
+  const receivedFrom = rawReceivedFrom || (useDefaultMonth ? start : undefined)
+  const receivedTo = rawReceivedTo || (useDefaultMonth ? end : undefined)
 
   const validGroups: BusinessPerformanceGroupBy[] = [
     'salesperson',
@@ -113,6 +124,8 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
     dateTo,
     receivedFrom,
     receivedTo,
+    dateRangeExplicit: Boolean(rawDateFrom || rawDateTo),
+    receivedRangeExplicit: Boolean(rawReceivedFrom || rawReceivedTo),
     salespersonIds: parseListParam(raw, 'salesperson'),
     shopIds: parseListParam(raw, 'shop'),
     productGroupIds: parseListParam(raw, 'productGroup'),
@@ -136,6 +149,8 @@ export default async function FinancePerformancePage({
     dateTo,
     receivedFrom,
     receivedTo,
+    dateRangeExplicit,
+    receivedRangeExplicit,
     salespersonIds,
     shopIds,
     productGroupIds,
@@ -266,6 +281,8 @@ export default async function FinancePerformancePage({
         multiDimensions={multiDimensions}
         groupBy={effectiveGroupBy}
         filters={filters}
+        dateRangeExplicit={dateRangeExplicit}
+        receivedRangeExplicit={receivedRangeExplicit}
         salespeople={salespeople}
         shops={shops}
         productGroups={productGroups}

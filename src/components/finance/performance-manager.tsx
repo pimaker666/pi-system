@@ -49,6 +49,8 @@ interface PerformanceManagerProps {
   multiDimensions: [BusinessPerformanceDimension, BusinessPerformanceDimension | null, BusinessPerformanceDimension | null]
   groupBy: BusinessPerformanceGroupBy
   filters: BusinessPerformanceFilters
+  dateRangeExplicit: boolean
+  receivedRangeExplicit: boolean
   salespeople: Option[]
   shops: Option[]
   productGroups: Option[]
@@ -292,6 +294,8 @@ export function PerformanceManager({
   multiDimensions,
   groupBy,
   filters,
+  dateRangeExplicit,
+  receivedRangeExplicit,
   salespeople,
   shops,
   productGroups,
@@ -319,6 +323,25 @@ export function PerformanceManager({
   const [dateTo, setDateTo] = useState(filters.dateTo ?? '')
   const [receivedFrom, setReceivedFrom] = useState(filters.receivedFrom ?? '')
   const [receivedTo, setReceivedTo] = useState(filters.receivedTo ?? '')
+  // 两个日期筛选互不牵连：只改一侧时，未主动选过的另一侧自动放开为不限。
+  const [orderRangeTouched, setOrderRangeTouched] = useState(dateRangeExplicit)
+  const [receivedRangeTouched, setReceivedRangeTouched] = useState(receivedRangeExplicit)
+  const [orderPickerVersion, setOrderPickerVersion] = useState(0)
+  const [receivedPickerVersion, setReceivedPickerVersion] = useState(0)
+  const dateStateKey = `${filters.dateFrom ?? ''}|${filters.dateTo ?? ''}|${filters.receivedFrom ?? ''}|${filters.receivedTo ?? ''}`
+  const [syncedDateKey, setSyncedDateKey] = useState(dateStateKey)
+  if (dateStateKey !== syncedDateKey) {
+    // 服务端返回了新口径（筛选提交、清空、前进/后退），本地状态与日期控件同步跟上。
+    setSyncedDateKey(dateStateKey)
+    setDateFrom(filters.dateFrom ?? '')
+    setDateTo(filters.dateTo ?? '')
+    setReceivedFrom(filters.receivedFrom ?? '')
+    setReceivedTo(filters.receivedTo ?? '')
+    setOrderRangeTouched(dateRangeExplicit)
+    setReceivedRangeTouched(receivedRangeExplicit)
+    setOrderPickerVersion((value) => value + 1)
+    setReceivedPickerVersion((value) => value + 1)
+  }
   const [selectedSalespeople, setSelectedSalespeople] = useState(
     filters.salespersonIds ?? [],
   )
@@ -349,6 +372,10 @@ export function PerformanceManager({
     if (dateTo) params.set('dateTo', dateTo)
     if (receivedFrom) params.set('receivedFrom', receivedFrom)
     if (receivedTo) params.set('receivedTo', receivedTo)
+    if (!dateFrom && !dateTo && !receivedFrom && !receivedTo) {
+      // 显式清空两个日期筛选时，避免服务端回落到「默认本月」。
+      params.set('allDates', '1')
+    }
     if (selectedSalespeople.length > 0) {
       params.set('salesperson', selectedSalespeople.join(','))
     }
@@ -384,10 +411,15 @@ export function PerformanceManager({
   }
 
   function clearFilters() {
-    setDateFrom('')
-    setDateTo('')
-    setReceivedFrom('')
-    setReceivedTo('')
+    // 先回到页面当前口径，跳转到无参地址后由服务端「默认本月」再同步一次。
+    setDateFrom(filters.dateFrom ?? '')
+    setDateTo(filters.dateTo ?? '')
+    setReceivedFrom(filters.receivedFrom ?? '')
+    setReceivedTo(filters.receivedTo ?? '')
+    setOrderRangeTouched(false)
+    setReceivedRangeTouched(false)
+    setOrderPickerVersion((value) => value + 1)
+    setReceivedPickerVersion((value) => value + 1)
     setSelectedSalespeople([])
     setSelectedShops([])
     setSelectedProductGroups([])
@@ -877,16 +909,28 @@ export function PerformanceManager({
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
           <div className="space-y-1.5 sm:col-span-2">
             <label className="text-xs font-medium text-muted-foreground">下单日期</label>
-            <DateRangePicker from={dateFrom} to={dateTo} onChange={({ from, to }) => {
+            <DateRangePicker key={`order-${orderPickerVersion}`} from={dateFrom} to={dateTo} onChange={({ from, to }) => {
               setDateFrom(from)
               setDateTo(to)
+              setOrderRangeTouched(true)
+              if (from && !receivedRangeTouched && (receivedFrom || receivedTo)) {
+                setReceivedFrom('')
+                setReceivedTo('')
+                setReceivedPickerVersion((value) => value + 1)
+              }
             }} className="w-full" />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <label className="text-xs font-medium text-muted-foreground">收款日期</label>
-            <DateRangePicker from={receivedFrom} to={receivedTo} onChange={({ from, to }) => {
+            <DateRangePicker key={`received-${receivedPickerVersion}`} from={receivedFrom} to={receivedTo} onChange={({ from, to }) => {
               setReceivedFrom(from)
               setReceivedTo(to)
+              setReceivedRangeTouched(true)
+              if (from && !orderRangeTouched && (dateFrom || dateTo)) {
+                setDateFrom('')
+                setDateTo('')
+                setOrderPickerVersion((value) => value + 1)
+              }
             }} className="w-full" />
           </div>
           <div className="space-y-1.5">
