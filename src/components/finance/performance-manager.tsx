@@ -780,7 +780,7 @@ export function PerformanceManager({
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardContent className="p-4">
-            <div className="text-xs text-muted-foreground">筛选订单数</div>
+            <div className="text-xs text-muted-foreground">订单数（按下单日期）</div>
             <div className="mt-1 text-xl font-semibold tabular-nums">
               {Number(summary.order_count)}
             </div>
@@ -921,7 +921,10 @@ export function PerformanceManager({
             }} className="w-full" />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <label className="text-xs font-medium text-muted-foreground">收款日期</label>
+            <label className="text-xs font-medium text-muted-foreground">
+              收款日期
+              <span className="ml-1 font-normal">（仅影响「已收」金额）</span>
+            </label>
             <DateRangePicker key={`received-${receivedPickerVersion}`} from={receivedFrom} to={receivedTo} onChange={({ from, to }) => {
               setReceivedFrom(from)
               setReceivedTo(to)
