@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
-import { Braces, Eye, Loader2, Plus, RotateCcw, Save, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import { ArrowLeft, Braces, Eye, Loader2, Plus, RotateCcw, Save, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -292,8 +293,6 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
     // keys like costs) fall back to code defaults instead of breaking the form.
     const out: QuoteOverrides = {
       FX_DEFAULT: Number(saved.FX_DEFAULT) > 0 ? Number(saved.FX_DEFAULT) : defaults.FX_DEFAULT,
-      PLATE_COLOR_PRICE:
-        Number(saved.PLATE_COLOR_PRICE) >= 0 ? Number(saved.PLATE_COLOR_PRICE) : defaults.PLATE_COLOR_PRICE,
     }
     for (const c of CATEGORIES) {
       out[c.id] = deepMerge(structuredClone(defaults[c.id]), saved[c.id])
@@ -363,10 +362,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
         })),
         {
           category: 'globals',
-          overrides: {
-            FX_DEFAULT: draft.FX_DEFAULT,
-            PLATE_COLOR_PRICE: draft.PLATE_COLOR_PRICE,
-          },
+          overrides: { FX_DEFAULT: draft.FX_DEFAULT },
         },
       ]
       const res = await saveQuoteParams(entries)
@@ -387,7 +383,6 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
     if (tab === 'globals') {
       patchGlobals((g) => {
         g.FX_DEFAULT = defaults.FX_DEFAULT
-        g.PLATE_COLOR_PRICE = defaults.PLATE_COLOR_PRICE
       })
       return
     }
@@ -395,10 +390,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
   }
 
   function openJson() {
-    const value =
-      tab === 'globals'
-        ? { FX_DEFAULT: draft.FX_DEFAULT, PLATE_COLOR_PRICE: draft.PLATE_COLOR_PRICE }
-        : draft[tab]
+    const value = tab === 'globals' ? { FX_DEFAULT: draft.FX_DEFAULT } : draft[tab]
     setJsonText(JSON.stringify(value, null, 2))
     setJsonTab(tab)
   }
@@ -516,12 +508,6 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
         <Row label="默认汇率" en="FX_DEFAULT">
           <Num value={Number(draft.FX_DEFAULT)} onCommit={(v) => patchGlobals((g) => (g.FX_DEFAULT = v))} />
         </Row>
-        <Row label="面膜版费" en="PLATE_COLOR_PRICE">
-          <Num
-            value={Number(draft.PLATE_COLOR_PRICE)}
-            onCommit={(v) => patchGlobals((g) => (g.PLATE_COLOR_PRICE = v))}
-          />
-        </Row>
       </Section>
       <p className="text-[11px] leading-relaxed text-muted-foreground">
         报价页顶部的汇率输入框仍可临时改单次的值，这里改的是每次打开的默认值。
@@ -555,6 +541,11 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
       <Section title="装盒人工" en="laborPerBox">
         <Row label="每盒人工" en="元/盒">
           <Num value={Number(d.laborPerBox)} onCommit={(v) => (d.laborPerBox = v)} />
+        </Row>
+      </Section>
+      <Section title="印刷色版费" en="plateColorPrice">
+        <Row label="每色版费" en="元/色">
+          <Num value={Number(d.plateColorPrice)} onCommit={(v) => (d.plateColorPrice = v)} />
         </Row>
       </Section>
       <Section title="彩盒阶梯" en="box · 从高到低命中">
@@ -1217,11 +1208,19 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">报价参数</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          修改后直接保存即可覆盖代码默认值，报价计算页刷新后生效；未保存的修改不影响线上。
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">报价参数</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            修改后直接保存即可覆盖代码默认值，报价计算页刷新后生效；未保存的修改不影响线上。
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/quote">
+            <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+            返回报价页
+          </Link>
+        </Button>
       </div>
 
       <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="参数分组">

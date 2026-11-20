@@ -29,7 +29,6 @@ const BASE_FX = 6.4
 const BASE_PLATE = 350
 // `let` + live bindings: applyQuoteOverrides can swap these at runtime (DB overrides).
 export let FX_DEFAULT = BASE_FX
-export let PLATE_COLOR_PRICE = BASE_PLATE
 
 export const COMPANY = {
   cn: '佛山京妍生物制品有限公司',
@@ -40,6 +39,7 @@ interface MaskData {
   defaults: QuoteInput
   box: Record<number, DescTier[]>
   laborPerBox: number
+  plateColorPrice: number
   tiers: TierMeta[]
   costs: {
     film: TieredCost
@@ -62,6 +62,7 @@ const mask: MaskData = {
     10: [[5000, 1.82], [2000, 2.0], [1000, 2.8], [0, 3.5]],
   },
   laborPerBox: 0.8,
+  plateColorPrice: BASE_PLATE,
   tiers: [
     [3000, '试单打样', 'Pilot order'],
     [5000, '试销测款', 'Market test'],
@@ -383,7 +384,6 @@ export function deepMerge<T>(base: T, overrides: unknown): T {
 
 export interface QuoteGlobals {
   FX_DEFAULT?: number
-  PLATE_COLOR_PRICE?: number
 }
 
 /**
@@ -418,14 +418,11 @@ export function applyQuoteOverrides(overrides: QuoteOverrides | null): void {
   }
   const fx = Number(src.FX_DEFAULT)
   FX_DEFAULT = Number.isFinite(fx) && fx > 0 ? fx : BASE_FX
-  const plate = Number(src.PLATE_COLOR_PRICE)
-  PLATE_COLOR_PRICE = Number.isFinite(plate) && plate >= 0 ? plate : BASE_PLATE
 }
 
 export function quoteDefaults(): QuoteOverrides {
   return {
     FX_DEFAULT: BASE_FX,
-    PLATE_COLOR_PRICE: BASE_PLATE,
     mask: structuredClone(BASE_DATA.mask),
     cotton: structuredClone(BASE_DATA.cotton),
     oil: structuredClone(BASE_DATA.oil),

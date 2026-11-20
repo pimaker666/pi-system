@@ -2,7 +2,6 @@ import {
   CATEGORIES,
   DATA,
   FX_DEFAULT,
-  PLATE_COLOR_PRICE,
   type AscTier,
   type CategoryId,
   type DescTier,
@@ -275,14 +274,15 @@ function maskAt(input: QuoteInput, qty: number, fx: number, marginOverride: numb
   const trayUnit = boxed && input.innerTray === '是' ? pickAsc(MC.tray.tiers, boxes) : 0
   const laborUnit = boxed ? DATA.mask.laborPerBox : 0
   const colors = num(input.colors, 0)
-  const plateTotal = colors * PLATE_COLOR_PRICE
+  const plateUnit = DATA.mask.plateColorPrice
+  const plateTotal = colors * plateUnit
   const rows = [
     { key: 'film', name: '膜片成本', nameEn: 'Mask sheet', basis: `面膜料体 + 天丝/蚕丝基布 + 无菌灌装 · ${film.toFixed(2)} 元/片`, total: film * qty },
     { key: 'bag', name: '铝箔袋', nameEn: 'Foil pouch', basis: qty < MC.bag.minQty ? `未达 ${MC.bag.minQty.toLocaleString('en-US')} 个，按 ¥${MC.bag.minTotal.toLocaleString('en-US')} 总价分摊` : `阶梯价 ${bag.toFixed(2)} 元/个`, total: bag * qty },
     { key: 'box', name: '彩盒', nameEn: 'Color box', basis: boxed ? `${boxes} 盒 × ${boxUnit.toFixed(2)} 元/盒（${ppb}片装）` : '片装无彩盒', total: boxUnit * boxes },
     { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${trayUnit.toFixed(2)} 元/盒 × ${boxes} 盒` : '未添加内托', total: trayUnit * boxes },
     { key: 'labor', name: '装盒人工', nameEn: 'Assembly labor', basis: boxed ? `${DATA.mask.laborPerBox.toFixed(2)} 元/盒 × ${boxes} 盒` : '片装免人工装配', total: laborUnit * boxes },
-    { key: 'plate', name: '印刷色版费', nameEn: 'Plate fee', basis: `${colors} 色 × ${PLATE_COLOR_PRICE} 元/色，按总量平摊`, total: plateTotal },
+    { key: 'plate', name: '印刷色版费', nameEn: 'Plate fee', basis: `${colors} 色 × ${plateUnit} 元/色，按总量平摊`, total: plateTotal },
   ]
   if (qty < MC.bag.minQty) warnings.push(`铝箔袋起订 ${MC.bag.minQty.toLocaleString('en-US')} 个：本单不足，袋子按总价 ¥${MC.bag.minTotal.toLocaleString('en-US')} 平摊。`)
   if (boxed && qty % ppb !== 0) warnings.push(`总片数不是 ${ppb} 的整数倍，按 ${boxes} 盒整盒计费。`)
