@@ -134,14 +134,14 @@ export function quoteNo(date: string, categoryId: CategoryId) {
 export function secondaryKpi(categoryId: CategoryId, r: QuoteResult) {
   if (categoryId === 'mask') {
     if (r.packPerUnit > 1) {
-      return { label: '整盒 FOB', en: 'per box', value: money3(r.packFob), foot: `出厂价 ¥${fmt(r.packPrice)} / 盒（${r.packPerUnit} 片）` }
+      return { label: '整盒报价', en: 'per box', value: money3(r.packFob), foot: `出厂价 ¥${fmt(r.packPrice)} / 盒（${r.packPerUnit} 片）` }
     }
-    return { label: '每千片 FOB', en: 'per 1,000 pcs', value: money3(r.unitFob * 1000), foot: `出厂价 ¥${fmt(r.unitPrice * 1000)} / 千片` }
+    return { label: '每千片报价', en: 'per 1,000 pcs', value: money3(r.unitFob * 1000), foot: `出厂价 ¥${fmt(r.unitPrice * 1000)} / 千片` }
   }
-  if (categoryId === 'cotton') return { label: '单片 FOB', en: 'per pad', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / 片` }
-  if (categoryId === 'oil') return { label: '每 ml FOB', en: 'per ml', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / ml` }
-  if (categoryId === 'cream') return { label: '每 g/ml FOB', en: 'per g/ml', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / g/ml` }
-  return { label: '每对 FOB', en: 'per pair', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / 对（${r.miniPerUnit} 对/${r.unitLabel}）` }
+  if (categoryId === 'cotton') return { label: '单片报价', en: 'per pad', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / 片` }
+  if (categoryId === 'oil') return { label: '每 ml 报价', en: 'per ml', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / ml` }
+  if (categoryId === 'cream') return { label: '每 g/ml 报价', en: 'per g/ml', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / g/ml` }
+  return { label: '每对报价', en: 'per pair', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / 对（${r.miniPerUnit} 对/${r.unitLabel}）` }
 }
 
 export function tierQtyHead(categoryId: CategoryId) {

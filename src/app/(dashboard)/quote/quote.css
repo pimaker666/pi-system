@@ -123,6 +123,21 @@
 .quote-table tr.is-current td:first-child {
   box-shadow: inset 3px 0 0 hsl(var(--primary));
 }
+/* USD quote column: keep the eye on the price actually quoted to buyers. */
+.quote-table th.is-usd {
+  background: hsl(212 70% 92%);
+  color: hsl(214 65% 36%);
+}
+.quote-table tbody td.is-usd {
+  background: hsl(212 75% 96%);
+  color: hsl(214 65% 36%);
+}
+.quote-table tbody tr:hover td.is-usd {
+  background: hsl(212 72% 93%);
+}
+.quote-table tbody tr.is-current td.is-usd {
+  background: hsl(212 68% 90%);
+}
 
 .quote-print-head {
   display: none;
@@ -260,6 +275,13 @@
   }
   .quote-table .print-col {
     display: none !important;
+  }
+  .quote-table th.is-usd,
+  .quote-table tbody td.is-usd {
+    background: hsl(212 75% 95%) !important;
+    color: hsl(214 65% 36%) !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
   .quote-table tr {
     break-inside: avoid;
