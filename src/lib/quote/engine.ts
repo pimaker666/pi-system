@@ -496,11 +496,11 @@ function creamAt(input: QuoteInput, qty: number, fx: number, marginOverride: num
   const C = DATA.cream
   const bulkCfg = C.bulk[String(input.bulkType)]
   const arr = C.containers[String(input.container)]
-  const idx = C.capacities.indexOf(cap)
   if (!arr) errors.push(`参数字典中暂无「${input.container}」的核定价格。`)
   if (!bulkCfg) errors.push(`参数字典中暂无「${input.bulkType}」的料体基准价。`)
-  if (idx < 0) errors.push(`容量 ${cap}ml/g 不在官方规格表内（5–300ml/g）。`)
-  const bottle = arr && idx >= 0 ? arr[idx] : 0
+  const specPrice = arr?.[cap]
+  if (arr && specPrice == null) errors.push(`「${input.container}」没有 ${cap} ml/g 这一规格，请更换容量或先在报价参数里补充。`)
+  const bottle = specPrice ?? 0
   const CC = C.costs
   const discount = pickDesc(CC.discount.tiers, qty)
   const autoMargin = qty >= 10000 ? 0.16 : qty >= 5000 ? 0.2 : qty >= 2000 ? 0.3 : 0.35
@@ -574,7 +574,8 @@ export function eyePackOf(input: QuoteInput): EyePack | null {
   if (!m) return null
   if (m.kind === 'jar') {
     const jar = E.jars[String(input.jar)] || E.jars['100g常规罐']
-    return { perPack: jar.pairs, jarPrice: jar.price, isJar: true, kind: 'jar', boxed: input.colorBox === '是', packName: String(input.jar) }
+    const perJar = Math.floor(num(input.pairsPerJar, 0))
+    return { perPack: perJar > 0 ? perJar : jar.pairs, jarPrice: jar.price, isJar: true, kind: 'jar', boxed: input.colorBox === '是', packName: String(input.jar) }
   }
   const boxed = input.packMode !== '单袋散装'
   return { perPack: boxed ? 6 : 1, isJar: false, kind: m.kind, boxed, packName: boxed ? '6对彩盒装' : '单袋散装' }
@@ -599,6 +600,10 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
   }
   if (m.kind === 'jar' && !E.jars[String(input.jar)]) {
     warnings.push(`未收录罐型「${input.jar}」，已按 100g 常规罐核算。`)
+  }
+  const jarCfg = E.jars[String(input.jar)]
+  if (m.kind === 'jar' && jarCfg && jarCfg.price === 0 && !(num(input.pairsPerJar, 0) > 0)) {
+    errors.push('选择「无需包材（客户自备）」时必须填写每罐对数。')
   }
   const packs = ceil(pairs / pack.perPack)
   const billedPairs = packs * pack.perPack
@@ -665,7 +670,7 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
     specs: [
       ['产品品类', String(input.product)],
       ['膜材材质', String(input.material)],
-      ['包装形式', pack.packName],
+      ['包装形式', pack.isJar ? `${pack.packName} · ${pack.perPack} 对/${unitLabel}` : pack.packName],
       ['订购总量', `${pairs.toLocaleString('en-US')} 对（折合 ${packs.toLocaleString('en-US')} 件）`],
       ['印刷工艺', pack.isJar ? String(input.print) : `袋装专版印刷 · ${colors} 色`],
     ],
