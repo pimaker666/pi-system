@@ -411,11 +411,11 @@ export function PerformanceManager({
   }
 
   function clearFilters() {
-    // 先回到页面当前口径，跳转到无参地址后由服务端「默认本月」再同步一次。
-    setDateFrom(filters.dateFrom ?? '')
-    setDateTo(filters.dateTo ?? '')
-    setReceivedFrom(filters.receivedFrom ?? '')
-    setReceivedTo(filters.receivedTo ?? '')
+    // 清空全部条件，两个日期也一并回到「全部」；allDates 防止服务端回落到默认本月。
+    setDateFrom('')
+    setDateTo('')
+    setReceivedFrom('')
+    setReceivedTo('')
     setOrderRangeTouched(false)
     setReceivedRangeTouched(false)
     setOrderPickerVersion((value) => value + 1)
@@ -424,7 +424,7 @@ export function PerformanceManager({
     setSelectedShops([])
     setSelectedProductGroups([])
     setSelectedShipping([])
-    navigate('/finance/performance')
+    navigate('/finance/performance?allDates=1')
   }
 
   function updateDimension(index: 0 | 1 | 2, value: BusinessPerformanceDimension | null) {

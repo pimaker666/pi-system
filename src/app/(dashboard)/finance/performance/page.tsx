@@ -65,15 +65,15 @@ function parseSearchParams(raw: Record<string, string | string[] | undefined>) {
   const rawDateTo = scalar('dateTo')
   const rawReceivedFrom = scalar('receivedFrom')
   const rawReceivedTo = scalar('receivedTo')
-  // 两个日期筛选互相独立：只有显式传了日期才限制；两者都没选时默认本月。
+  // 两个日期筛选互相独立：只有显式传了日期才限制；全都没传时只给收款日期默认本月，下单日期不限。
   const useDefaultMonth =
     scalar('allDates') !== '1' &&
     !rawDateFrom &&
     !rawDateTo &&
     !rawReceivedFrom &&
     !rawReceivedTo
-  const dateFrom = rawDateFrom || (useDefaultMonth ? start : undefined)
-  const dateTo = rawDateTo || (useDefaultMonth ? end : undefined)
+  const dateFrom = rawDateFrom || undefined
+  const dateTo = rawDateTo || undefined
   const receivedFrom = rawReceivedFrom || (useDefaultMonth ? start : undefined)
   const receivedTo = rawReceivedTo || (useDefaultMonth ? end : undefined)
 
