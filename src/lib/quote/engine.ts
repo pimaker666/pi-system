@@ -105,6 +105,23 @@ function pickAsc(rules: readonly AscTier[], q: number): number {
   return rules[rules.length - 1][1]
 }
 
+/** 后台录入的档位可能乱序，统一按阈值从高到低排序并丢弃非法行。 */
+function sortedMarginRules(rules: readonly DescTier[]): DescTier[] {
+  return rules
+    .filter((r) => Array.isArray(r) && Number.isFinite(r[0]) && Number.isFinite(r[1]))
+    .slice()
+    .sort((a, b) => b[0] - a[0])
+}
+
+/** 自动毛利率：按数量从高到低命中第一条，strict 决定 > 还是 ≥。 */
+function marginOf(cfg: { strict: boolean; rules: readonly DescTier[] }, qty: number): number {
+  const rules = sortedMarginRules(cfg.rules)
+  for (const [threshold, margin] of rules) {
+    if (cfg.strict ? qty > threshold : qty >= threshold) return margin
+  }
+  return rules[rules.length - 1]?.[1] ?? 0
+}
+
 /** 开机费成本：≤ setupQty 按 setupFee 平摊，超过后走 ≥ 阶梯。 */
 function setupUnit(cost: { setupQty: number; setupFee: number; tiers: readonly DescTier[] }, qty: number): number {
   if (qty <= cost.setupQty) return cost.setupFee / qty
@@ -265,7 +282,7 @@ function maskAt(input: QuoteInput, qty: number, fx: number, marginOverride: numb
   const boxed = input.colorBox !== '否'
   const ppb = boxed ? Math.max(1, Math.floor(num(input.piecesPerBox, 4))) : 1
   const boxes = boxed ? ceil(qty / ppb) : 0
-  const autoMargin = qty > 20000 ? 0.15 : qty > 10000 ? 0.25 : 0.35
+  const autoMargin = marginOf(DATA.mask.margins, qty)
   const margin = marginOverride == null ? autoMargin : marginOverride
   const MC = DATA.mask.costs
   const film = pickDesc(MC.film.tiers, qty)
@@ -338,9 +355,7 @@ function cottonAt(input: QuoteInput, qty: number, fx: number, marginOverride: nu
   const isIce = String(input.material).indexOf('冰冰') >= 0
   const C = DATA.cotton
   const padPrice = isIce ? C.padPrice['冰冰棉'] : C.padPrice['无纺布（传统棉）']
-  const autoMargin = isIce
-    ? qty >= 10000 ? 0.15 : qty >= 5000 ? 0.2 : 0.3
-    : qty >= 10000 ? 0.15 : qty >= 5000 ? 0.2 : qty >= 2000 ? 0.25 : 0.3
+  const autoMargin = marginOf(isIce ? C.iceMargins : C.margins, qty)
   const margin = marginOverride == null ? autoMargin : marginOverride
   const jar = form === '罐装' ? pickDesc(C.jarTiers, qty) : 0
   const CC = C.costs
@@ -421,7 +436,7 @@ function oilAt(input: QuoteInput, qty: number, fx: number, marginOverride: numbe
   const table = O.bottles[String(input.bottle)] || {}
   const bottle = table[cap]
   if (bottle == null) errors.push(`参数字典中暂无「${input.bottle} · ${cap}ml」的官方核定瓶价，请更换瓶型或容量。`)
-  const autoMargin = qty > 5000 ? 0.23 : qty > 2000 ? 0.35 : qty > 500 ? 0.47 : 0.53
+  const autoMargin = marginOf(O.margins, qty)
   const margin = marginOverride == null ? autoMargin : marginOverride
   const bulkRate = O.bulk[String(input.category)] || O.bulk['精华类']
   const bulk = cap * bulkRate
@@ -503,7 +518,7 @@ function creamAt(input: QuoteInput, qty: number, fx: number, marginOverride: num
   const bottle = specPrice ?? 0
   const CC = C.costs
   const discount = pickDesc(CC.discount.tiers, qty)
-  const autoMargin = qty >= 10000 ? 0.16 : qty >= 5000 ? 0.2 : qty >= 2000 ? 0.3 : 0.35
+  const autoMargin = marginOf(C.margins, qty)
   const margin = marginOverride == null ? autoMargin : marginOverride
   const perG = bulkCfg ? bulkCfg.perG : 0
   const bulk = cap * perG
@@ -627,7 +642,7 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
   const trayOn = pack.boxed && input.innerTray === '是'
   const trayUnit = trayOn ? pickAsc(EC.tray.tiers, packs) : 0
   const laborUnit = pack.boxed ? E.laborPerBox : 0
-  const autoMargin = pairs >= 120000 ? 0.35 : pairs >= 30000 ? 0.47 : 0.53
+  const autoMargin = marginOf(E.margins, pairs)
   const margin = marginOverride == null ? autoMargin : marginOverride
 
   const rows = [
@@ -644,8 +659,10 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
   if (pack.isJar && input.print === '瓶标' && packs <= EC.label.setupQty) notes.push(`瓶标开机费 ¥${EC.label.setupFee} 平摊；超过 ${EC.label.setupQty.toLocaleString('en-US')} 件进入阶梯单价。`)
   if (pack.isJar && input.print === '丝印' && packs <= EC.silk.setupQty) notes.push(`丝印开机费 ¥${EC.silk.setupFee} 平摊；超过 ${EC.silk.setupQty.toLocaleString('en-US')} 件进入阶梯单价。`)
   if (!pack.isJar) notes.push('袋装自带专版印刷，按色数收取 ¥300/色版费；罐装免版费。')
-  if (pairs >= 120000) notes.push('已进入 12 万对战略阶梯，享 35% 官方底价毛利。')
-  else if (pairs >= 30000) notes.push('已达 3 万对档，进入 47% 官方毛利阶梯。')
+  const [topRule, midRule] = sortedMarginRules(E.margins.rules)
+  const pct = (m: number) => `${Math.round(m * 100)}%`
+  if (topRule && pairs >= topRule[0]) notes.push(`已进入 ≥${topRule[0].toLocaleString('en-US')} 对战略阶梯，享 ${pct(autoMargin)} 官方底价毛利。`)
+  else if (midRule && pairs >= midRule[0]) notes.push(`已达 ≥${midRule[0].toLocaleString('en-US')} 对档，进入 ${pct(autoMargin)} 官方毛利阶梯。`)
 
   const unitLabel = pack.isJar ? '罐' : pack.boxed ? '盒' : '袋'
   return finalize({
@@ -711,26 +728,19 @@ export function compute(categoryId: CategoryId, input: QuoteInput, opts: Compute
 
 export function autoMargin(categoryId: CategoryId, input: QuoteInput): number {
   if (categoryId === 'mask') {
-    const q = num(input.totalPieces, 1)
-    return q > 20000 ? 0.15 : q > 10000 ? 0.25 : 0.35
+    return marginOf(DATA.mask.margins, num(input.totalPieces, 1))
   }
   if (categoryId === 'cotton') {
-    const q = num(input.qty, 1)
     const isIce = String(input.material).indexOf('冰冰') >= 0
-    return isIce
-      ? q >= 10000 ? 0.15 : q >= 5000 ? 0.2 : 0.3
-      : q >= 10000 ? 0.15 : q >= 5000 ? 0.2 : q >= 2000 ? 0.25 : 0.3
+    return marginOf(isIce ? DATA.cotton.iceMargins : DATA.cotton.margins, num(input.qty, 1))
   }
   if (categoryId === 'oil') {
-    const q = num(input.qty, 1)
-    return q > 5000 ? 0.23 : q > 2000 ? 0.35 : q > 500 ? 0.47 : 0.53
+    return marginOf(DATA.oil.margins, num(input.qty, 1))
   }
   if (categoryId === 'cream') {
-    const q = num(input.qty, 1)
-    return q >= 10000 ? 0.16 : q >= 5000 ? 0.2 : q >= 2000 ? 0.3 : 0.35
+    return marginOf(DATA.cream.margins, num(input.qty, 1))
   }
-  const pairs = num(input.qtyPairs, 1)
-  return pairs >= 120000 ? 0.35 : pairs >= 30000 ? 0.47 : 0.53
+  return marginOf(DATA.eyemask.margins, num(input.qtyPairs, 1))
 }
 
 export function categoryLabel(categoryId: CategoryId) {

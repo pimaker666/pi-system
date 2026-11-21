@@ -7,7 +7,13 @@ export type QuoteInput = Record<string, string | number>
 export type DescTier = readonly [min: number, price: number]
 /** Ascending tiers: the first threshold the quantity stays under wins. */
 export type AscTier = readonly [max: number, price: number]
-export type MarginRule = readonly [minExclusive: number, margin: number]
+export type MarginRule = readonly [threshold: number, margin: number]
+
+/** 自动毛利率规则：从高到低命中第一条；strict 为 true 表示「数量 > 阈值」，否则「数量 ≥ 阈值」。 */
+export interface MarginRuleSet {
+  strict: boolean
+  rules: MarginRule[]
+}
 export type TierMeta = readonly [qty: number, label: string, labelEn: string]
 
 export const CATEGORIES: readonly {
@@ -37,6 +43,7 @@ export const COMPANY = {
 
 interface MaskData {
   defaults: QuoteInput
+  margins: MarginRuleSet
   box: Record<number, DescTier[]>
   laborPerBox: number
   plateColorPrice: number
@@ -56,6 +63,7 @@ const mask: MaskData = {
     innerTray: '否',
     colors: 4,
   },
+  margins: { strict: true, rules: [[20000, 0.15], [10000, 0.25], [0, 0.35]] },
   box: {
     4: [[5000, 0.72], [2000, 0.8], [1000, 1.3], [0, 2.0]],
     5: [[5000, 0.92], [2000, 1.0], [1000, 1.5], [0, 2.4]],
@@ -80,6 +88,8 @@ const mask: MaskData = {
 
 interface CottonData {
   defaults: QuoteInput
+  margins: MarginRuleSet
+  iceMargins: MarginRuleSet
   jarTiers: DescTier[]
   padPrice: Record<string, number>
   lotion: {
@@ -107,6 +117,8 @@ const cotton: CottonData = {
     innerTray: '是',
     print: '瓶标',
   },
+  margins: { strict: false, rules: [[10000, 0.15], [5000, 0.2], [2000, 0.25], [0, 0.3]] },
+  iceMargins: { strict: false, rules: [[10000, 0.15], [5000, 0.2], [0, 0.3]] },
   jarTiers: [[10000, 2.8], [1000, 3.2], [0, 3.6]],
   padPrice: { '无纺布（传统棉）': 0.03, '冰冰棉': 0.06 },
   lotion: {
@@ -139,6 +151,7 @@ interface CartonBand {
 
 interface OilData {
   defaults: QuoteInput
+  margins: MarginRuleSet
   bottles: Record<string, Record<number, number>>
   bulk: Record<string, number>
   box: { small: CartonBand; mid: CartonBand; large: CartonBand }
@@ -161,6 +174,7 @@ const oil: OilData = {
     innerTray: '是',
     print: '瓶标',
   },
+  margins: { strict: true, rules: [[5000, 0.23], [2000, 0.35], [500, 0.47], [0, 0.53]] },
   bottles: {
     '滴管瓶（玻璃）': { 20: 0.91, 30: 0.96, 40: 1.12, 50: 1.2, 60: 1.28 },
     '精油瓶（玻璃）': { 5: 0.35, 10: 0.38, 15: 0.39, 20: 0.4, 30: 0.5, 50: 0.53, 100: 0.68 },
@@ -201,6 +215,7 @@ const oil: OilData = {
 
 interface CreamData {
   defaults: QuoteInput
+  margins: MarginRuleSet
   bulk: Record<string, { kg: number; perG: number }>
   /** 器型 → (容量 ml/g → 元/个)；每种器型的规格表独立，不要求容量一致。 */
   containers: Record<string, Record<number, number>>
@@ -225,6 +240,7 @@ const cream: CreamData = {
     innerTray: '是',
     print: '丝印',
   },
+  margins: { strict: false, rules: [[10000, 0.16], [5000, 0.2], [2000, 0.3], [0, 0.35]] },
   bulk: {
     普通面霜: { kg: 45, perG: 0.045 },
     '胶囊面霜、眼霜、洗面奶、防晒霜': { kg: 60, perG: 0.06 },
@@ -290,6 +306,7 @@ export interface FoilBagCost {
 
 interface EyemaskData {
   defaults: QuoteInput
+  margins: MarginRuleSet
   membranes: Record<string, { floorTotal: number; floorPrice: number; moq: number; kind: MembraneKind }>
   jars: Record<string, { pairs: number; price: number }>
   bagPrice: {
@@ -321,6 +338,7 @@ const eyemask: EyemaskData = {
     print: '丝印',
     plateColors: 4,
   },
+  margins: { strict: false, rules: [[120000, 0.35], [30000, 0.47], [0, 0.53]] },
   membranes: {
     罐装膜材: { floorTotal: 1200, floorPrice: 0.08, moq: 15000, kind: 'jar' },
     '片装水凝胶（吸塑）': { floorTotal: 0, floorPrice: 0.3, moq: 50000, kind: 'waterbag' },

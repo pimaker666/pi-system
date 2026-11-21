@@ -279,6 +279,48 @@ function TierMetaTable({
   )
 }
 
+/** 默认毛利率档位：[数量阈值, 毛利率]，按阈值从高到低命中。 */
+function MarginTable({
+  rows,
+  strict,
+  onChange,
+}: {
+  rows: readonly (readonly [number, number])[]
+  strict: boolean
+  onChange: (r: [number, number][]) => void
+}) {
+  const list = rows.map((r) => [r[0], r[1]] as [number, number])
+  const update = (i: number, col: 0 | 1, v: number) => {
+    const next = list.map((r, j) =>
+      j === i ? ([col === 0 ? v : r[0], col === 1 ? v : r[1]] as [number, number]) : r,
+    )
+    onChange(next)
+  }
+  return (
+    <div className="space-y-1.5">
+      <div className="grid grid-cols-[1fr_1fr_28px] items-center gap-2 text-[10px] text-muted-foreground">
+        <span>{strict ? '> 数量' : '≥ 数量'}</span>
+        <span>毛利率（%）</span>
+        <span />
+      </div>
+      {list.map((r, i) => (
+        <div key={i} className="grid grid-cols-[1fr_1fr_28px] items-center gap-2">
+          <Num value={r[0]} onCommit={(v) => update(i, 0, v)} />
+          <Num
+            value={Math.round(r[1] * 10000) / 100}
+            onCommit={(v) => update(i, 1, Math.min(95, Math.max(0, v)) / 100)}
+          />
+          <Del onClick={() => onChange(list.filter((_, j) => j !== i))} />
+        </div>
+      ))}
+      <Add
+        label="添加档位"
+        onClick={() => onChange([...list, [0, list[list.length - 1]?.[1] ?? 0.3]])}
+      />
+    </div>
+  )
+}
+
 const MEMBRANE_KINDS = ['jar', 'waterbag', 'gelbag', 'silicone']
 
 // ------------------------------------------------------------------ manager
@@ -515,8 +557,22 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
     </>
   )
 
+  const marginSection = (cfg: any) => (
+    <Section title="默认毛利率" en="margins · 从高到低命中">
+      <Row label="数量 → 毛利率">
+        <MarginTable rows={cfg.rules} strict={!!cfg.strict} onChange={(r) => (cfg.rules = r)} />
+      </Row>
+      <div className="px-3.5 py-2">
+        <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+          按订单数量命中第一条达标档位；报价页勾选「手动指定」可单次覆盖。
+        </p>
+      </div>
+    </Section>
+  )
+
   const renderMask = (d: any) => (
     <>
+      {marginSection(d.margins)}
       <Section title="默认参数" en="Defaults">
         <Row label="定制总量" en="totalPieces">
           <Num value={Number(d.defaults.totalPieces)} onCommit={(v) => (d.defaults.totalPieces = v)} />
@@ -593,6 +649,19 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
 
   const renderCotton = (d: any) => (
     <>
+      <Section title="默认毛利率" en="margins · 从高到低命中">
+        <Row label="无纺布（传统棉）">
+          <MarginTable rows={d.margins.rules} strict={!!d.margins.strict} onChange={(r) => (d.margins.rules = r)} />
+        </Row>
+        <Row label="冰冰棉">
+          <MarginTable rows={d.iceMargins.rules} strict={!!d.iceMargins.strict} onChange={(r) => (d.iceMargins.rules = r)} />
+        </Row>
+        <div className="px-3.5 py-2">
+          <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+            按订单数量命中第一条达标档位；报价页勾选「手动指定」可单次覆盖。
+          </p>
+        </div>
+      </Section>
       <Section title="默认参数" en="Defaults">
         <Row label="包装形态" en="packForm">
           <Sel value={String(d.defaults.packForm)} options={['罐装', '袋装']} onChange={(v) => (d.defaults.packForm = v)} />
@@ -721,6 +790,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
     const caps = cur ? Object.keys(d.bottles[cur]).map(Number).sort((a, b) => a - b) : []
     return (
       <>
+        {marginSection(d.margins)}
         <Section title="默认参数" en="Defaults">
           <Row label="产品品类" en="category">
             <Sel value={String(d.defaults.category)} options={Object.keys(d.bulk)} onChange={(v) => (d.defaults.category = v)} />
@@ -854,6 +924,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
     const caps = cur ? Object.keys(d.containers[cur]).map(Number).sort((a, b) => a - b) : []
     return (
       <>
+        {marginSection(d.margins)}
         <Section title="默认参数" en="Defaults">
           <Row label="料体品类" en="bulkType">
             <Sel value={String(d.defaults.bulkType)} options={Object.keys(d.bulk)} onChange={(v) => (d.defaults.bulkType = v)} />
@@ -1036,6 +1107,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
 
   const renderEyemask = (d: any) => (
     <>
+      {marginSection(d.margins)}
       <Section title="默认参数" en="Defaults">
         <Row label="产品" en="product">
           <Sel value={String(d.defaults.product)} options={['眼膜', '唇膜']} onChange={(v) => (d.defaults.product = v)} />
