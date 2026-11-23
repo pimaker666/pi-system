@@ -17,7 +17,7 @@ import { NUMERIC_KEYS, fieldsFor, type FormField } from '@/lib/quote/form'
 import { pct } from '@/lib/quote/text'
 
 /** Fields that belong to the packaging / printing group; everything else is product spec. */
-const PACK_KEYS = new Set(['colorBox', 'innerTray', 'piecesPerBox', 'colors', 'plateColors', 'print', 'packMode'])
+const PACK_KEYS = new Set(['colorBox', 'innerTray', 'piecesPerBox', 'pairsPerBox', 'colors', 'plateColors', 'print', 'packMode'])
 
 /** Number inputs keep a string draft so typing / clearing never fights the parser. */
 function NumberField({

@@ -1119,7 +1119,10 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
           <Sel value={String(d.defaults.jar)} options={Object.keys(d.jars)} onChange={(v) => (d.defaults.jar = v)} />
         </Row>
         <Row label="包装形式" en="packMode">
-          <Sel value={String(d.defaults.packMode)} options={['6对盒装', '单袋散装']} onChange={(v) => (d.defaults.packMode = v)} />
+          <Sel value={String(d.defaults.packMode)} options={['盒装', '单袋散装']} onChange={(v) => (d.defaults.packMode = v)} />
+        </Row>
+        <Row label="每盒对数" en="pairsPerBox">
+          <Num value={Number(d.defaults.pairsPerBox)} onCommit={(v) => (d.defaults.pairsPerBox = v)} />
         </Row>
         <Row label="定制对数" en="qtyPairs">
           <Num value={Number(d.defaults.qtyPairs)} onCommit={(v) => (d.defaults.qtyPairs = v)} />
