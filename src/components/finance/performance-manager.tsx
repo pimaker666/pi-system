@@ -923,7 +923,7 @@ export function PerformanceManager({
           <div className="space-y-1.5 sm:col-span-2">
             <label className="text-xs font-medium text-muted-foreground">
               收款日期
-              <span className="ml-1 font-normal">（仅影响「已收」金额，按实际到账日归集）</span>
+              <span className="ml-1 font-normal">（按实际到账日筛选订单）</span>
             </label>
             <DateRangePicker key={`received-${receivedPickerVersion}`} from={receivedFrom} to={receivedTo} onChange={({ from, to }) => {
               setReceivedFrom(from)
@@ -981,6 +981,9 @@ export function PerformanceManager({
             清空
           </Button>
         </div>
+        <p className="text-xs text-muted-foreground">
+          下单日期与收款日期按订单取交集：只选一个时按该条件筛选订单；两个都选时，只保留「下单日期内下单」且「收款日期内有到账（含建单录入实收）」的订单。「已收」金额按实际到账日归集。
+        </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -1197,7 +1200,7 @@ export function PerformanceManager({
       )}
       {(activeGroupBy === 'date' || activeGroupBy === 'month') && (
         <p className="text-xs text-muted-foreground">
-          本表订单数、订单总额与未收按下单日期归行；「已收」按实际到账日归行，因此会出现订单数为 0、只有已收的行（早期订单在本期到账）。
+          本表订单数、订单总额与未收按下单日期归行；「已收」按实际到账日归行，因此可能出现订单数为 0、只有已收的行（早期订单在本期到账）。
         </p>
       )}
       </>
