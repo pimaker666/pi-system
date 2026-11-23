@@ -169,7 +169,8 @@ export function specLine(categoryId: CategoryId, input: QuoteInput) {
   if (categoryId === 'cream') return `${en(input.bulkType, EN.bulkType)} · ${en(input.container, EN.container)} · ${input.capacity} ml/g · ${en(input.print, EN.print)}`
   const m = DATA.eyemask.membranes[String(input.material)] || ({} as { kind?: string })
   const perJar = Math.floor(Number(input.pairsPerJar)) || DATA.eyemask.jars[String(input.jar)]?.pairs || 1
-  const pack = m.kind === 'jar' ? `${en(input.jar, EN.jar)} · ${perJar} pairs / jar` : input.colorBox === '是' ? '6 pairs / box' : 'Single sachet'
+  const perBox = Math.floor(Number(input.pairsPerBox)) || Number(DATA.eyemask.defaults.pairsPerBox) || 6
+  const pack = m.kind === 'jar' ? `${en(input.jar, EN.jar)} · ${perJar} pairs / jar` : input.colorBox === '是' ? `${perBox} pairs / box` : 'Single sachet'
   return `${en(input.product, EN.product)} · ${en(input.material, EN.material)} · ${pack}`
 }
 

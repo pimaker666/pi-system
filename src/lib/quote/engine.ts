@@ -578,7 +578,8 @@ export function eyePackOf(input: QuoteInput): EyePack | null {
     return { perPack: perJar > 0 ? perJar : jar.pairs, jarPrice: jar.price, isJar: true, kind: 'jar', boxed: input.colorBox === '是', packName: String(input.jar) }
   }
   const boxed = input.packMode !== '单袋散装'
-  return { perPack: boxed ? 6 : 1, isJar: false, kind: m.kind, boxed, packName: boxed ? '6对彩盒装' : '单袋散装' }
+  const perBox = Math.max(1, Math.floor(num(input.pairsPerBox, 0)) || Number(E.defaults.pairsPerBox) || 6)
+  return { perPack: boxed ? perBox : 1, isJar: false, kind: m.kind, boxed, packName: boxed ? `${perBox}对彩盒装` : '单袋散装' }
 }
 
 function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: number | null) {

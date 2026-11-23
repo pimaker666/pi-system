@@ -30,6 +30,9 @@ const opt = (value: string | number, label?: string): FormOption => ({
 
 
 export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[] {
+  // 当前色数 → 版费实时回显，手填任意色数也能对上价格。
+  const maskColors = Math.max(1, Math.floor(Number(input.colors) || Number(DATA.mask.defaults.colors) || 1))
+  const bagColors = Math.max(1, Math.floor(Number(input.plateColors) || Number(DATA.eyemask.defaults.plateColors) || 1))
   if (categoryId === 'mask') {
     return [
       {
@@ -55,9 +58,9 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
         visible: (s) => s.colorBox !== '否',
       },
       {
-        type: 'select', key: 'colors', label: '印刷色版数', labelEn: 'Print colors',
-        options: [1, 2, 3, 4, 5, 6].map((v) => opt(v, v + ' 色' + (v === 4 ? '（默认）' : ''))),
-        hint: '350 元/色，全额按总片数平摊入单价。',
+        type: 'number', key: 'colors', label: '印刷色版数', labelEn: 'Print colors', unit: '色',
+        min: 1, datalist: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+        hint: `${DATA.mask.plateColorPrice} 元/色，当前 ${maskColors} 色 → 版费 ¥${(maskColors * DATA.mask.plateColorPrice).toLocaleString('en-US')}，全额按总片数平摊入单价。可下拉 1–9 或直接输入任意色数。`,
       },
     ]
   }
@@ -222,9 +225,15 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
       hint: '袋装选“否”即单袋散装；彩盒按件数阶梯 0.95–2.00 元。',
     },
     {
+      type: 'number', key: 'pairsPerBox', label: '每盒对数', labelEn: 'Pairs / box', unit: '对/盒',
+      min: 1, datalist: [3, 4, 5, 6, 7, 8, 10],
+      hint: '袋装彩盒可自选每盒对数（默认 6 对）；盒数 = 总对数 ÷ 每盒对数，彩盒 / 内托 / 装盒人工都按盒计费。可下拉或直接输入。',
+      visible: (s) => s.colorBox === '是' && !isJarKind(s),
+    },
+    {
       type: 'select', key: 'innerTray', label: '彩盒内托', labelEn: 'Inner tray',
       options: [opt('是', '加吸塑内托'), opt('否', '不加内托')],
-      hint: '≤1,000 件 0.20 元；>1,000 件 0.10 元；罐装与 6 对盒装通用，单袋散装不产生内托。',
+      hint: '≤1,000 件 0.20 元；>1,000 件 0.10 元；罐装与盒装通用，单袋散装不产生内托。',
       visible: (s) => s.colorBox === '是',
     },
     {
@@ -234,9 +243,9 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
       visible: isJarKind,
     },
     {
-      type: 'select', key: 'plateColors', label: '袋子印刷色数', labelEn: 'Bag plate colors',
-      options: [1, 2, 3, 4, 5, 6].map((v) => opt(v, v + ' 色 · 版费 ¥' + v * 300)),
-      hint: '袋装专版印刷 300 元/色；罐装免版费。',
+      type: 'number', key: 'plateColors', label: '袋子印刷色数', labelEn: 'Bag plate colors', unit: '色',
+      min: 1, datalist: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+      hint: `${DATA.eyemask.platePerColor} 元/色（袋装专版），当前 ${bagColors} 色 → 版费 ¥${(bagColors * DATA.eyemask.platePerColor).toLocaleString('en-US')}，按件数平摊；罐装免版费。可下拉 1–9 或直接输入。`,
       visible: (s) => !isJarKind(s),
     },
     {
@@ -259,7 +268,10 @@ export function normalizeInput(categoryId: CategoryId, input: QuoteInput, prev?:
   }
   if (categoryId === 'eyemask') {
     const m = DATA.eyemask.membranes[String(next.material)]
-    if (m && m.kind !== 'jar') next.packMode = next.colorBox === '是' ? '6对盒装' : '单袋散装'
+    if (m && m.kind !== 'jar') {
+      next.packMode = next.colorBox === '是' ? '盒装' : '单袋散装'
+      if (!(Number(next.pairsPerBox) > 0)) next.pairsPerBox = DATA.eyemask.defaults.pairsPerBox
+    }
     if (m && m.kind === 'jar') {
       next.print = next.print === '无' || next.print == null ? '丝印' : next.print
       const jar = DATA.eyemask.jars[String(next.jar)]
