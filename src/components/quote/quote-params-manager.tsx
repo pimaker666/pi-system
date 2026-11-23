@@ -339,6 +339,11 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
     for (const c of CATEGORIES) {
       out[c.id] = deepMerge(structuredClone(defaults[c.id]), saved[c.id])
     }
+    // 兼容曾存成「每盒对数 → 阶梯」对象的旧草稿：取 6 对档作为基准阶梯。
+    const eye = out.eyemask as Record<string, any>
+    if (eye.box && !Array.isArray(eye.box)) {
+      eye.box = eye.box[6] ?? Object.values(eye.box)[0] ?? []
+    }
     return out
   })
   const [jsonTab, setJsonTab] = useState<TabId | null>(null)
@@ -1228,9 +1233,14 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
         <Row label="装盒人工" en="元/件">
           <Num value={Number(d.laborPerBox)} onCommit={(v) => (d.laborPerBox = v)} />
         </Row>
-        <Row label="外彩盒阶梯" en="box">
-          <TierTable rows={d.box} thresholdLabel="≤ 数量（件）" unit="¥/件" onChange={(r) => (d.box = r)} />
+        <Row label="外彩盒阶梯" en="box · 6 对/盒基准">
+          <TierTable rows={d.box} thresholdLabel="≤ 数量（盒）" unit="¥/盒" onChange={(r) => (d.box = r)} />
         </Row>
+        <div className="px-3.5 py-2">
+          <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+            阶梯按「6 对/盒」计价；报价页改每盒对数时，按 基准盒价 ÷ 6 × 对数 自动折算盒价（如 3 对 = 基准的一半）。罐装外盒不折算。
+          </p>
+        </div>
       </Section>
       <Section title="成本参数" en="costs · 引擎成本价">
         <Row label="硅胶膜材" en="silicone · 元/对">

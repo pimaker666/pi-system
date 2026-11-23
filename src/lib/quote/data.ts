@@ -314,6 +314,7 @@ interface EyemaskData {
     gel: { minQty: number; minTotal: number; tiers: DescTier[] }
   }
   platePerColor: number
+  /** 外彩盒基准阶梯：以「6 对/盒」为基准，实际盒价按 每盒对数 ÷ 6 等比折算。 */
   box: AscTier[]
   laborPerBox: number
   tiers: TierMeta[]
@@ -378,6 +379,9 @@ const eyemask: EyemaskData = {
 }
 
 export const DATA = { mask, cotton, oil, cream, eyemask }
+
+/** 外彩盒基准阶梯对应的每盒对数；实际盒价 = 基准盒价 ÷ 该值 × 每盒对数。 */
+export const EYEMASK_BOX_REF_PAIRS = 6
 
 export type QuoteData = typeof DATA
 

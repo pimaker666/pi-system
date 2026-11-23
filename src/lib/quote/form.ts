@@ -227,7 +227,7 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
     {
       type: 'number', key: 'pairsPerBox', label: '每盒对数', labelEn: 'Pairs / box', unit: '对/盒',
       min: 1, datalist: [3, 4, 5, 6, 7, 8, 10],
-      hint: '袋装彩盒可自选每盒对数（默认 6 对）；盒数 = 总对数 ÷ 每盒对数，彩盒 / 内托 / 装盒人工都按盒计费。可下拉或直接输入。',
+      hint: '彩盒按「6 对/盒」基准阶梯计：盒数命中基准盒价后，按 基准盒价 ÷ 6 × 每盒对数 自动折算（3 对 = 基准的一半，10 对 ≈ 1.67 倍）。盒数 = 总对数 ÷ 每盒对数，彩盒 / 内托 / 装盒人工都按盒计费。可下拉或直接输入。',
       visible: (s) => s.colorBox === '是' && !isJarKind(s),
     },
     {
