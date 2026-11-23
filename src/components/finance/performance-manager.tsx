@@ -923,7 +923,7 @@ export function PerformanceManager({
           <div className="space-y-1.5 sm:col-span-2">
             <label className="text-xs font-medium text-muted-foreground">
               收款日期
-              <span className="ml-1 font-normal">（仅影响「已收」金额）</span>
+              <span className="ml-1 font-normal">（仅影响「已收」金额，按实际到账日归集）</span>
             </label>
             <DateRangePicker key={`received-${receivedPickerVersion}`} from={receivedFrom} to={receivedTo} onChange={({ from, to }) => {
               setReceivedFrom(from)
@@ -1193,6 +1193,11 @@ export function PerformanceManager({
           {activeGroupBy === 'shipping_category'
             ? '本表按产品明细行汇总：产品金额不含整单运费应收，也不含未填发货分类的产品行，因此合计小于上方「订单总额」。'
             : '本表按产品明细行汇总：产品金额不含整单运费应收，因此合计小于上方「订单总额」。'}
+        </p>
+      )}
+      {(activeGroupBy === 'date' || activeGroupBy === 'month') && (
+        <p className="text-xs text-muted-foreground">
+          本表订单数、订单总额与未收按下单日期归行；「已收」按实际到账日归行，因此会出现订单数为 0、只有已收的行（早期订单在本期到账）。
         </p>
       )}
       </>
