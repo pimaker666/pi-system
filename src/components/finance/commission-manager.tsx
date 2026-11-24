@@ -137,6 +137,107 @@ function clearanceVariant(status: BusinessOrderCommissionClearanceStatus | null)
   return 'secondary'
 }
 
+interface CommissionTotals {
+  rowCount: number
+  quantity: number
+  missingRateRows: number
+  productReceived: number
+  productCommission: number
+  freightReceived: number
+  freightCost: number
+  freightProfit: number
+  freightCommission: number
+}
+
+/** 运费列为订单级：只统计订单首行，避免同一订单多行重复累加。 */
+function summarizeCommissionTotals(
+  rows: BusinessOrderCommissionRow[],
+  exchangeRate: number | null,
+  readOnly: boolean,
+  defaultFreightCommissionRate: number,
+): CommissionTotals {
+  const totals: CommissionTotals = {
+    rowCount: rows.length,
+    quantity: 0,
+    missingRateRows: 0,
+    productReceived: 0,
+    productCommission: 0,
+    freightReceived: 0,
+    freightCost: 0,
+    freightProfit: 0,
+    freightCommission: 0,
+  }
+  for (const row of rows) {
+    totals.quantity += row.quantity
+    const rate = settlementExchangeRate(row, exchangeRate)
+    if (rate == null) {
+      totals.missingRateRows += 1
+      continue
+    }
+    totals.productReceived += row.product_received_amount * rate
+    totals.productCommission += row.product_commission_amount * rate
+    if (!row.is_order_lead_row) continue
+    const freightReceived = round4(row.freight_received_amount * rate)
+    const freightRate = row.freight_cost > 0
+      ? readOnly
+        ? row.freight_commission_rate
+        : defaultFreightCommissionRate
+      : 0
+    const profit = round4(freightReceived - row.freight_cost)
+    totals.freightReceived += freightReceived
+    totals.freightCost += row.freight_cost
+    totals.freightProfit += profit
+    totals.freightCommission += round4((profit * freightRate) / 100)
+  }
+  return totals
+}
+
+function CommissionTotalsRow({
+  label,
+  totals,
+  showCheckboxColumn,
+  optionalColumns,
+}: {
+  label: string
+  totals: CommissionTotals
+  showCheckboxColumn: boolean
+  optionalColumns: OptionalCommissionColumn[]
+}) {
+  return (
+    <TableRow className="border-t-2 bg-muted/60">
+      {showCheckboxColumn && <TableCell />}
+      {optionalColumns.map((column) => (
+        <TableCell
+          key={column}
+          className={cn(optionalCommissionColumnClassName(column), 'font-medium tabular-nums')}
+        >
+          {column === 'quantity' ? quantityText(totals.quantity) : null}
+        </TableCell>
+      ))}
+      <TableCell colSpan={4} className="font-medium">
+        {label}
+        {totals.missingRateRows > 0 && (
+          <span className="ml-2 text-xs font-normal text-amber-600">
+            {totals.missingRateRows} 行美元缺汇率未计
+          </span>
+        )}
+      </TableCell>
+      <TableCell className="font-medium tabular-nums">{formatCommissionAmount(totals.productReceived)}</TableCell>
+      <TableCell />
+      <TableCell className="bg-sky-50 font-semibold text-sky-950 tabular-nums">
+        {formatCommissionAmount(totals.productCommission)}
+      </TableCell>
+      <TableCell className="font-medium tabular-nums">{formatCommissionAmount(totals.freightReceived)}</TableCell>
+      <TableCell className="font-medium tabular-nums">{formatCommissionAmount(totals.freightCost)}</TableCell>
+      <TableCell className="font-medium tabular-nums">{formatCommissionAmount(totals.freightProfit)}</TableCell>
+      <TableCell className="bg-amber-50 font-semibold text-amber-950 tabular-nums">
+        {formatCommissionAmount(totals.freightCommission)}
+      </TableCell>
+      <TableCell />
+    </TableRow>
+  )
+}
+
 function hasCalculatedCommission(row: BusinessOrderCommissionRow) {
   return row.currency !== 'USD' || (row.settlement_exchange_rate_to_cny ?? 0) > 0
 }
@@ -1179,6 +1280,30 @@ export function CommissionManager({
     cancelClearanceSelectableRows.every((row) =>
       row.item_ids.every((id) => selectedCancelledClearanceItemIds.has(id)),
     )
+  const activeSelection = readOnly
+    ? selectedCancelledClearanceItemIds
+    : isSalespersonView
+      ? selectedConfirmationItemIds
+      : selectedItemIds
+  const selectedRows = useMemo(
+    () => rows.filter((row) => row.item_ids.every((id) => activeSelection.has(id))),
+    [activeSelection, rows],
+  )
+  const pageTotals = useMemo(
+    () => summarizeCommissionTotals(rows, currentExchangeRate, readOnly, defaultFreightCommissionRate),
+    [currentExchangeRate, defaultFreightCommissionRate, readOnly, rows],
+  )
+  const selectedTotals = useMemo(
+    () => summarizeCommissionTotals(selectedRows, currentExchangeRate, readOnly, defaultFreightCommissionRate),
+    [currentExchangeRate, defaultFreightCommissionRate, readOnly, selectedRows],
+  )
+  const visibleOptionalColumns = useMemo(
+    () =>
+      OPTIONAL_COMMISSION_COLUMNS
+        .filter(([column]) => visibleColumns.has(column))
+        .map(([column]) => column),
+    [visibleColumns],
+  )
 
   function toggleRow(row: BusinessOrderCommissionRow, checked: boolean) {
     setSelectedItemIds((previous) => {
@@ -1837,6 +1962,22 @@ export function CommissionManager({
                   没有符合筛选条件的订单
                 </TableCell>
               </TableRow>
+            )}
+            {rows.length > 0 && (
+              <CommissionTotalsRow
+                label={`本页合计（${pageTotals.rowCount} 行）`}
+                totals={pageTotals}
+                showCheckboxColumn={!readOnly || canCancelClearances}
+                optionalColumns={visibleOptionalColumns}
+              />
+            )}
+            {selectedRows.length > 0 && (
+              <CommissionTotalsRow
+                label={`已选合计（${selectedRows.length} 行）`}
+                totals={selectedTotals}
+                showCheckboxColumn={!readOnly || canCancelClearances}
+                optionalColumns={visibleOptionalColumns}
+              />
             )}
           </TableBody>
         </Table>
