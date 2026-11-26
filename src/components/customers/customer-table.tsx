@@ -373,7 +373,7 @@ export function CustomerTable({
                   />
                 </TableHead>
                 <TableHead className="sticky top-0 z-20 w-[120px] bg-background pr-2 shadow-sm">客户</TableHead>
-                <TableHead className="sticky top-0 z-20 w-[220px] bg-background pl-2 shadow-sm">公司</TableHead>
+                <TableHead className="sticky top-0 z-20 w-[170px] bg-background pl-2 shadow-sm">公司</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-background shadow-sm">国家</TableHead>
                 <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background text-center shadow-sm">分组</TableHead>
                 <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background px-2 text-center shadow-sm">联系方式</TableHead>
