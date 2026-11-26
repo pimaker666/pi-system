@@ -376,7 +376,7 @@ export function CustomerTable({
                 <TableHead className="sticky top-0 z-20 bg-background shadow-sm">公司</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-background shadow-sm">国家</TableHead>
                 <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background text-center shadow-sm">分组</TableHead>
-                <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background text-center shadow-sm">联系方式</TableHead>
+                <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background px-2 text-center shadow-sm">联系方式</TableHead>
                 {sortableHeader('近一年下单金额', 'amount', 'right', undefined, 'w-[1%]')}
                 {sortableHeader('上次下单时间', 'lastOrder')}
                 {sortableHeader(twoLineLabel('定制', '订单数'), 'customOrderCount', 'center', undefined, 'w-[1%]')}
@@ -424,8 +424,10 @@ export function CustomerTable({
                       <span className="whitespace-nowrap text-muted-foreground">未分组</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-center text-sm text-muted-foreground">
-                    <span className="whitespace-nowrap">{c.email ?? c.phone ?? '—'}</span>
+                  <TableCell className="px-2 text-center text-sm text-muted-foreground">
+                    <span className="mx-auto block max-w-[110px] truncate" title={c.email ?? c.phone ?? undefined}>
+                      {c.email ?? c.phone ?? '—'}
+                    </span>
                   </TableCell>
                   <TableCell className="text-right tabular-nums">
                     {stats[c.id]?.lastYearAmountCny || stats[c.id]?.lastYearAmountUsd ? (
