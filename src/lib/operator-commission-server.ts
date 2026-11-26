@@ -93,7 +93,6 @@ export async function fetchOperatorCandidates(
 interface OrderMeta {
   shop_id: string | null
   shop_name: string | null
-  exchange_rate_to_cny: number | null
 }
 
 async function fetchOrderMeta(
@@ -104,23 +103,48 @@ async function fetchOrderMeta(
   for (const chunk of chunkIds(orderIds)) {
     const { data, error } = await supabase
       .from('business_orders')
-      .select('id, shop_id, shop_name_snapshot, exchange_rate_to_cny')
+      .select('id, shop_id, shop_name_snapshot')
       .in('id', chunk)
     if (error) throw new Error(`运营提成订单读取失败：${error.message}`)
     for (const row of (data ?? []) as Array<{
       id: string
       shop_id: string | null
       shop_name_snapshot: string | null
-      exchange_rate_to_cny: number | null
     }>) {
       meta.set(row.id, {
         shop_id: row.shop_id,
         shop_name: row.shop_name_snapshot,
-        exchange_rate_to_cny: row.exchange_rate_to_cny == null ? null : Number(row.exchange_rate_to_cny),
       })
     }
   }
   return meta
+}
+
+/** 与业务提成共用的订单结清汇率（finance_business_order_commissions）。 */
+async function fetchOrderSettlementRates(
+  supabase: SupabaseClient,
+  orderIds: string[],
+): Promise<Map<string, number | null>> {
+  const rates = new Map<string, number | null>()
+  for (const chunk of chunkIds(orderIds)) {
+    const { data, error } = await supabase
+      .from('finance_business_order_commissions')
+      .select('business_order_id, settlement_exchange_rate_to_cny')
+      .in('business_order_id', chunk)
+    if (error) throw new Error(`订单结清汇率读取失败：${error.message}`)
+    for (const row of (data ?? []) as Array<{
+      business_order_id: string
+      settlement_exchange_rate_to_cny: number | string | null
+    }>) {
+      rates.set(
+        row.business_order_id,
+        row.settlement_exchange_rate_to_cny == null
+          ? null
+          : Number(row.settlement_exchange_rate_to_cny),
+      )
+    }
+  }
+  return rates
 }
 
 async function fetchAssignmentsForOrders(
@@ -214,8 +238,9 @@ export async function fetchOperatorCommission(
   }
 
   const orderIds = [...new Set(commissionRows.map((row) => row.order_id))]
-  const [orderMeta, operatorRules, orderContext] = await Promise.all([
+  const [orderMeta, settlementRates, operatorRules, orderContext] = await Promise.all([
     fetchOrderMeta(supabase, orderIds),
+    fetchOrderSettlementRates(supabase, orderIds),
     fetchCommissionRules(supabase, 'operator'),
     fetchCommissionOrderContext(supabase, orderIds),
   ])
@@ -336,7 +361,7 @@ export async function fetchOperatorCommission(
         ),
         currency: aggregate.currency,
         settlement_exchange_rate_to_cny:
-          clearance?.settlement_exchange_rate_to_cny ?? meta?.exchange_rate_to_cny ?? null,
+          clearance?.settlement_exchange_rate_to_cny ?? settlementRates.get(orderId) ?? null,
         clearance_status: clearance?.status ?? null,
         clearance_period: clearance ? String(clearance.period).slice(0, 7) : null,
         has_assignment: operator.has_assignment,

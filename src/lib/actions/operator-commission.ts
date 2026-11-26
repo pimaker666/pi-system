@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { requireApproved, requireFinanceAccess } from '@/lib/auth'
+import { hasCurrentPermission, requireApproved, requireFinanceAccess } from '@/lib/auth'
+import { saveBusinessOrderCommissionExchangeRate } from './commission'
 import { resolveOrderOperators, type OperatorRuleInput } from '@/lib/operator-commission'
 import type { ActionResult } from './products'
 
@@ -64,6 +65,11 @@ const clearanceActionSchema = z.object({
 
 const clearanceRejectSchema = clearanceActionSchema.extend({
   reason: z.string().trim().min(1, '请填写驳回原因').max(500, '驳回原因最多 500 字'),
+})
+
+const operatorExchangeRateSchema = z.object({
+  business_order_ids: z.array(z.string().uuid('订单 ID 无效')).min(1).max(500),
+  settlement_exchange_rate_to_cny: z.number().positive('汇率必须大于 0').max(1000, '汇率超出允许范围'),
 })
 
 function revalidateOperatorCommission() {
@@ -339,6 +345,50 @@ async function loadClearanceContext(
   }
 
   return { ok: true, orders: orderMap, exchangeRates }
+}
+
+/**
+ * 维护运营提成结清汇率：与业务提成共用 finance_business_order_commissions 的订单汇率。
+ * 运营提成一旦提交/确认结清，汇率即视为锁定，避免已结清金额被追溯改写。
+ */
+export async function saveOperatorCommissionExchangeRate(input: {
+  business_order_ids: string[]
+  settlement_exchange_rate_to_cny: number
+}): Promise<ActionResult> {
+  await requireApproved()
+  if (!await hasCurrentPermission('finance.exchange_rate')) {
+    return { ok: false, error: '当前账号没有维护结清汇率权限' }
+  }
+  const parsed = operatorExchangeRateSchema.safeParse(input)
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+  const orderIds = [...new Set(parsed.data.business_order_ids)]
+  const supabase = await createClient()
+
+  const lockedOrders = new Set<string>()
+  for (const chunk of chunkIds(orderIds)) {
+    const { data, error } = await supabase
+      .from('finance_business_order_operator_commission_clearances')
+      .select('business_order_id')
+      .in('business_order_id', chunk)
+      .in('status', ['pending', 'confirmed'])
+    if (error) return { ok: false, error: error.message }
+    for (const row of (data ?? []) as Array<{ business_order_id: string }>) {
+      lockedOrders.add(row.business_order_id)
+    }
+  }
+  if (lockedOrders.size > 0) {
+    return {
+      ok: false,
+      error: `${lockedOrders.size} 个订单的运营提成已提交结清，请先撤回结清后再改汇率`,
+    }
+  }
+
+  return saveBusinessOrderCommissionExchangeRate({
+    business_order_ids: orderIds,
+    settlement_exchange_rate_to_cny: parsed.data.settlement_exchange_rate_to_cny,
+  })
 }
 
 /** 提交运营提成结清：财务/管理员可提交为待确认，direct 时直接确认并锁定美元汇率。 */

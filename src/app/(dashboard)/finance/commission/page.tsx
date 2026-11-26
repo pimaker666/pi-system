@@ -114,6 +114,7 @@ export default async function FinanceCommissionPage({
           actorId={profile.id}
           canManageRules={canManageCategoryRates}
           canManageClearance={canManageCategoryRates}
+          canManageExchangeRate={canManageExchangeRate}
           commissionRules={operatorRules}
           tagOptions={tagOptions}
         />

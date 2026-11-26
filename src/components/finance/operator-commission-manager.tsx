@@ -45,6 +45,7 @@ import {
   confirmOperatorCommissionClearance,
   rejectOperatorCommissionClearance,
   resetOperatorCommissionClearance,
+  saveOperatorCommissionExchangeRate,
   saveOrderOperatorAssignments,
   saveShopOperatorRules,
   submitOperatorCommissionClearance,
@@ -120,6 +121,79 @@ function money(value: number, currency: CurrencyCode) {
   return formatDailyMoney(value, currency)
 }
 
+/** 美元行必须已保存结清汇率；人民币行恒为 1。 */
+function settlementRate(row: OperatorCommissionRow) {
+  if (row.currency !== 'USD') return 1
+  const rate = row.settlement_exchange_rate_to_cny
+  return rate != null && rate > 0 ? rate : null
+}
+
+function rowHasRate(row: OperatorCommissionRow) {
+  return settlementRate(row) != null
+}
+
+interface OperatorTotals {
+  rowCount: number
+  missingRateRows: number
+  receivedTotal: number
+  commissionTotal: number
+}
+
+function summarizeOperatorRows(rows: OperatorCommissionRow[]): OperatorTotals {
+  const totals: OperatorTotals = {
+    rowCount: rows.length,
+    missingRateRows: 0,
+    receivedTotal: 0,
+    commissionTotal: 0,
+  }
+  for (const row of rows) {
+    const rate = settlementRate(row)
+    if (rate == null) {
+      totals.missingRateRows += 1
+      continue
+    }
+    totals.receivedTotal += row.product_received_amount * rate
+    totals.commissionTotal += row.commission_amount * rate
+  }
+  return totals
+}
+
+function OperatorTotalsRow({
+  label,
+  totals,
+  showCheckboxColumn,
+  showActionColumn,
+}: {
+  label: string
+  totals: OperatorTotals
+  showCheckboxColumn: boolean
+  showActionColumn: boolean
+}) {
+  return (
+    <TableRow className="border-t-2 bg-muted/60">
+      {showCheckboxColumn && <TableCell />}
+      <TableCell colSpan={7} className="font-medium">
+        {label}
+        {totals.missingRateRows > 0 && (
+          <span className="ml-2 text-xs font-normal text-amber-600">
+            {totals.missingRateRows} 行美元缺汇率未计
+          </span>
+        )}
+      </TableCell>
+      <TableCell className="text-right font-medium tabular-nums">
+        {formatCommissionAmount(totals.receivedTotal)}
+      </TableCell>
+      <TableCell />
+      <TableCell />
+      <TableCell className="bg-sky-50 text-right font-semibold text-sky-950 tabular-nums">
+        {formatCommissionAmount(totals.commissionTotal)}
+      </TableCell>
+      <TableCell />
+      {showActionColumn && <TableCell />}
+    </TableRow>
+  )
+}
+
 function RateModeSelect({
   value,
   onChange,
@@ -154,6 +228,8 @@ interface OperatorCommissionManagerProps {
   actorId: string
   canManageRules: boolean
   canManageClearance: boolean
+  /** 允许维护美元结清汇率（finance.exchange_rate 权限）。 */
+  canManageExchangeRate?: boolean
   /** 运营本人可在「我的提成」确认/驳回自己的待确认记录。 */
   canConfirmSelf?: boolean
   readOnly?: boolean
@@ -175,6 +251,7 @@ export function OperatorCommissionManager({
   actorId,
   canManageRules,
   canManageClearance,
+  canManageExchangeRate = false,
   canConfirmSelf = false,
   readOnly = false,
   showSummary = false,
@@ -184,6 +261,8 @@ export function OperatorCommissionManager({
   const pathname = usePathname()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [pending, startTransition] = useTransition()
+  const [exchangeRate, setExchangeRate] = useState('')
+  const [exchangeRatePending, startExchangeRateTransition] = useTransition()
   const [period, setPeriod] = useState(chinaCurrentMonth)
   const [submitDialogOpen, setSubmitDialogOpen] = useState(false)
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false)
@@ -204,13 +283,31 @@ export function OperatorCommissionManager({
     business_order_id: row.order_id,
     operator_id: row.operator_id,
   }))
+  const currentExchangeRate = useMemo(() => {
+    const value = Number(exchangeRate)
+    return Number.isFinite(value) && value > 0 ? value : null
+  }, [exchangeRate])
+  const pageTotals = useMemo(() => summarizeOperatorRows(rows), [rows])
+  const selectedTotals = useMemo(() => summarizeOperatorRows(selectedRows), [selectedRows])
+  /** 未提交/未确认结清的美元订单才允许改汇率（提交后汇率锁定）。 */
+  const editableUsdOrderIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const row of rows) {
+      if (row.currency !== 'USD') continue
+      if (row.clearance_status === 'pending' || row.clearance_status === 'confirmed') continue
+      ids.add(row.order_id)
+    }
+    return [...ids]
+  }, [rows])
 
   const canAssignOrders =
     !readOnly && (canManageClearance || actorRole === 'sales' || actorRole === 'supervisor')
+  const tableColumnCount = 12 + (readOnly ? 0 : 1) + (canAssignOrders ? 1 : 0)
 
   const totalPages = Math.max(1, Math.ceil(totalCount / OPERATOR_COMMISSION_PAGE_SIZE))
 
   function toggleRow(row: OperatorCommissionRow) {
+    if (!rowHasRate(row)) return
     const key = keyOf(row)
     setSelected((current) => {
       const next = new Set(current)
@@ -319,8 +416,36 @@ export function OperatorCommissionManager({
     })
   }
 
+  function saveExchangeRate() {
+    if (currentExchangeRate == null) {
+      toast.error('请填写大于 0 的美元兑人民币汇率')
+      return
+    }
+    if (editableUsdOrderIds.length === 0) {
+      toast.error('当前页没有可修改汇率的美元订单（已提交结清的订单汇率已锁定）')
+      return
+    }
+    startExchangeRateTransition(async () => {
+      const result = await saveOperatorCommissionExchangeRate({
+        business_order_ids: editableUsdOrderIds,
+        settlement_exchange_rate_to_cny: currentExchangeRate,
+      })
+      if (!result.ok) {
+        const firstFieldError = Object.values(result.fieldErrors ?? {}).flat()[0]
+        toast.error(firstFieldError ?? result.error ?? '汇率保存失败')
+        return
+      }
+      toast.success(`已将汇率应用到当前页 ${editableUsdOrderIds.length} 个美元订单`)
+      router.refresh()
+    })
+  }
+
   function submitClearance(direct: boolean) {
     if (selectedItems.length === 0) return
+    if (selectedRows.some((row) => !rowHasRate(row))) {
+      toast.error('所选记录中有美元订单缺汇率，请先保存美元兑人民币汇率')
+      return
+    }
     startTransition(async () => {
       const result = await submitOperatorCommissionClearance({
         items: selectedItems,
@@ -449,6 +574,14 @@ export function OperatorCommissionManager({
                 <RotateCcw className="mr-1.5 h-4 w-4" />
                 撤回结清
               </Button>
+              {selectedRows.length > 0 && (
+                <span className="text-sm text-muted-foreground">
+                  已选 {selectedRows.length} 条 · 总提成{' '}
+                  <span className="font-medium text-sky-950 tabular-nums">
+                    {formatCommissionAmount(selectedTotals.commissionTotal)}
+                  </span>
+                </span>
+              )}
             </>
           )}
           {canConfirmSelf && !canManageClearance && (
@@ -479,6 +612,39 @@ export function OperatorCommissionManager({
           )}
           <span className="text-xs text-muted-foreground">
             运营提成 = 产品实收 × 提点% × 本人份额%；订单指定运营后不再叠加店铺规则。
+          </span>
+        </div>
+      )}
+
+      {!readOnly && canManageExchangeRate && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-4 shadow-[0_2px_8px_rgb(15_23_42/0.04)]">
+          <label htmlFor="operator-exchange-rate" className="text-sm font-medium">
+            USD→CNY 汇率
+          </label>
+          <Input
+            id="operator-exchange-rate"
+            type="number"
+            min="0"
+            step="0.0001"
+            placeholder="填写美元兑人民币汇率"
+            value={exchangeRate}
+            onChange={(event) => setExchangeRate(event.target.value)}
+            className="w-[260px]"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            disabled={
+              exchangeRatePending ||
+              currentExchangeRate == null ||
+              editableUsdOrderIds.length === 0
+            }
+            onClick={saveExchangeRate}
+          >
+            保存并应用当前页
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            美元订单需先保存汇率才能结清；提交结清后汇率锁定，与业务提成共用订单汇率。
           </span>
         </div>
       )}
@@ -519,30 +685,35 @@ export function OperatorCommissionManager({
         </form>
       )}
 
-      <div className="overflow-x-auto rounded-md border">
-        <Table className="w-full min-w-[1180px] text-sm">
+      <div className="min-w-[1240px] overflow-visible rounded-md border">
+        <Table containerClassName="overflow-visible" className="w-full min-w-[1240px] text-sm">
           <TableHeader>
             <TableRow className="bg-background">
-              {!readOnly && <TableHead className="w-9"></TableHead>}
-              <TableHead>订单日期</TableHead>
-              <TableHead>订单号</TableHead>
-              <TableHead>店铺</TableHead>
-              <TableHead>客户</TableHead>
-              <TableHead>业务员</TableHead>
-              <TableHead>运营</TableHead>
-              <TableHead className="text-right">份额</TableHead>
-              <TableHead className="text-right">产品实收金额</TableHead>
-              <TableHead className="text-right">运营提点</TableHead>
-              <TableHead className="text-right">运营提成</TableHead>
-              <TableHead>结清状态</TableHead>
-              {canAssignOrders && <TableHead className="w-24">操作</TableHead>}
+              {!readOnly && (
+                <TableHead className="sticky top-0 z-20 w-9 bg-background shadow-sm"></TableHead>
+              )}
+              <TableHead className="sticky top-0 z-20 bg-background shadow-sm">订单日期</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background shadow-sm">订单号</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background shadow-sm">店铺</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background shadow-sm">客户</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background shadow-sm">业务员</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background shadow-sm">运营</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background text-right shadow-sm">份额</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background text-right shadow-sm">产品实收金额</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background text-right shadow-sm">汇率</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background text-right shadow-sm">运营提点</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background text-right shadow-sm">运营提成</TableHead>
+              <TableHead className="sticky top-0 z-20 bg-background shadow-sm">结清状态</TableHead>
+              {canAssignOrders && (
+                <TableHead className="sticky top-0 z-20 w-24 bg-background shadow-sm">操作</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={12}
+                  colSpan={tableColumnCount}
                   className="py-10 text-center text-sm text-muted-foreground"
                 >
                   当前筛选下没有运营提成记录，请先配置店铺运营规则或在订单上指定运营。
@@ -552,6 +723,7 @@ export function OperatorCommissionManager({
               rows.map((row) => {
                 const key = keyOf(row)
                 const isSelf = row.operator_id === actorId
+                const hasRate = rowHasRate(row)
                 return (
                   <TableRow key={key} className={cn(isSelf && 'bg-primary/[0.03]')}>
                     {!readOnly && (
@@ -560,6 +732,12 @@ export function OperatorCommissionManager({
                           type="checkbox"
                           className="h-4 w-4 rounded border-gray-300"
                           checked={selected.has(key)}
+                          disabled={!hasRate}
+                          title={
+                            hasRate
+                              ? undefined
+                              : '请先保存美元兑人民币汇率，计算运营提成后再提交结清'
+                          }
                           onChange={() => toggleRow(row)}
                         />
                       </TableCell>
@@ -580,6 +758,22 @@ export function OperatorCommissionManager({
                     <TableCell className="text-right tabular-nums">{row.share_percent}%</TableCell>
                     <TableCell className="text-right tabular-nums">
                       {money(row.product_received_amount, row.currency)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right tabular-nums">
+                      {row.currency !== 'USD' ? (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      ) : hasRate ? (
+                        <span className="text-xs text-muted-foreground">
+                          ×{Number(row.settlement_exchange_rate_to_cny).toFixed(4)}
+                        </span>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="border-amber-200 bg-amber-50 text-[10px] text-amber-700"
+                        >
+                          缺汇率
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
                       {row.product_commission_rate}%
@@ -616,6 +810,22 @@ export function OperatorCommissionManager({
                 )
               })
             )}
+            {rows.length > 0 && (
+              <OperatorTotalsRow
+                label={`本页合计（${pageTotals.rowCount} 行）`}
+                totals={pageTotals}
+                showCheckboxColumn={!readOnly}
+                showActionColumn={canAssignOrders}
+              />
+            )}
+            {selectedRows.length > 0 && (
+              <OperatorTotalsRow
+                label={`已选合计（${selectedRows.length} 行）`}
+                totals={selectedTotals}
+                showCheckboxColumn={!readOnly}
+                showActionColumn={canAssignOrders}
+              />
+            )}
           </TableBody>
         </Table>
       </div>
@@ -647,6 +857,23 @@ export function OperatorCommissionManager({
               <span className="text-xs text-muted-foreground">结清归属月</span>
               <Input type="month" value={period} onChange={(event) => setPeriod(event.target.value)} />
             </label>
+            <div className="rounded-md border bg-muted/40 px-3 py-2">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">已选记录</span>
+                <span className="tabular-nums">{selectedRows.length} 条</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between">
+                <span className="font-medium">总提成</span>
+                <span className="font-semibold text-sky-950 tabular-nums">
+                  {formatCommissionAmount(selectedTotals.commissionTotal)}
+                </span>
+              </div>
+              {selectedTotals.missingRateRows > 0 && (
+                <p className="mt-1 text-xs text-amber-600">
+                  {selectedTotals.missingRateRows} 条美元订单缺汇率未计入
+                </p>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setSubmitDialogOpen(false)}>
