@@ -84,6 +84,8 @@ export interface EyePack {
   isJar: boolean
   kind: 'jar' | 'waterbag' | 'gelbag' | 'silicone'
   boxed: boolean
+  /** 袋装膜材是否配袋；false = 裸片散装，不产生袋材与袋子版费。 */
+  bagged: boolean
   packName: string
 }
 
@@ -591,11 +593,14 @@ export function eyePackOf(input: QuoteInput): EyePack | null {
   if (m.kind === 'jar') {
     const jar = E.jars[String(input.jar)] || E.jars['100g常规罐']
     const perJar = Math.floor(num(input.pairsPerJar, 0))
-    return { perPack: perJar > 0 ? perJar : jar.pairs, jarPrice: jar.price, isJar: true, kind: 'jar', boxed: input.colorBox === '是', packName: String(input.jar) }
+    return { perPack: perJar > 0 ? perJar : jar.pairs, jarPrice: jar.price, isJar: true, kind: 'jar', boxed: input.colorBox === '是', bagged: false, packName: String(input.jar) }
+  }
+  if (input.bagPack === '否') {
+    return { perPack: 1, isJar: false, kind: m.kind, boxed: false, bagged: false, packName: '裸片散装' }
   }
   const boxed = input.packMode !== '单袋散装'
   const perBox = Math.max(1, Math.floor(num(input.pairsPerBox, 0)) || Number(E.defaults.pairsPerBox) || 6)
-  return { perPack: boxed ? perBox : 1, isJar: false, kind: m.kind, boxed, packName: boxed ? `${perBox}对彩盒装` : '单袋散装' }
+  return { perPack: boxed ? perBox : 1, isJar: false, kind: m.kind, boxed, bagged: true, packName: boxed ? `${perBox}对彩盒装` : '单袋散装' }
 }
 
 function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: number | null) {
@@ -629,12 +634,12 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
   const membranePerPack = membranePerPair * pack.perPack
 
   let bagPerPair = 0
-  if (!pack.isJar) {
+  if (!pack.isJar && pack.bagged) {
     const cfg = pack.kind === 'waterbag' ? E.bagPrice.water : E.bagPrice.gel
     bagPerPair = pairs < cfg.minQty ? cfg.minTotal / pairs : pickDesc(cfg.tiers, pairs)
   }
   const containerPerPack = pack.isJar ? pack.jarPrice! : bagPerPair * pack.perPack
-  const colors = pack.isJar ? 0 : Math.max(0, num(input.plateColors, 4))
+  const colors = pack.isJar || !pack.bagged ? 0 : Math.max(0, num(input.plateColors, 4))
   const plateTotal = colors * E.platePerColor
   let label = 0
   let silk = 0
@@ -648,13 +653,13 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
   const laborUnit = pack.boxed ? E.laborPerBox : 0
   const autoMargin = marginOf(E.margins, pairs)
   const margin = marginOverride == null ? autoMargin : marginOverride
-  const unitLabel = pack.isJar ? '罐' : pack.boxed ? '盒' : '袋'
+  const unitLabel = pack.isJar ? '罐' : pack.boxed ? '盒' : pack.bagged ? '袋' : '对'
 
   const rows = [
     { key: 'membrane', name: '膜材', nameEn: 'Mask patch', basis: `${input.material} · ${membranePerPair.toFixed(3)} 元/对 × ${pack.perPack} 对/件${m.kind === 'silicone' ? `（≥${EC.silicone.tiers[0][0].toLocaleString('en-US')} 对 ${EC.silicone.tiers[0][1]} 元）` : m.floorTotal > 0 ? `（批次底价 ¥${m.floorTotal.toLocaleString('en-US')} 平摊）` : '（平价 0.30 元/对）'}`, total: membranePerPack * packs },
-    { key: 'container', name: pack.isJar ? '罐体包材' : '袋装包材', nameEn: 'Container', basis: pack.isJar ? `${input.jar} · ${pack.jarPrice!.toFixed(2)} 元/罐` : `${pack.kind === 'waterbag' ? '水凝胶袋' : '凝胶/硅胶袋'} · ${bagPerPair.toFixed(2)} 元/对 × ${pack.perPack} 对/件`, total: containerPerPack * packs },
-    { key: 'plate', name: '袋子版费', nameEn: 'Bag plate fee', basis: pack.isJar ? '罐装免版费' : `${colors} 色 × ¥${E.platePerColor} = ¥${plateTotal.toLocaleString('en-US')}，按 ${packs.toLocaleString('en-US')} 件平摊`, total: plateTotal },
-    { key: 'print', name: '瓶标 / 丝印', nameEn: 'Decoration', basis: pack.isJar ? (input.print === '瓶标' ? setupBasis(EC.label, packs, `${label.toFixed(2)} 元/件`) : input.print === '丝印' ? setupBasis(EC.silk, packs, `${silk.toFixed(2)} 元/件`) : '未选择印刷') : '袋装自带专版印刷', total: (label + silk) * packs },
+    { key: 'container', name: pack.isJar ? '罐体包材' : '袋装包材', nameEn: 'Container', basis: pack.isJar ? `${input.jar} · ${pack.jarPrice!.toFixed(2)} 元/罐` : pack.bagged ? `${pack.kind === 'waterbag' ? '水凝胶袋' : '凝胶/硅胶袋'} · ${bagPerPair.toFixed(2)} 元/对 × ${pack.perPack} 对/件` : '未选袋装包材（裸片出厂）', total: containerPerPack * packs },
+    { key: 'plate', name: '袋子版费', nameEn: 'Bag plate fee', basis: pack.isJar ? '罐装免版费' : pack.bagged ? `${colors} 色 × ¥${E.platePerColor} = ¥${plateTotal.toLocaleString('en-US')}，按 ${packs.toLocaleString('en-US')} 件平摊` : '不用袋，无袋子版费', total: plateTotal },
+    { key: 'print', name: '瓶标 / 丝印', nameEn: 'Decoration', basis: pack.isJar ? (input.print === '瓶标' ? setupBasis(EC.label, packs, `${label.toFixed(2)} 元/件`) : input.print === '丝印' ? setupBasis(EC.silk, packs, `${silk.toFixed(2)} 元/件`) : '未选择印刷') : pack.bagged ? '袋装自带专版印刷' : '无袋装印刷', total: (label + silk) * packs },
     { key: 'box', name: '外彩盒', nameEn: 'Color box', basis: pack.boxed ? (pack.isJar ? `${packs.toLocaleString('en-US')} 罐 × ${boxUnit.toFixed(2)} 元/罐` : `${packs.toLocaleString('en-US')} 盒 × ${boxUnit.toFixed(3)} 元/盒（6 对基准 ${baseBoxUnit.toFixed(2)} 元 ÷ ${EYEMASK_BOX_REF_PAIRS} × ${pack.perPack} 对）`) : '未选外彩盒', total: boxUnit * packs },
     { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: trayOn ? `${trayUnit.toFixed(2)} 元/件（按件数分段）` : pack.boxed ? '未加内托' : '无彩盒不加内托', total: trayUnit * packs },
     { key: 'labor', name: '组装人工', nameEn: 'Assembly labor', basis: pack.boxed ? `盒装 ${E.laborPerBox.toFixed(2)} 元/件` : '散装/裸罐无装盒人工', total: laborUnit * packs },
@@ -664,18 +669,18 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
   if (pack.boxed && !E.box.length) warnings.push('彩盒阶梯为空，彩盒按 0 元计；请在「报价参数 → 眼膜/唇膜 → 外彩盒阶梯」补录。')
   if (pack.isJar && input.print === '瓶标' && packs <= EC.label.setupQty) notes.push(`瓶标开机费 ¥${EC.label.setupFee} 平摊；超过 ${EC.label.setupQty.toLocaleString('en-US')} 件进入阶梯单价。`)
   if (pack.isJar && input.print === '丝印' && packs <= EC.silk.setupQty) notes.push(`丝印开机费 ¥${EC.silk.setupFee} 平摊；超过 ${EC.silk.setupQty.toLocaleString('en-US')} 件进入阶梯单价。`)
-  if (!pack.isJar) notes.push('袋装自带专版印刷，按色数收取 ¥300/色版费；罐装免版费。')
+  if (!pack.isJar && pack.bagged) notes.push('袋装自带专版印刷，按色数收取 ¥300/色版费；罐装免版费。')
+  if (!pack.isJar && !pack.bagged) notes.push('未选袋装包材：袋材与袋子版费不计入，按裸片散装核价。')
   const [topRule, midRule] = sortedMarginRules(E.margins.rules)
   const pct = (m: number) => `${Math.round(m * 100)}%`
   if (topRule && pairs >= topRule[0]) notes.push(`已进入 ≥${topRule[0].toLocaleString('en-US')} 对战略阶梯，享 ${pct(autoMargin)} 官方底价毛利。`)
   else if (midRule && pairs >= midRule[0]) notes.push(`已达 ≥${midRule[0].toLocaleString('en-US')} 对档，进入 ${pct(autoMargin)} 官方毛利阶梯。`)
-
   return finalize({
     qty: packs,
     orderQty: pairs,
     packs,
     unitLabel,
-    unitEn: pack.isJar ? 'jars' : pack.boxed ? 'boxes' : 'sachets',
+    unitEn: pack.isJar ? 'jars' : pack.boxed ? 'boxes' : pack.bagged ? 'sachets' : 'pairs',
     packLabel: unitLabel,
     packPerUnit: 1,
     miniLabel: '对',
@@ -693,8 +698,8 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
       ['产品品类', String(input.product)],
       ['膜材材质', String(input.material)],
       ['包装形式', pack.isJar ? `${pack.packName} · ${pack.perPack} 对/${unitLabel}` : pack.packName],
-      ['订购总量', `${pairs.toLocaleString('en-US')} 对（折合 ${packs.toLocaleString('en-US')} 件）`],
-      ['印刷工艺', pack.isJar ? String(input.print) : `袋装专版印刷 · ${colors} 色`],
+      ['订购总量', `${pairs.toLocaleString('en-US')} 对${pack.isJar || pack.boxed || pack.bagged ? `（折合 ${packs.toLocaleString('en-US')} 件）` : '（裸片散装）'}`],
+      ['印刷工艺', pack.isJar ? String(input.print) : pack.bagged ? `袋装专版印刷 · ${colors} 色` : '无袋装印刷（裸片）'],
     ],
   })
 }

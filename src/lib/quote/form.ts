@@ -220,15 +220,22 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
       visible: isJarKind,
     },
     {
+      type: 'select', key: 'bagPack', label: '袋装包材', labelEn: 'Bag packaging',
+      options: [opt('是', '配袋（铝箔 / 水凝胶袋）'), opt('否', '不要袋（裸片散装）')],
+      hint: '选“否”则不产生袋材与袋子版费，也无需选色版，按裸片散装核价；罐装膜材不受影响。',
+      visible: (s) => !isJarKind(s),
+    },
+    {
       type: 'select', key: 'colorBox', label: '外彩盒', labelEn: 'Color box',
       options: [opt('是', '配彩盒'), opt('否', '裸罐 / 单袋散装')],
       hint: '袋装选“否”即单袋散装；彩盒按件数阶梯 0.95–2.00 元。',
+      visible: (s) => isJarKind(s) || s.bagPack !== '否',
     },
     {
       type: 'number', key: 'pairsPerBox', label: '每盒对数', labelEn: 'Pairs / box', unit: '对/盒',
       min: 1, datalist: [3, 4, 5, 6, 7, 8, 10],
       hint: '彩盒按「6 对/盒」基准阶梯计：盒数命中基准盒价后，按 基准盒价 ÷ 6 × 每盒对数 自动折算（3 对 = 基准的一半，10 对 ≈ 1.67 倍）。盒数 = 总对数 ÷ 每盒对数，彩盒 / 内托 / 装盒人工都按盒计费。可下拉或直接输入。',
-      visible: (s) => s.colorBox === '是' && !isJarKind(s),
+      visible: (s) => s.colorBox === '是' && !isJarKind(s) && s.bagPack !== '否',
     },
     {
       type: 'select', key: 'innerTray', label: '彩盒内托', labelEn: 'Inner tray',
@@ -246,7 +253,7 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
       type: 'number', key: 'plateColors', label: '袋子印刷色数', labelEn: 'Bag plate colors', unit: '色',
       min: 1, datalist: [1, 2, 3, 4, 5, 6, 7, 8, 9],
       hint: `${DATA.eyemask.platePerColor} 元/色（袋装专版），当前 ${bagColors} 色 → 版费 ¥${(bagColors * DATA.eyemask.platePerColor).toLocaleString('en-US')}，按件数平摊；罐装免版费。可下拉 1–9 或直接输入。`,
-      visible: (s) => !isJarKind(s),
+      visible: (s) => !isJarKind(s) && s.bagPack !== '否',
     },
     {
       type: 'number', key: 'qtyPairs', label: '定制总对数', labelEn: 'Order quantity (pairs)', unit: '对',
@@ -269,8 +276,15 @@ export function normalizeInput(categoryId: CategoryId, input: QuoteInput, prev?:
   if (categoryId === 'eyemask') {
     const m = DATA.eyemask.membranes[String(next.material)]
     if (m && m.kind !== 'jar') {
-      next.packMode = next.colorBox === '是' ? '盒装' : '单袋散装'
-      if (!(Number(next.pairsPerBox) > 0)) next.pairsPerBox = DATA.eyemask.defaults.pairsPerBox
+      if (next.bagPack === '否') {
+        // 裸片散装：无袋材、无版费，也不再叠加彩盒/内托。
+        next.colorBox = '否'
+        next.innerTray = '否'
+        next.packMode = '裸片散装'
+      } else {
+        next.packMode = next.colorBox === '是' ? '盒装' : '单袋散装'
+        if (!(Number(next.pairsPerBox) > 0)) next.pairsPerBox = DATA.eyemask.defaults.pairsPerBox
+      }
     }
     if (m && m.kind === 'jar') {
       next.print = next.print === '无' || next.print == null ? '丝印' : next.print

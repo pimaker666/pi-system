@@ -334,6 +334,7 @@ const eyemask: EyemaskData = {
     pairsPerJar: 30,
     packMode: '盒装',
     pairsPerBox: 6,
+    bagPack: '是',
     qtyPairs: 30000,
     colorBox: '是',
     innerTray: '是',
