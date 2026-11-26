@@ -372,8 +372,8 @@ export function CustomerTable({
                     aria-label="全选"
                   />
                 </TableHead>
-                <TableHead className="sticky top-0 z-20 bg-background shadow-sm">客户</TableHead>
-                <TableHead className="sticky top-0 z-20 bg-background shadow-sm">公司</TableHead>
+                <TableHead className="sticky top-0 z-20 w-[120px] bg-background pr-2 shadow-sm">客户</TableHead>
+                <TableHead className="sticky top-0 z-20 w-[220px] bg-background pl-2 shadow-sm">公司</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-background shadow-sm">国家</TableHead>
                 <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background text-center shadow-sm">分组</TableHead>
                 <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background px-2 text-center shadow-sm">联系方式</TableHead>
@@ -399,18 +399,17 @@ export function CustomerTable({
                       aria-label={`选择 ${c.name}`}
                     />
                   </TableCell>
-                  <TableCell className="font-medium" style={{ color: c.tag_color ?? undefined }}>
+                  <TableCell className="pr-2 font-medium" style={{ color: c.tag_color ?? undefined }}>
                     <button
                       type="button"
-                      className="block w-full max-w-[140px] cursor-pointer truncate text-left hover:underline"
-                      title={c.name}
+                      className="block w-full cursor-pointer whitespace-normal break-words text-left leading-snug hover:underline"
                       onClick={() => window.open(`/customers/${c.id}`, '_blank', 'noopener,noreferrer')}
                     >
                       {c.name}
                     </button>
                   </TableCell>
-                  <TableCell>
-                    <span className="block max-w-[180px] truncate" title={c.company ?? undefined}>
+                  <TableCell className="pl-2">
+                    <span className="block whitespace-normal break-words leading-snug">
                       {c.company ?? '—'}
                     </span>
                   </TableCell>
