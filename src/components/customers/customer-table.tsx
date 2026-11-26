@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useMemo, useState, useTransition, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowDown, ArrowRightLeft, ArrowUp, ArrowUpDown, Copy, Pencil, Tags, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -44,7 +44,7 @@ import {
 import { CustomerRowActions } from './customer-row-actions'
 import { CountryFlag } from '@/components/shared/country-flag'
 import { formatCountryName } from '@/lib/country-flags'
-import { formatDate, formatAmount as formatNumber } from '@/lib/utils'
+import { formatDate } from '@/lib/utils'
 import { formatCustomerTenure } from '@/lib/customer-tenure'
 import {
   bulkTransferCustomers,
@@ -82,8 +82,20 @@ export type CustomerSortDirection = 'asc' | 'desc'
 const KEEP = '__keep__'
 const NO_GROUP = '__none__'
 
+const WHOLE_AMOUNT_FORMAT = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 })
+
 function formatAmount(amount: number, currency: 'CNY' | 'USD') {
-  return `${currency} ${formatNumber(amount)}`
+  return `${currency} ${WHOLE_AMOUNT_FORMAT.format(amount)}`
+}
+
+function twoLineLabel(first: string, second: string) {
+  return (
+    <span className="block text-center leading-tight">
+      {first}
+      <br />
+      {second}
+    </span>
+  )
 }
 
 export function CustomerTable({
@@ -262,12 +274,18 @@ export function CustomerTable({
     router.push(`/customers?${params.toString()}`)
   }
 
-  function sortableHeader(label: string, field: CustomerSortField, align = 'left', title?: string) {
+  function sortableHeader(
+    label: ReactNode,
+    field: CustomerSortField,
+    align: 'left' | 'right' | 'center' = 'left',
+    title?: string,
+    headClassName = '',
+  ) {
     const Icon = sortBy === field ? (sortDirection === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
     return (
       <TableHead
         title={title}
-        className={`sticky top-0 z-20 bg-background whitespace-nowrap shadow-sm ${align === 'right' ? 'text-right' : ''}`}
+        className={`sticky top-0 z-20 bg-background whitespace-nowrap shadow-sm ${align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : ''} ${headClassName}`}
       >
         <Button
           type="button"
@@ -359,12 +377,12 @@ export function CustomerTable({
                 <TableHead className="sticky top-0 z-20 bg-background shadow-sm">国家</TableHead>
                 <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background text-center shadow-sm">分组</TableHead>
                 <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background text-center shadow-sm">联系方式</TableHead>
-                {sortableHeader('近一年下单金额', 'amount', 'right')}
+                {sortableHeader('近一年下单金额', 'amount', 'right', undefined, 'w-[1%]')}
                 {sortableHeader('上次下单时间', 'lastOrder')}
+                {sortableHeader(twoLineLabel('定制', '订单数'), 'customOrderCount', 'center', undefined, 'w-[1%]')}
+                {sortableHeader(twoLineLabel('成交', '单数'), 'dealOrderCount', 'center', '只含现货样品或定制打样的订单不计入', 'w-[1%]')}
+                {sortableHeader(twoLineLabel('客户', '年限'), 'tenure', 'center', '从第一次下单起算，按自然月折算（6个月=0.5年），每月1号统一更新', 'w-[1%]')}
                 {sortableHeader('新建客户时间', 'createdAt')}
-                {sortableHeader('客户年限', 'tenure', 'right', '从第一次下单起算，按自然月折算（6个月=0.5年），每月1号统一更新')}
-                {sortableHeader('定制订单数', 'customOrderCount', 'right')}
-                {sortableHeader('成交单数', 'dealOrderCount', 'right', '只含现货样品或定制打样的订单不计入')}
                 {isAdmin && <TableHead className="sticky top-0 z-20 whitespace-nowrap bg-background shadow-sm">归属账号</TableHead>}
                 <TableHead className="sticky top-0 z-20 bg-background text-right shadow-sm">操作</TableHead>
               </TableRow>
@@ -424,17 +442,17 @@ export function CustomerTable({
                   <TableCell className="text-sm text-muted-foreground tabular-nums">
                     {stats[c.id]?.lastOrderDate ?? '—'}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground tabular-nums whitespace-nowrap">
-                    {formatDate(c.created_at)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums whitespace-nowrap">
-                    {formatCustomerTenure(stats[c.id]?.firstOrderDate)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-center tabular-nums">
                     {stats[c.id]?.customOrderCount ?? 0}
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="text-center tabular-nums">
                     {stats[c.id]?.dealOrderCount ?? 0}
+                  </TableCell>
+                  <TableCell className="text-center tabular-nums whitespace-nowrap">
+                    {formatCustomerTenure(stats[c.id]?.firstOrderDate)}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground tabular-nums whitespace-nowrap">
+                    {formatDate(c.created_at)}
                   </TableCell>
                   {isAdmin && (
                     <TableCell className="text-sm text-muted-foreground">
