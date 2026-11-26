@@ -6,7 +6,13 @@ import { Button } from '@/components/ui/button'
 import { requireApproved } from '@/lib/auth'
 import { fetchDailyOrderOptions } from '@/lib/daily-orders-server'
 import { createClient } from '@/lib/supabase/server'
-import type { Customer, CustomerGroup, Product, ProductFinancial, ProductGroup } from '@/types'
+import type {
+  Customer,
+  CustomerGroup,
+  Product,
+  ProductFinancialLabelView,
+  ProductGroup,
+} from '@/types'
 
 export default async function NewBusinessOrderPage() {
   const profile = await requireApproved()
@@ -24,7 +30,7 @@ export default async function NewBusinessOrderPage() {
       supabase.from('customer_groups').select('*').order('name'),
       supabase.from('products').select('*').order('name'),
       supabase.from('product_groups').select('*').order('sort_order'),
-      supabase.from('product_financials').select('*'),
+      supabase.from('product_financial_labels').select('product_id, financial_number, product_name'),
       fetchDailyOrderOptions(supabase),
     ])
 
@@ -35,7 +41,7 @@ export default async function NewBusinessOrderPage() {
     productGroupsResult.error
   if (error) throw new Error(`订单基础数据读取失败：${error.message}`)
 
-  const financials = (financialsResult.data ?? []) as ProductFinancial[]
+  const financials = (financialsResult.data ?? []) as ProductFinancialLabelView[]
   const financialByProductId = new Map(financials.map((item) => [item.product_id, item]))
   const products = ((productsResult.data ?? []) as Product[]).map((product) => ({
     ...product,

@@ -53,7 +53,7 @@ import {
   updateProductFinancials,
   updateProductInline,
 } from '@/lib/actions/products'
-import type { Product, ProductFinancial, ProductGroup } from '@/types'
+import type { Product, ProductFinancial, ProductFinancialLabelView, ProductGroup } from '@/types'
 
 const NO_GROUP = '__none__'
 const KEEP = '__keep__'
@@ -266,6 +266,7 @@ export function ProductTable({
   products,
   groups,
   financials,
+  financialLabels,
   canManage,
   canDelete,
   canManageStatus,
@@ -273,7 +274,10 @@ export function ProductTable({
 }: {
   products: Product[]
   groups: ProductGroup[]
+  /** 含成本的完整财务资料，仅财务/管理员传入。 */
   financials: ProductFinancial[]
+  /** 产品名称与财务编号（只读视图），对所有角色可见。 */
+  financialLabels: ProductFinancialLabelView[]
   canManage: boolean
   canDelete: boolean
   canManageStatus: boolean
@@ -300,6 +304,10 @@ export function ProductTable({
   const financialByProduct = useMemo(
     () => new Map(financials.map((financial) => [financial.product_id, financial])),
     [financials],
+  )
+  const labelByProduct = useMemo(
+    () => new Map(financialLabels.map((label) => [label.product_id, label])),
+    [financialLabels],
   )
 
   const allChecked = products.length > 0 && selected.size === products.length
@@ -499,13 +507,9 @@ export function ProductTable({
                 <TableHead className="w-16">图片</TableHead>
                 <TableHead>SKU</TableHead>
                 <TableHead>{canManageFinancials ? '销售名称' : '名称'}</TableHead>
-                {canManageFinancials && (
-                  <>
-                    <TableHead>财务编号</TableHead>
-                    <TableHead>产品名称</TableHead>
-                    <TableHead>成本</TableHead>
-                  </>
-                )}
+                <TableHead>财务编号</TableHead>
+                <TableHead>产品名称</TableHead>
+                {canManageFinancials && <TableHead>成本</TableHead>}
                 <TableHead className="w-44">规格</TableHead>
                 <TableHead className="w-28">克重(g)</TableHead>
                 <TableHead>分组</TableHead>
@@ -538,12 +542,25 @@ export function ProductTable({
                   </TableCell>
                   <TableCell className="font-mono text-xs">{p.sku}</TableCell>
                   <TableCell className="font-medium">{p.name}</TableCell>
-                  {canManageFinancials && (
+                  {canManageFinancials ? (
                     <ProductFinancialCells
                       key={`${p.id}:${financialByProduct.get(p.id)?.updated_at ?? 'new'}`}
                       productId={p.id}
                       financial={financialByProduct.get(p.id)}
                     />
+                  ) : (
+                    <>
+                      <TableCell className="align-top text-sm">
+                        {labelByProduct.get(p.id)?.financial_number || (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="align-top text-sm">
+                        {labelByProduct.get(p.id)?.product_name || (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                    </>
                   )}
                   <TableCell className="max-w-[180px] align-top">
                     <InlineEditableCell
@@ -595,7 +612,7 @@ export function ProductTable({
               {products.length === 0 && (
                 <TableRow>
                   <TableCell
-                    colSpan={(canManage ? 10 : 8) + (canManageFinancials ? 3 : 0)}
+                    colSpan={(canManage ? 10 : 8) + 2 + (canManageFinancials ? 1 : 0)}
                     className="py-10 text-center text-muted-foreground"
                   >
                     没有符合条件的产品

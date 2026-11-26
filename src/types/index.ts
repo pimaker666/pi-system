@@ -240,8 +240,12 @@ export interface SettledOrderRow {
   salesperson_name: string
   customer_name: string | null
   currency: CurrencyCode
+  /** 产品展示名称：产品库维护了财务产品名称时优先用它，否则回落下单快照名。 */
   product_name: string
+  /** 产品展示编码：可看财务编号时为财务编号，否则为下单快照 SKU。 */
   product_sku: string
+  /** 下单快照名称（销售英文名），与 product_name 相同时前端不再重复展示。 */
+  product_name_snapshot: string
   shipping_category: DailyOrderShippingCategory | null
   quantity: number
   unit_cost: number | null
@@ -1556,6 +1560,12 @@ export interface ProductFinancial {
   created_at: string
   updated_at: string
 }
+
+/** product_financial_labels 视图：只有名称与财务编号，对所有登录角色只读可见。 */
+export type ProductFinancialLabelView = Pick<
+  ProductFinancial,
+  'product_id' | 'financial_number' | 'product_name'
+>
 
 export interface ProductGroup {
   id: string

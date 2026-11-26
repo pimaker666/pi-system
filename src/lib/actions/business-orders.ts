@@ -64,7 +64,7 @@ import type {
   BusinessPerformanceSummary,
   DailyOrderShippingCategory,
   Product,
-  ProductFinancial,
+  ProductFinancialLabelView,
   ProductGroup,
 } from '@/types'
 import type { ActionResult } from './products'
@@ -1877,7 +1877,7 @@ export async function listBusinessOrderAppendCatalog(): Promise<BusinessOrderApp
   const [productsResult, groupsResult, financialsResult] = await Promise.all([
     supabase.from('products').select('*').order('name'),
     supabase.from('product_groups').select('*').order('sort_order'),
-    supabase.from('product_financials').select('*'),
+    supabase.from('product_financial_labels').select('product_id, financial_number, product_name'),
   ])
   if (productsResult.error) {
     return { ok: false, error: `读取产品列表失败：${productsResult.error.message}` }
@@ -1885,7 +1885,7 @@ export async function listBusinessOrderAppendCatalog(): Promise<BusinessOrderApp
   if (groupsResult.error) {
     return { ok: false, error: `读取产品分组失败：${groupsResult.error.message}` }
   }
-  const financials = (financialsResult.data ?? []) as ProductFinancial[]
+  const financials = (financialsResult.data ?? []) as ProductFinancialLabelView[]
   const financialByProductId = new Map(financials.map((item) => [item.product_id, item]))
   const products = ((productsResult.data ?? []) as Product[]).map((product) => ({
     ...product,

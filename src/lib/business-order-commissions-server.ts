@@ -361,7 +361,7 @@ interface ProductFinancialLabelRow {
   product_name: string | null
 }
 
-/** 产品财务标签，只取当前筛选命中产品；销售账号受 RLS 读到空表，行展示自然回落下单快照。 */
+/** 产品名称与财务编号，只取当前筛选命中产品；视图对所有角色开放，成本不在此读取。 */
 async function fetchProductFinancialLabelsFor(
   supabase: SupabaseClient,
   productIds: string[],
@@ -369,7 +369,7 @@ async function fetchProductFinancialLabelsFor(
   const rows: ProductFinancialLabelRow[] = []
   for (const chunk of chunkIds(productIds)) {
     const { data, error } = await supabase
-      .from('product_financials')
+      .from('product_financial_labels')
       .select('product_id, financial_number, product_name')
       .in('product_id', chunk)
     if (error) throw new Error(`产品财务资料读取失败：${error.message}`)

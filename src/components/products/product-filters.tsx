@@ -22,13 +22,11 @@ export function ProductFilters({
   q,
   group,
   financialNumber,
-  canSearchFinancials,
 }: {
   groups: ProductGroup[]
   q: string
   group: string
   financialNumber: 'has' | 'missing' | ''
-  canSearchFinancials: boolean
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -55,11 +53,7 @@ export function ProductFilters({
         <Input
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          placeholder={
-            canSearchFinancials
-              ? '搜索销售名/SKU/财务编号/产品名称…'
-              : '搜索产品名/SKU…'
-          }
+          placeholder="搜索销售名/SKU/财务编号/产品名称…"
           className="w-64"
         />
         <Button type="submit" variant="outline" size="icon">
@@ -67,18 +61,16 @@ export function ProductFilters({
         </Button>
       </form>
 
-      {canSearchFinancials && (
-        <Select value={financialNumber || ALL} onValueChange={(v) => setParam('financialNumber', v)}>
-          <SelectTrigger className="w-48">
-            <SelectValue placeholder="全部财务编号" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>全部财务编号</SelectItem>
-            <SelectItem value="has">有财务编号</SelectItem>
-            <SelectItem value="missing">无财务编号</SelectItem>
-          </SelectContent>
-        </Select>
-      )}
+      <Select value={financialNumber || ALL} onValueChange={(v) => setParam('financialNumber', v)}>
+        <SelectTrigger className="w-48">
+          <SelectValue placeholder="全部财务编号" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={ALL}>全部财务编号</SelectItem>
+          <SelectItem value="has">有财务编号</SelectItem>
+          <SelectItem value="missing">无财务编号</SelectItem>
+        </SelectContent>
+      </Select>
 
       <Select value={group || ALL} onValueChange={(v) => setParam('group', v)}>
         <SelectTrigger className="w-48">

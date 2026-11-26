@@ -2,12 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { DailyOrderFilters } from '@/schemas/daily-order'
 import type { BusinessDailyLedgerOrder } from '@/lib/business-daily-orders'
 import type { CurrencyCode } from '@/types'
-import {
-  applyBusinessOrderItemDisplay,
-  fetchProductFinancialLabels,
-} from '@/lib/business-order-financials'
+import { applyBusinessOrderItemDisplay } from '@/lib/business-order-financials'
 import { fetchProductFinancialLabelsCached } from '@/lib/business-order-financials-server'
-import { canViewSensitiveField } from '@/lib/auth'
 
 /** 台账页面展示上限，和旧版每日订单台账保持一致。 */
 export const BUSINESS_DAILY_LEDGER_LIMIT = 500
@@ -75,11 +71,10 @@ export async function fetchCurrentCustomerCountries(
 async function attachLedgerDisplays(
   supabase: SupabaseClient,
   orders: BusinessDailyLedgerOrder[],
-  viewerRole?: string,
 ): Promise<BusinessDailyLedgerOrder[]> {
   if (orders.length === 0) return orders
   const [labelled, countries] = await Promise.all([
-    attachItemDisplayLabels(supabase, orders, viewerRole),
+    attachItemDisplayLabels(supabase, orders),
     fetchCurrentCustomerCountries(
       supabase,
       orders.map((order) => order.id),
@@ -95,22 +90,17 @@ async function attachLedgerDisplays(
 async function attachItemDisplayLabels(
   supabase: SupabaseClient,
   orders: BusinessDailyLedgerOrder[],
-  viewerRole?: string,
 ): Promise<BusinessDailyLedgerOrder[]> {
   const items = orders.flatMap((order) => order.business_order_items ?? [])
   const hasLinkedProducts = items.some(
     (item) => item.source_type !== 'custom' && item.product_id,
   )
   if (!hasLinkedProducts) return orders
-  const labels =
-    viewerRole === undefined
-      ? await fetchProductFinancialLabels(supabase)
-      : await fetchProductFinancialLabelsCached(supabase, viewerRole)
-  const canViewFinancialNumber = await canViewSensitiveField('financial_number')
+  const labels = await fetchProductFinancialLabelsCached(supabase)
   return orders.map((order) => ({
     ...order,
     business_order_items: (order.business_order_items ?? []).map((item) =>
-      applyBusinessOrderItemDisplay(item, labels, canViewFinancialNumber),
+      applyBusinessOrderItemDisplay(item, labels),
     ),
   }))
 }
@@ -366,7 +356,6 @@ export async function fetchBusinessDailyLedgerPage(
   supabase: SupabaseClient,
   filters: DailyOrderFilters,
   orderIds: string[],
-  viewerRole?: string,
 ): Promise<BusinessDailyLedgerResult> {
   if (orderIds.length === 0) {
     return { orders: [], settledItemIds: [], confirmedCommissionItemIds: [] }
@@ -383,7 +372,6 @@ export async function fetchBusinessDailyLedgerPage(
     displayFilters,
     orderIds.length,
     orderIds,
-    viewerRole,
   )
 }
 
@@ -480,7 +468,6 @@ export async function fetchBusinessDailyLedgerWithStatusSets(
   filters: DailyOrderFilters,
   limit = BUSINESS_DAILY_LEDGER_LIMIT,
   ids?: string[],
-  viewerRole?: string,
   includeStatusSets = true,
 ): Promise<BusinessDailyLedgerResult> {
   const effectiveLimit = Math.min(limit, BUSINESS_DAILY_EXPORT_LIMIT)
@@ -547,7 +534,7 @@ export async function fetchBusinessDailyLedgerWithStatusSets(
   const orders = collected.sort(compareLedgerOrders).slice(0, effectiveLimit)
 
   return {
-    orders: await attachLedgerDisplays(supabase, orders, viewerRole),
+    orders: await attachLedgerDisplays(supabase, orders),
     settledItemIds: [...settledItemIdsAll],
     confirmedCommissionItemIds: [...confirmedCommissionItemIdsAll],
   }
@@ -558,14 +545,12 @@ export async function fetchBusinessDailyLedger(
   filters: DailyOrderFilters,
   limit = BUSINESS_DAILY_LEDGER_LIMIT,
   ids?: string[],
-  viewerRole?: string,
 ): Promise<BusinessDailyLedgerOrder[]> {
   const result = await fetchBusinessDailyLedgerWithStatusSets(
     supabase,
     filters,
     limit,
     ids,
-    viewerRole,
     false,
   )
   return result.orders

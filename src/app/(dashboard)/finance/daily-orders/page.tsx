@@ -138,7 +138,7 @@ async function DailyOrderLedgerSection({
   const summary = await summaryPromise
   const customersQuery = supabase.from('customers').select('*').is('deleted_at', null)
   const [ledger, customersResult, customerGroupsResult] = await Promise.all([
-    fetchBusinessDailyLedgerPage(supabase, filters, summary.orderIds, profile.role),
+    fetchBusinessDailyLedgerPage(supabase, filters, summary.orderIds),
     ['admin', 'finance'].includes(profile.role)
       ? customersQuery.order('name')
       : customersQuery.eq('created_by', profile.id).order('name'),

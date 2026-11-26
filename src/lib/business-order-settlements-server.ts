@@ -1,7 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  resolveProductDisplay,
+  type ProductFinancialLabel,
+} from '@/lib/business-order-financials'
+import { fetchProductFinancialLabelsCached } from '@/lib/business-order-financials-server'
 import { customerNameFromSnapshot } from '@/lib/customer-snapshot'
 import { displayProfileName } from '@/lib/utils'
-import type { CurrencyCode, DailyOrderShippingCategory, SettledOrderRow } from '@/types'
+import type {
+  BusinessOrderItemSourceType,
+  CurrencyCode,
+  DailyOrderShippingCategory,
+  SettledOrderRow,
+} from '@/types'
 
 const PAGE_SIZE = 1000
 
@@ -23,6 +33,8 @@ interface SettlementQueryRow {
     id: string
     name_snapshot: string | null
     sku_snapshot: string | null
+    product_id: string | null
+    source_type: BusinessOrderItemSourceType
     daily_shipping_category: DailyOrderShippingCategory | null
     order: {
       id: string
@@ -49,7 +61,7 @@ const SELECT = `
   settled_at,
   settled_by_profile:profiles!settled_by(id, chinese_name, full_name, email),
   item:business_order_items!inner(
-    id, name_snapshot, sku_snapshot, daily_shipping_category,
+    id, name_snapshot, sku_snapshot, product_id, source_type, daily_shipping_category,
     order:business_orders!inner(
       id, order_number, external_order_number, order_date, currency, voided_at,
       shop_name_snapshot, shop_group_name_snapshot, customer_snapshot,
@@ -82,12 +94,13 @@ export interface SettledOrdersResult {
 /**
  * 已结算订单归档：年月下拉只读 period 一列，行列表按选中年月在数据库过滤，
  * 关键字筛选仍在内存执行。两段查询同时发出。
+ * 产品名称/编码按每日订单口径解析财务标签：财务维护了产品名称时优先展示，
+ * 同时保留英文快照名 product_name_snapshot 供页面二次展示。
  */
 export async function fetchSettledOrders(
   supabase: SupabaseClient,
   filters: SettledOrderFilters,
 ): Promise<SettledOrdersResult> {
-  const rows: SettledOrderRow[] = []
   const keyword = filters.q.toLocaleLowerCase()
   const periodDate = filters.period ? `${filters.period}-01` : null
 
@@ -109,6 +122,14 @@ export async function fetchSettledOrders(
   // 行列表先报错时函数会提前退出，这里兜住年月查询的 rejection，避免未处理异常。
   periodsPromise.catch(() => {})
 
+  type SettlementItem = NonNullable<SettlementQueryRow['item']>
+  type SettlementOrder = NonNullable<SettlementItem['order']>
+  const pending: Array<{
+    record: SettlementQueryRow
+    item: SettlementItem
+    order: SettlementOrder
+  }> = []
+
   for (let from = 0; ; from += PAGE_SIZE) {
     let query = supabase
       .from('finance_business_order_item_settlements')
@@ -124,55 +145,77 @@ export async function fetchSettledOrders(
       const item = record.item
       const order = item?.order
       if (!item || !order || order.voided_at) continue
-
-      const period = String(record.period).slice(0, 7)
-
-      const unitCost = record.unit_cost == null ? null : Number(record.unit_cost)
-      const quantity = Number(record.quantity)
-      const productName = item.name_snapshot ?? '—'
-      const productSku = item.sku_snapshot ?? ''
-
-      if (keyword) {
-        const haystack = [
-          order.order_number,
-          order.external_order_number ?? '',
-          productName,
-          productSku,
-        ]
-          .join(' ')
-          .toLocaleLowerCase()
-        if (!haystack.includes(keyword)) continue
-      }
-
-      rows.push({
-        business_order_item_id: record.business_order_item_id,
-        order_id: order.id,
-        order_number: order.order_number,
-        external_order_number: order.external_order_number,
-        order_date: order.order_date,
-        shop_name: order.shop_name_snapshot,
-        shop_group_name: order.shop_group_name_snapshot,
-        salesperson_name: displayProfileName(
-          order.salesperson,
-          order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
-        ),
-        customer_name: customerNameFromSnapshot(order.customer_snapshot),
-        currency: order.currency,
-        product_name: productName,
-        product_sku: productSku,
-        shipping_category: item.daily_shipping_category,
-        quantity,
-        unit_cost: unitCost,
-        total_cost: unitCost == null ? null : Math.round(unitCost * quantity * 10000) / 10000,
-        period,
-        settled_by_name: record.settled_by_profile
-          ? displayProfileName(record.settled_by_profile)
-          : null,
-        settled_at: record.settled_at,
-      })
+      pending.push({ record, item, order })
     }
 
     if (page.length < PAGE_SIZE) break
+  }
+
+  const hasLinkedProducts = pending.some(
+    ({ item }) => item.source_type !== 'custom' && item.product_id,
+  )
+  const labels = hasLinkedProducts
+    ? await fetchProductFinancialLabelsCached(supabase)
+    : new Map<string, ProductFinancialLabel>()
+
+  const rows: SettledOrderRow[] = []
+  for (const { record, item, order } of pending) {
+    const period = String(record.period).slice(0, 7)
+
+    const unitCost = record.unit_cost == null ? null : Number(record.unit_cost)
+    const quantity = Number(record.quantity)
+    const productNameSnapshot = item.name_snapshot ?? ''
+    const productSkuSnapshot = item.sku_snapshot ?? ''
+    const display = resolveProductDisplay(
+      item.source_type,
+      item.product_id,
+      { sku: productSkuSnapshot },
+      labels,
+    )
+    const productName = display?.name || productNameSnapshot || '—'
+    const productSku = display ? display.sku ?? productSkuSnapshot : productSkuSnapshot
+
+    if (keyword) {
+      const haystack = [
+        order.order_number,
+        order.external_order_number ?? '',
+        productNameSnapshot,
+        productSkuSnapshot,
+        productName,
+        productSku,
+      ]
+        .join(' ')
+        .toLocaleLowerCase()
+      if (!haystack.includes(keyword)) continue
+    }
+
+    rows.push({
+      business_order_item_id: record.business_order_item_id,
+      order_id: order.id,
+      order_number: order.order_number,
+      external_order_number: order.external_order_number,
+      order_date: order.order_date,
+      shop_name: order.shop_name_snapshot,
+      shop_group_name: order.shop_group_name_snapshot,
+      salesperson_name: displayProfileName(
+        order.salesperson,
+        order.salesperson_display_name_snapshot ?? order.salesperson_name_snapshot,
+      ),
+      customer_name: customerNameFromSnapshot(order.customer_snapshot),
+      currency: order.currency,
+      product_name: productName,
+      product_sku: productSku,
+      product_name_snapshot: productNameSnapshot,
+      shipping_category: item.daily_shipping_category,
+      quantity,
+      unit_cost: unitCost,
+      total_cost: unitCost == null ? null : Math.round(unitCost * quantity * 10000) / 10000,
+      period,
+      settled_by_name: record.settled_by_profile
+        ? displayProfileName(record.settled_by_profile)
+        : null,
+      settled_at: record.settled_at,
+    })
   }
 
   return {
