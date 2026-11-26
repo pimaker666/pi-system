@@ -357,8 +357,8 @@ export function CustomerTable({
                 <TableHead className="sticky top-0 z-20 bg-background shadow-sm">客户</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-background shadow-sm">公司</TableHead>
                 <TableHead className="sticky top-0 z-20 bg-background shadow-sm">国家</TableHead>
-                <TableHead className="sticky top-0 z-20 w-40 min-w-40 whitespace-nowrap bg-background text-center shadow-sm">分组</TableHead>
-                <TableHead className="sticky top-0 z-20 w-40 whitespace-nowrap bg-background text-center shadow-sm">联系方式</TableHead>
+                <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background text-center shadow-sm">分组</TableHead>
+                <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background text-center shadow-sm">联系方式</TableHead>
                 {sortableHeader('近一年下单金额', 'amount', 'right')}
                 {sortableHeader('上次下单时间', 'lastOrder')}
                 {sortableHeader('新建客户时间', 'createdAt')}
