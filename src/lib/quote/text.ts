@@ -116,12 +116,15 @@ export const money3 = (n: number) => `$${fmt(n, 3)}`
 
 export function qtyText(catId: CategoryId, r: QuoteResult) {
   if (catId === 'mask') return `${fmtInt(r.qty)} 片${r.packs ? `（${fmtInt(r.packs)} 盒）` : ''}`
-  if (catId === 'eyemask') return `${fmtInt(r.orderQty)} 对（${fmtInt(r.packs)} ${r.packLabel}）`
+  if (catId === 'eyemask')
+    return r.packLabel === r.miniLabel
+      ? `${fmtInt(r.orderQty)} 对`
+      : `${fmtInt(r.orderQty)} 对（${fmtInt(r.packs)} ${r.packLabel}）`
   return `${fmtInt(r.qty)} ${r.unitLabel}`
 }
 
 export function hasPacks(catId: CategoryId, r: QuoteResult) {
-  return catId === 'mask' ? !!r.packs : catId === 'eyemask' ? true : r.packs !== r.qty
+  return catId === 'mask' ? !!r.packs : catId === 'eyemask' ? r.packLabel !== r.miniLabel : r.packs !== r.qty
 }
 
 export const showMini = (r: QuoteResult) => r.miniLabel !== r.unitLabel
@@ -141,6 +144,9 @@ export function secondaryKpi(categoryId: CategoryId, r: QuoteResult) {
   if (categoryId === 'cotton') return { label: '单片报价', en: 'per pad', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / 片` }
   if (categoryId === 'oil') return { label: '每 ml 报价', en: 'per ml', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / ml` }
   if (categoryId === 'cream') return { label: '每 g/ml 报价', en: 'per g/ml', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / g/ml` }
+  if (r.unitLabel === r.miniLabel) {
+    return { label: '每千对报价', en: 'per 1,000 pairs', value: money3(r.miniFob * 1000), foot: `出厂价 ¥${fmt(r.miniPrice * 1000)} / 千对` }
+  }
   return { label: '每对报价', en: 'per pair', value: money3(r.miniFob), foot: `出厂价 ¥${fmt(r.miniPrice)} / 对（${r.miniPerUnit} 对/${r.unitLabel}）` }
 }
 
@@ -170,7 +176,14 @@ export function specLine(categoryId: CategoryId, input: QuoteInput) {
   const m = DATA.eyemask.membranes[String(input.material)] || ({} as { kind?: string })
   const perJar = Math.floor(Number(input.pairsPerJar)) || DATA.eyemask.jars[String(input.jar)]?.pairs || 1
   const perBox = Math.floor(Number(input.pairsPerBox)) || Number(DATA.eyemask.defaults.pairsPerBox) || 6
-  const pack = m.kind === 'jar' ? `${en(input.jar, EN.jar)} · ${perJar} pairs / jar` : input.colorBox === '是' ? `${perBox} pairs / box` : 'Single sachet'
+  const pack =
+    m.kind === 'jar'
+      ? `${en(input.jar, EN.jar)} · ${perJar} pairs / jar`
+      : input.bagPack === '否'
+        ? 'Bulk patches (no bag)'
+        : input.colorBox === '是'
+          ? `${perBox} pairs / box`
+          : 'Single sachet'
   return `${en(input.product, EN.product)} · ${en(input.material, EN.material)} · ${pack}`
 }
 
@@ -195,7 +208,9 @@ export function buyerText(categoryId: CategoryId, input: QuoteInput, r: QuoteRes
   L.push(
     'Quantity: ' +
       (categoryId === 'eyemask'
-        ? `${fmtInt(r.orderQty)} pairs (${fmtInt(r.packs)} ${r.unitEn})`
+        ? r.unitEn === 'pairs'
+          ? `${fmtInt(r.orderQty)} pairs`
+          : `${fmtInt(r.orderQty)} pairs (${fmtInt(r.packs)} ${r.unitEn})`
         : categoryId === 'mask'
           ? `${fmtInt(r.qty)} pcs${r.packs ? ` (${fmtInt(r.packs)} boxes)` : ''}`
           : `${fmtInt(r.qty)} ${r.unitEn}`),
@@ -206,7 +221,7 @@ export function buyerText(categoryId: CategoryId, input: QuoteInput, r: QuoteRes
       ' / ' +
       r.unitEn +
       (categoryId === 'mask' && r.packPerUnit > 1 ? `  |  USD ${fmt(r.packFob, 3)} / box (${r.packPerUnit} pcs)` : '') +
-      (categoryId === 'eyemask' ? `  |  USD ${fmt(r.miniFob, 3)} / pair` : ''),
+      (categoryId === 'eyemask' && r.unitLabel !== r.miniLabel ? `  |  USD ${fmt(r.miniFob, 3)} / pair` : ''),
   )
   L.push('Order Value: USD ' + fmt(r.revenueUSD))
   L.push('Exchange Rate: 1 USD = ' + fmt(meta.fx, 2) + ' CNY · Price basis: FOB (EXW on request)')
@@ -215,7 +230,7 @@ export function buyerText(categoryId: CategoryId, input: QuoteInput, r: QuoteRes
   r.tiers.forEach((t) => {
     const per =
       (categoryId === 'mask' && r.packPerUnit > 1 ? ` · USD ${fmt(t.unitFob * r.packPerUnit, 3)} / box` : '') +
-      (categoryId === 'eyemask' ? ` · USD ${fmt(t.miniPrice / r.fx, 3)} / pair` : '')
+      (categoryId === 'eyemask' && r.unitLabel !== r.miniLabel ? ` · USD ${fmt(t.miniPrice / r.fx, 3)} / pair` : '')
     L.push(`  · ${fmtInt(t.qty)} ${qtyEn} → USD ${fmt(t.unitFob, 3)} / ${r.unitEn}${per}  (margin tier, subject to artwork confirmation)`)
   })
   L.push('')
