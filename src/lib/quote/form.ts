@@ -53,7 +53,7 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
       },
       {
         type: 'select', key: 'innerTray', label: '彩盒是否加内托', labelEn: 'Inner tray',
-        options: [opt('否', '不加内托'), opt('是', '加吸塑内托')],
+        options: [opt('否', '不加内托'), opt('是', '加彩盒内托')],
         hint: '默认不加；≤1,000 盒 0.20 元/盒，>1,000 盒 0.10 元/盒。',
         visible: (s) => s.colorBox !== '否',
       },
@@ -89,7 +89,7 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
       },
       {
         type: 'select', key: 'innerTray', label: '彩盒内托', labelEn: 'Inner tray',
-        options: [opt('是', '加吸塑内托'), opt('否', '不加内托')],
+        options: [opt('是', '加彩盒内托'), opt('否', '不加内托')],
         hint: '≤1,000 件 0.20 元；>1,000 件 0.10 元。',
         visible: (s) => s.colorBox === '是',
       },
@@ -134,7 +134,7 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
       },
       {
         type: 'select', key: 'innerTray', label: '彩盒内托', labelEn: 'Inner tray',
-        options: [opt('是', '加吸塑内托'), opt('否', '不加内托')],
+        options: [opt('是', '加彩盒内托'), opt('否', '不加内托')],
         hint: '≤100 ml 0.10 元；101–200 ml 0.15 元；>200 ml 0.20 元。',
         visible: (s) => s.colorBox === '是',
       },
@@ -178,7 +178,7 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
       },
       {
         type: 'select', key: 'innerTray', label: '彩盒内托', labelEn: 'Inner tray',
-        options: [opt('是', '加吸塑内托'), opt('否', '不加内托')],
+        options: [opt('是', '加彩盒内托'), opt('否', '不加内托')],
         hint: '≤100 ml 0.10 元；101–200 ml 0.15 元；>200 ml 0.20 元。',
         visible: (s) => s.colorBox === '是',
       },
@@ -238,7 +238,7 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
     },
     {
       type: 'select', key: 'innerTray', label: '彩盒内托', labelEn: 'Inner tray',
-      options: [opt('是', '加吸塑内托'), opt('否', '不加内托')],
+      options: [opt('是', '加彩盒内托'), opt('否', '不加内托')],
       hint: '≤1,000 件 0.20 元；>1,000 件 0.10 元；罐装与盒装通用，裸片散装不产生内托。',
       visible: (s) => s.colorBox === '是',
     },

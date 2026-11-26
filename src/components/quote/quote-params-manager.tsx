@@ -531,7 +531,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
         <Row label="配备彩盒" en="colorBox">
           <Sel value={String(d.defaults.colorBox)} options={['是', '否']} onChange={(v) => (d.defaults.colorBox = v)} />
         </Row>
-        <Row label="吸塑内托" en="innerTray">
+        <Row label="彩盒内托" en="innerTray">
           <Sel value={String(d.defaults.innerTray)} options={['是', '否']} onChange={(v) => (d.defaults.innerTray = v)} />
         </Row>
         <Row label="印刷色数" en="colors">
@@ -574,7 +574,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
         <Row label="铝箔袋" en="bag">
           {foilCostEditor(d.costs.bag, '个', '¥/个')}
         </Row>
-        <Row label="吸塑内托" en="tray · 按装盒数">
+        <Row label="彩盒内托" en="tray · 按装盒数">
           <TierTable
             rows={d.costs.tray.tiers}
             thresholdLabel="≤ 数量（盒）"
@@ -692,7 +692,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
         <Row label="铝箔袋" en="bag">
           {foilCostEditor(d.costs.bag, '个', '¥/个')}
         </Row>
-        <Row label="吸塑内托" en="tray · 按装盒数">
+        <Row label="彩盒内托" en="tray · 按装盒数">
           <TierTable
             rows={d.costs.tray.tiers}
             thresholdLabel="≤ 数量（盒）"
@@ -1179,7 +1179,7 @@ export function QuoteParamsManager({ saved, initialTab }: { saved: QuoteOverride
         <Row label="丝印" en="silk · 罐装">
           {setupCostEditor(d.costs.silk, '件', '¥/个')}
         </Row>
-        <Row label="吸塑内托" en="tray">
+        <Row label="彩盒内托" en="tray">
           <TierTable
             rows={d.costs.tray.tiers}
             thresholdLabel="≤ 数量（件）"

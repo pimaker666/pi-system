@@ -282,7 +282,7 @@ function maskAt(input: QuoteInput, qty: number, fx: number, marginOverride: numb
     { key: 'film', name: '膜片成本', nameEn: 'Mask sheet', basis: `面膜料体 + 天丝/蚕丝基布 + 无菌灌装 · ${film.toFixed(2)} 元/片`, total: film * qty },
     { key: 'bag', name: '铝箔袋', nameEn: 'Foil pouch', basis: qty < MC.bag.minQty ? `未达 ${MC.bag.minQty.toLocaleString('en-US')} 个，按 ¥${MC.bag.minTotal.toLocaleString('en-US')} 总价分摊` : `阶梯价 ${bag.toFixed(2)} 元/个`, total: bag * qty },
     { key: 'box', name: '彩盒', nameEn: 'Color box', basis: boxed ? `${boxes} 盒 × ${boxUnit.toFixed(2)} 元/盒（${ppb}片装）` : '片装无彩盒', total: boxUnit * boxes },
-    { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${trayUnit.toFixed(2)} 元/盒 × ${boxes} 盒` : '未添加内托', total: trayUnit * boxes },
+    { key: 'tray', name: '彩盒内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${trayUnit.toFixed(2)} 元/盒 × ${boxes} 盒` : '未添加内托', total: trayUnit * boxes },
     { key: 'labor', name: '装盒人工', nameEn: 'Assembly labor', basis: boxed ? `${DATA.mask.laborPerBox.toFixed(2)} 元/盒 × ${boxes} 盒` : '片装免人工装配', total: laborUnit * boxes },
     { key: 'plate', name: '印刷色版费', nameEn: 'Plate fee', basis: `${colors} 色 × ${plateUnit} 元/色，按总量平摊`, total: plateTotal },
   ]
@@ -365,7 +365,7 @@ function cottonAt(input: QuoteInput, qty: number, fx: number, marginOverride: nu
     { key: 'label', name: '瓶标', nameEn: 'Label', basis: print === '瓶标' ? setupBasis(CC.label, qty, `${label.toFixed(2)} 元/张`) : '未选择瓶标', total: label * qty },
     { key: 'silk', name: '丝印', nameEn: 'Silkscreen', basis: print === '丝印' ? setupBasis(CC.silk, qty, `${silk.toFixed(2)} 元/个`) : '未选择丝印', total: silk * qty },
     { key: 'box', name: '外彩盒', nameEn: 'Color box', basis: boxed ? `${qty.toLocaleString('en-US')} 盒 · ${boxUnit.toFixed(2)} 元/盒` : '未选择彩盒', total: boxUnit * qty },
-    { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${trayUnit.toFixed(2)} 元/个 × ${qty.toLocaleString('en-US')} 个` : '未添加内托', total: trayUnit * qty },
+    { key: 'tray', name: '彩盒内托', nameEn: 'Inner tray', basis: boxed && input.innerTray === '是' ? `${trayUnit.toFixed(2)} 元/个 × ${qty.toLocaleString('en-US')} 个` : '未添加内托', total: trayUnit * qty },
     { key: 'labor', name: '装盒人工', nameEn: 'Assembly labor', basis: boxed ? `${C.laborPerBox.toFixed(2)} 元/盒` : '袋装/裸罐无装盒人工', total: laborUnit * qty },
   ]
   if (form === '袋装' && qty < CC.bag.minQty) warnings.push(`铝箔袋起订 ${CC.bag.minQty.toLocaleString('en-US')} 个：不足按总价 ¥${CC.bag.minTotal.toLocaleString('en-US')} 平摊。`)
@@ -644,7 +644,7 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
     { key: 'plate', name: '袋子版费', nameEn: 'Bag plate fee', basis: pack.isJar ? '罐装免版费' : pack.bagged ? `${colors} 色 × ¥${E.platePerColor} = ¥${plateTotal.toLocaleString('en-US')}，按 ${packs.toLocaleString('en-US')} 件平摊` : '不用袋，无袋子版费', total: plateTotal },
     { key: 'print', name: '瓶标 / 丝印', nameEn: 'Decoration', basis: pack.isJar ? (input.print === '瓶标' ? setupBasis(EC.label, packs, `${label.toFixed(2)} 元/件`) : input.print === '丝印' ? setupBasis(EC.silk, packs, `${silk.toFixed(2)} 元/件`) : '未选择印刷') : pack.bagged ? '袋装自带专版印刷' : '无袋装印刷', total: (label + silk) * packs },
     { key: 'box', name: '外彩盒', nameEn: 'Color box', basis: pack.boxed ? `${packs.toLocaleString('en-US')} 件 · ${boxUnit.toFixed(2)} 元/件` : '未选外彩盒', total: boxUnit * packs },
-    { key: 'tray', name: '吸塑内托', nameEn: 'Inner tray', basis: trayOn ? `${trayUnit.toFixed(2)} 元/件（按件数分段）` : pack.boxed ? '未加内托' : '无彩盒不加内托', total: trayUnit * packs },
+    { key: 'tray', name: '彩盒内托', nameEn: 'Inner tray', basis: trayOn ? `${trayUnit.toFixed(2)} 元/件（按件数分段）` : pack.boxed ? '未加内托' : '无彩盒不加内托', total: trayUnit * packs },
     { key: 'labor', name: '组装人工', nameEn: 'Assembly labor', basis: pack.boxed ? `盒装 ${E.laborPerBox.toFixed(2)} 元/件` : '散装/裸罐无装盒人工', total: laborUnit * packs },
   ]
   if (m.floorTotal > 0 && pairs < m.moq) warnings.push(`低于该膜材起订量 ${m.moq.toLocaleString('en-US')} 对，膜材按批次底价 ¥${m.floorTotal.toLocaleString('en-US')} 平摊。`)
