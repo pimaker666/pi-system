@@ -45,7 +45,8 @@ import { CustomerRowActions } from './customer-row-actions'
 import { CountryFlag } from '@/components/shared/country-flag'
 import { formatCountryName } from '@/lib/country-flags'
 import { formatDate } from '@/lib/utils'
-import { formatCustomerTenure } from '@/lib/customer-tenure'
+import { formatCustomerTenure, customerDaysSinceLastOrder } from '@/lib/customer-tenure'
+import { getBusinessDateKey } from '@/lib/business-orders'
 import {
   bulkTransferCustomers,
   bulkCopyCustomers,
@@ -67,6 +68,8 @@ export interface CustomerOrderStats {
   customOrderCount: number
   firstOrderDate: string | null
   dealOrderCount: number
+  lastYearOrderCount: number
+  avgOrderIntervalDays: number | null
 }
 
 export type CustomerOrderStatsMap = Record<string, CustomerOrderStats>
@@ -77,6 +80,8 @@ export type CustomerSortField =
   | 'tenure'
   | 'customOrderCount'
   | 'dealOrderCount'
+  | 'yearOrderCount'
+  | 'daysSinceLastOrder'
 export type CustomerSortDirection = 'asc' | 'desc'
 
 const KEEP = '__keep__'
@@ -146,7 +151,15 @@ export function CustomerTable({
   const allChecked = customers.length > 0 && selected.size === customers.length
   const someChecked = selected.size > 0 && !allChecked
   const ids = useMemo(() => Array.from(selected), [selected])
-  const colCount = isAdmin ? 14 : 13
+  const daysSinceLastOrder = useMemo(() => {
+    const map: Record<string, number | undefined> = {}
+    const todayKey = getBusinessDateKey()
+    for (const c of customers) {
+      map[c.id] = customerDaysSinceLastOrder(stats[c.id]?.lastOrderDate, todayKey)
+    }
+    return map
+  }, [customers, stats])
+  const colCount = isAdmin ? 16 : 15
 
   function toggleAll() {
     setSelected(allChecked ? new Set() : new Set(customers.map((c) => c.id)))
@@ -355,7 +368,7 @@ export function CustomerTable({
         </div>
       )}
 
-      <Card className="min-w-[1660px]">
+      <Card className="min-w-[1800px]">
         <CardContent className="p-0">
           <Table containerClassName="overflow-visible">
             <TableHeader>
@@ -377,11 +390,13 @@ export function CustomerTable({
                 <TableHead className="sticky top-0 z-20 w-[72px] bg-background px-2 shadow-sm">国家</TableHead>
                 <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background text-center shadow-sm">分组</TableHead>
                 <TableHead className="sticky top-0 z-20 w-[1%] whitespace-nowrap bg-background px-2 text-center shadow-sm">联系方式</TableHead>
-                {sortableHeader('近一年下单金额', 'amount', 'right', undefined, 'w-[1%]')}
-                {sortableHeader('上次下单时间', 'lastOrder')}
-                {sortableHeader(twoLineLabel('定制', '订单数'), 'customOrderCount', 'center', undefined, 'w-[1%]')}
-                {sortableHeader(twoLineLabel('成交', '单数'), 'dealOrderCount', 'center', '只含现货样品或定制打样的订单不计入', 'w-[1%]')}
-                {sortableHeader(twoLineLabel('客户', '年限'), 'tenure', 'center', '从第一次下单起算，按自然月折算（6个月=0.5年），每月1号统一更新', 'w-[1%]')}
+                {sortableHeader('近一年下单金额', 'amount', 'right', undefined, 'w-[1%] px-2')}
+                {sortableHeader(twoLineLabel('复购', '频率'), 'yearOrderCount', 'center', '近一年有效下单单数（含首单与样品/打样单，不含作废与未审核）；下方为平均下单间隔，按全部有效单计算，至少 2 单才有值', 'w-[1%] px-2')}
+                {sortableHeader(twoLineLabel('距上次', '下单天数'), 'daysSinceLastOrder', 'center', '按今天（北京时间）与上次下单日期相差的整天数', 'w-[1%] px-2')}
+                {sortableHeader('上次下单时间', 'lastOrder', 'center', undefined, 'w-[1%] px-2')}
+                {sortableHeader(twoLineLabel('定制', '订单数'), 'customOrderCount', 'center', undefined, 'w-[1%] px-2')}
+                {sortableHeader(twoLineLabel('成交', '单数'), 'dealOrderCount', 'center', '只含现货样品或定制打样的订单不计入', 'w-[1%] px-2')}
+                {sortableHeader(twoLineLabel('客户', '年限'), 'tenure', 'center', '从第一次下单起算，按自然月折算（6个月=0.5年），每月1号统一更新', 'w-[1%] px-2')}
                 {sortableHeader('新建客户时间', 'createdAt')}
                 {isAdmin && <TableHead className="sticky top-0 z-20 whitespace-nowrap bg-background shadow-sm">归属账号</TableHead>}
                 <TableHead className="sticky top-0 z-20 bg-background text-right shadow-sm">操作</TableHead>
@@ -435,7 +450,7 @@ export function CustomerTable({
                       {c.email ?? c.phone ?? '—'}
                     </span>
                   </TableCell>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="px-2 text-right tabular-nums">
                     {stats[c.id]?.lastYearAmountCny || stats[c.id]?.lastYearAmountUsd ? (
                       <div className="space-y-0.5 whitespace-nowrap">
                         {stats[c.id]?.lastYearAmountCny ? (
@@ -447,16 +462,31 @@ export function CustomerTable({
                       </div>
                     ) : '—'}
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground tabular-nums">
+                  <TableCell className="whitespace-nowrap px-2 text-center tabular-nums">
+                    {(stats[c.id]?.lastYearOrderCount ?? 0) > 0 ? (
+                      <div className="space-y-0.5">
+                        <div>{stats[c.id].lastYearOrderCount} 单/年</div>
+                        <div className="text-xs text-muted-foreground">
+                          {stats[c.id].avgOrderIntervalDays === null
+                            ? '间隔 —'
+                            : `间隔 ${stats[c.id].avgOrderIntervalDays} 天`}
+                        </div>
+                      </div>
+                    ) : '—'}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap px-2 text-center tabular-nums">
+                    {daysSinceLastOrder[c.id] === undefined ? '—' : `${daysSinceLastOrder[c.id]} 天`}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap px-2 text-center text-sm text-muted-foreground tabular-nums">
                     {stats[c.id]?.lastOrderDate ?? '—'}
                   </TableCell>
-                  <TableCell className="text-center tabular-nums">
+                  <TableCell className="px-2 text-center tabular-nums">
                     {stats[c.id]?.customOrderCount ?? 0}
                   </TableCell>
-                  <TableCell className="text-center tabular-nums">
+                  <TableCell className="px-2 text-center tabular-nums">
                     {stats[c.id]?.dealOrderCount ?? 0}
                   </TableCell>
-                  <TableCell className="text-center tabular-nums whitespace-nowrap">
+                  <TableCell className="whitespace-nowrap px-2 text-center tabular-nums">
                     {formatCustomerTenure(stats[c.id]?.firstOrderDate)}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground tabular-nums whitespace-nowrap">

@@ -6,7 +6,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
 import { cn, displayProfileName } from '@/lib/utils'
-import { customerTenureMonths } from '@/lib/customer-tenure'
+import { customerTenureMonths, customerDaysSinceLastOrder } from '@/lib/customer-tenure'
+import { getBusinessDateKey } from '@/lib/business-orders'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { NewCustomerButton } from '@/components/customers/new-customer-button'
@@ -28,6 +29,8 @@ const customerSortFields: CustomerSortField[] = [
   'tenure',
   'customOrderCount',
   'dealOrderCount',
+  'yearOrderCount',
+  'daysSinceLastOrder',
 ]
 
 const CUSTOMER_STATS_TTL_SECONDS = 30
@@ -55,6 +58,8 @@ async function fetchCustomerOrderStats(
         custom_order_count: number | null
         first_order_date: string | null
         deal_order_count: number | null
+        last_year_order_count: number | null
+        avg_order_interval_days: number | null
       }[]) {
         map[s.customer_id] = {
           lastYearAmountCny: Number(s.last_year_amount_cny ?? 0),
@@ -63,6 +68,9 @@ async function fetchCustomerOrderStats(
           customOrderCount: Number(s.custom_order_count ?? 0),
           firstOrderDate: s.first_order_date,
           dealOrderCount: Number(s.deal_order_count ?? 0),
+          lastYearOrderCount: Number(s.last_year_order_count ?? 0),
+          avgOrderIntervalDays:
+            s.avg_order_interval_days == null ? null : Number(s.avg_order_interval_days),
         }
       }
       return map
@@ -165,6 +173,17 @@ export default async function CustomersPage({
 
   const minAmount = Number(amountMin)
   const maxAmount = Number(amountMax)
+  // 排序时逐对比较，今天基准与天数先按客户算一次，避免反复构建 Intl 格式化器
+  const daysSinceLastOrder = new Map<string, number | undefined>()
+  if (!isTrash) {
+    const todayKey = getBusinessDateKey()
+    for (const customer of customers) {
+      daysSinceLastOrder.set(
+        customer.id,
+        customerDaysSinceLastOrder(statsMap[customer.id]?.lastOrderDate, todayKey),
+      )
+    }
+  }
   if (!isTrash) {
     customers = customers.filter((customer) => {
       const stats = statsMap[customer.id]
@@ -182,6 +201,8 @@ export default async function CustomersPage({
         if (sortBy === 'createdAt') return customer.created_at
         if (sortBy === 'tenure') return customerTenureMonths(stats?.firstOrderDate)
         if (sortBy === 'dealOrderCount') return stats?.dealOrderCount ?? 0
+        if (sortBy === 'yearOrderCount') return stats?.lastYearOrderCount ?? 0
+        if (sortBy === 'daysSinceLastOrder') return daysSinceLastOrder.get(customer.id)
         return stats?.customOrderCount ?? 0
       }
       const leftValue = sortValue(left)
