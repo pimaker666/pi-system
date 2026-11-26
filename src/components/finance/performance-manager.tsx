@@ -997,13 +997,6 @@ export function PerformanceManager({
         </p>
       </div>
 
-      <CustomerCohortDashboard
-        rows={customerCohortRows}
-        newCustomerRows={newCustomerFirstYearRows}
-        newCustomerWindow={newCustomerWindow}
-        newCustomerWindowExplicit={newCustomerWindowExplicit}
-      />
-
       <div className="flex flex-wrap items-center gap-2">
         {GROUP_TABS.filter((tab) => canViewProfit || !['catalog_product', 'custom_product'].includes(tab.value)).map((tab) => (
           <Button
@@ -1318,6 +1311,13 @@ export function PerformanceManager({
           </Table>
         </div>
       </div>
+
+      <CustomerCohortDashboard
+        rows={customerCohortRows}
+        newCustomerRows={newCustomerFirstYearRows}
+        newCustomerWindow={newCustomerWindow}
+        newCustomerWindowExplicit={newCustomerWindowExplicit}
+      />
     </div>
   )
 }
