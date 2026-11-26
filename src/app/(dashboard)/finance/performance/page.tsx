@@ -2,7 +2,9 @@ import { PerformanceManager } from '@/components/finance/performance-manager'
 import {
   getBusinessPerformanceByGroup,
   getBusinessPerformanceByProduct,
+  getBusinessPerformanceCustomerCohorts,
   getBusinessPerformanceMultiDimension,
+  getBusinessPerformanceNewCustomerFirstYear,
   getBusinessPerformanceSummary,
 } from '@/lib/actions/business-orders'
 import { getBusinessOrderProfitRowsForPerformance } from '@/lib/actions/business-order-profit'
@@ -197,28 +199,50 @@ export default async function FinancePerformancePage({
     productGroupIds,
     shippingCategories,
   }
+  // 新客首单区间：显式选了下单日期就按所选，否则默认今年年初至今。
+  const todayKey = getBusinessDateKey()
+  const newCustomerWindow = {
+    from: dateFrom ?? `${todayKey.slice(0, 4)}-01-01`,
+    to: dateTo ?? todayKey,
+  }
+  const newCustomerWindowExplicit = Boolean(dateFrom || dateTo)
   // 维度切换只改展示口径，筛选条件不变，因此一次取回全部维度，前端切换不再回服务端。
-  const [summaryResult, groupResults, productResults, multiDimensionResult, profitRows] =
-    await Promise.all([
-      getBusinessPerformanceSummary(filters),
-      Promise.all(GROUP_BY_KEYS.map((key) => getBusinessPerformanceByGroup(key, filters))),
-      canViewProfit
-        ? Promise.all([
-            getBusinessPerformanceByProduct('catalog', filters),
-            getBusinessPerformanceByProduct('custom', filters),
-          ])
-        : Promise.resolve([]),
-      getBusinessPerformanceMultiDimension(multiDimensions, filters),
-      canViewProfit
-        ? getBusinessOrderProfitRowsForPerformance(filters)
-        : Promise.resolve([]),
-    ])
+  const [
+    summaryResult,
+    groupResults,
+    productResults,
+    multiDimensionResult,
+    cohortResult,
+    newCustomerResult,
+    profitRows,
+  ] = await Promise.all([
+    getBusinessPerformanceSummary(filters),
+    Promise.all(GROUP_BY_KEYS.map((key) => getBusinessPerformanceByGroup(key, filters))),
+    canViewProfit
+      ? Promise.all([
+          getBusinessPerformanceByProduct('catalog', filters),
+          getBusinessPerformanceByProduct('custom', filters),
+        ])
+      : Promise.resolve([]),
+    getBusinessPerformanceMultiDimension(multiDimensions, filters),
+    getBusinessPerformanceCustomerCohorts(filters),
+    getBusinessPerformanceNewCustomerFirstYear(filters, newCustomerWindow),
+    canViewProfit
+      ? getBusinessOrderProfitRowsForPerformance(filters)
+      : Promise.resolve([]),
+  ])
 
   if (!summaryResult.ok || !summaryResult.data) {
     throw new Error(summaryResult.error || '业绩汇总读取失败')
   }
   if (!multiDimensionResult.ok || !multiDimensionResult.data) {
     throw new Error(multiDimensionResult.error || '多维销售总览读取失败')
+  }
+  if (!cohortResult.ok || !cohortResult.data) {
+    throw new Error(cohortResult.error || '新老客户成交读取失败')
+  }
+  if (!newCustomerResult.ok || !newCustomerResult.data) {
+    throw new Error(newCustomerResult.error || '新客户首年成交读取失败')
   }
 
   const groupRowsByGroupBy: Partial<
@@ -278,6 +302,10 @@ export default async function FinancePerformancePage({
         groupRowsByGroupBy={groupRowsByGroupBy}
         productRowsBySource={productRowsBySource}
         multiDimensionRows={multiDimensionResult.data}
+        customerCohortRows={cohortResult.data}
+        newCustomerFirstYearRows={newCustomerResult.data}
+        newCustomerWindow={newCustomerWindow}
+        newCustomerWindowExplicit={newCustomerWindowExplicit}
         multiDimensions={multiDimensions}
         groupBy={effectiveGroupBy}
         filters={filters}

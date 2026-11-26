@@ -56,6 +56,8 @@ import type {
   BusinessOrderShipmentItem,
   BusinessOrderStatus,
   BusinessPerformanceDimension,
+  BusinessPerformanceCustomerCohortRow,
+  BusinessPerformanceNewCustomerFirstYearRow,
   BusinessPerformanceGroupBy,
   BusinessPerformanceGroupRow,
   BusinessPerformanceMultiDimensionRow,
@@ -1658,6 +1660,114 @@ export async function getBusinessPerformanceMultiDimension(
       sales_amount_cny: Number(row.sales_amount_cny),
       sales_amount_usd: Number(row.sales_amount_usd),
     })),
+  }
+}
+
+export async function getBusinessPerformanceCustomerCohorts(
+  filters: BusinessPerformanceFilters,
+): Promise<{ ok: boolean; data?: BusinessPerformanceCustomerCohortRow[]; error?: string }> {
+  await requireApproved()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_business_performance_customer_cohorts', {
+    p_date_from: filters.dateFrom ?? null,
+    p_date_to: filters.dateTo ?? null,
+    p_received_from: filters.receivedFrom ?? null,
+    p_received_to: filters.receivedTo ?? null,
+    p_created_from: filters.createdFrom ?? null,
+    p_created_to: filters.createdTo ?? null,
+    p_salesperson_ids: filters.salespersonIds ?? null,
+    p_shop_ids: filters.shopIds ?? null,
+    p_product_group_ids: filters.productGroupIds ?? null,
+    p_shipping_categories: filters.shippingCategories ?? null,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '读取新老客户成交失败') }
+
+  const numericKeys = [
+    'new_customer_count',
+    'new_order_count',
+    'new_amount_cny',
+    'new_amount_usd',
+    'new_amount_cny_equivalent',
+    'old_customer_count',
+    'old_order_count',
+    'old_amount_cny',
+    'old_amount_usd',
+    'old_amount_cny_equivalent',
+    'unbound_order_count',
+    'unbound_amount_cny',
+    'unbound_amount_usd',
+    'unbound_amount_cny_equivalent',
+    'first_year_amount_cny',
+    'first_year_amount_usd',
+    'one_two_year_amount_cny',
+    'one_two_year_amount_usd',
+    'two_plus_year_amount_cny',
+    'two_plus_year_amount_usd',
+    'active_customer_count',
+    'prior_active_customer_count',
+    'retained_customer_count',
+  ] as const
+  type NumericKey = (typeof numericKeys)[number]
+  type NumericRecord = Record<NumericKey, number>
+
+  return {
+    ok: true,
+    data: ((data ?? []) as Array<BusinessPerformanceCustomerCohortRow & Record<NumericKey, number | string>>).map((row) => {
+      const numeric = Object.fromEntries(
+        numericKeys.map((key) => [key, Number(row[key] ?? 0)]),
+      ) as NumericRecord
+      return { ...row, ...numeric }
+    }),
+  }
+}
+
+export async function getBusinessPerformanceNewCustomerFirstYear(
+  filters: BusinessPerformanceFilters,
+  window: { from: string; to: string },
+): Promise<{
+  ok: boolean
+  data?: BusinessPerformanceNewCustomerFirstYearRow[]
+  error?: string
+}> {
+  await requireApproved()
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_business_performance_new_customer_first_year', {
+    p_window_from: window.from,
+    p_window_to: window.to,
+    p_salesperson_ids: filters.salespersonIds ?? null,
+    p_shop_ids: filters.shopIds ?? null,
+    p_product_group_ids: filters.productGroupIds ?? null,
+    p_shipping_categories: filters.shippingCategories ?? null,
+  })
+  if (error) return { ok: false, error: businessOrderError(error.message, '读取新客户首年成交失败') }
+
+  const numericKeys = [
+    'customer_count',
+    'first_order_count',
+    'first_order_amount_cny',
+    'first_order_amount_usd',
+    'follow_up_order_count',
+    'follow_up_amount_cny',
+    'follow_up_amount_usd',
+    'first_year_order_count',
+    'first_year_amount_cny',
+    'first_year_amount_usd',
+  ] as const
+  type NumericKey = (typeof numericKeys)[number]
+  type NumericRecord = Record<NumericKey, number>
+
+  return {
+    ok: true,
+    data: (
+      (data ?? []) as Array<
+        BusinessPerformanceNewCustomerFirstYearRow & Record<NumericKey, number | string>
+      >
+    ).map((row) => {
+      const numeric = Object.fromEntries(
+        numericKeys.map((key) => [key, Number(row[key] ?? 0)]),
+      ) as NumericRecord
+      return { ...row, ...numeric }
+    }),
   }
 }
 

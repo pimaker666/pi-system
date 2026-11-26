@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { DateRangePicker } from '@/components/shared/date-range-picker'
+import { CustomerCohortDashboard } from '@/components/finance/customer-cohort-dashboard'
 import {
   Table,
   TableBody,
@@ -26,10 +27,12 @@ import type { BusinessOrderProfitRow } from '@/lib/actions/business-order-profit
 import { cn, formatCurrency } from '@/lib/utils'
 import type { BusinessPerformanceFilters } from '@/lib/actions/business-orders'
 import type {
+  BusinessPerformanceCustomerCohortRow,
   BusinessPerformanceDimension,
   BusinessPerformanceGroupBy,
   BusinessPerformanceGroupRow,
   BusinessPerformanceMultiDimensionRow,
+  BusinessPerformanceNewCustomerFirstYearRow,
   BusinessPerformanceProductRow,
   BusinessPerformanceProductSource,
   BusinessPerformanceSummary,
@@ -46,6 +49,10 @@ interface PerformanceManagerProps {
   groupRowsByGroupBy: Partial<Record<BusinessPerformanceGroupBy, BusinessPerformanceGroupRow[]>>
   productRowsBySource: Partial<Record<BusinessPerformanceProductSource, BusinessPerformanceProductRow[]>>
   multiDimensionRows: BusinessPerformanceMultiDimensionRow[]
+  customerCohortRows: BusinessPerformanceCustomerCohortRow[]
+  newCustomerFirstYearRows: BusinessPerformanceNewCustomerFirstYearRow[]
+  newCustomerWindow: { from: string; to: string }
+  newCustomerWindowExplicit: boolean
   multiDimensions: [BusinessPerformanceDimension, BusinessPerformanceDimension | null, BusinessPerformanceDimension | null]
   groupBy: BusinessPerformanceGroupBy
   filters: BusinessPerformanceFilters
@@ -291,6 +298,10 @@ export function PerformanceManager({
   groupRowsByGroupBy,
   productRowsBySource,
   multiDimensionRows,
+  customerCohortRows,
+  newCustomerFirstYearRows,
+  newCustomerWindow,
+  newCustomerWindowExplicit,
   multiDimensions,
   groupBy,
   filters,
@@ -985,6 +996,13 @@ export function PerformanceManager({
           下单日期与收款日期按订单取交集：只选一个时按该条件筛选订单；两个都选时，只保留「下单日期内下单」且「收款日期内有到账（含建单录入实收）」的订单。「已收」金额按实际到账日归集。
         </p>
       </div>
+
+      <CustomerCohortDashboard
+        rows={customerCohortRows}
+        newCustomerRows={newCustomerFirstYearRows}
+        newCustomerWindow={newCustomerWindow}
+        newCustomerWindowExplicit={newCustomerWindowExplicit}
+      />
 
       <div className="flex flex-wrap items-center gap-2">
         {GROUP_TABS.filter((tab) => canViewProfit || !['catalog_product', 'custom_product'].includes(tab.value)).map((tab) => (

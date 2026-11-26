@@ -209,6 +209,56 @@ export interface BusinessPerformanceMultiDimensionRow {
   sales_amount_usd: number
 }
 
+/** 业绩页新老客户成交看板：section 为 month / period_calendar / period_rolling。 */
+export interface BusinessPerformanceCustomerCohortRow {
+  section: 'month' | 'period_calendar' | 'period_rolling'
+  period_key: string
+  period_label: string
+  period_start: string
+  period_end: string
+  new_customer_count: number
+  new_order_count: number
+  new_amount_cny: number
+  new_amount_usd: number
+  /** 新客订单按订单记账汇率折算的人民币口径（柱高与占比用）。 */
+  new_amount_cny_equivalent: number
+  old_customer_count: number
+  old_order_count: number
+  old_amount_cny: number
+  old_amount_usd: number
+  old_amount_cny_equivalent: number
+  unbound_order_count: number
+  unbound_amount_cny: number
+  unbound_amount_usd: number
+  unbound_amount_cny_equivalent: number
+  first_year_amount_cny: number
+  first_year_amount_usd: number
+  one_two_year_amount_cny: number
+  one_two_year_amount_usd: number
+  two_plus_year_amount_cny: number
+  two_plus_year_amount_usd: number
+  active_customer_count: number
+  prior_active_customer_count: number
+  retained_customer_count: number
+}
+
+/** 业绩页「选定区间新客户 · 首年成交」：首单日期落在区间内的客户，其首单起 12 个月内订单聚合。 */
+export interface BusinessPerformanceNewCustomerFirstYearRow {
+  /** 首单月份 YYYY-MM */
+  period_key: string
+  period_start: string
+  customer_count: number
+  first_order_count: number
+  first_order_amount_cny: number
+  first_order_amount_usd: number
+  follow_up_order_count: number
+  follow_up_amount_cny: number
+  follow_up_amount_usd: number
+  first_year_order_count: number
+  first_year_amount_cny: number
+  first_year_amount_usd: number
+}
+
 export type BusinessOrderItemSourceType = 'catalog' | 'custom' | 'legacy'
 export type BusinessApprovalStatus = 'draft' | 'submitted' | 'rejected' | 'approved'
 export type BusinessPaymentStatus = 'unpaid' | 'partially_paid' | 'fully_paid'
