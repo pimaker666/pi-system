@@ -580,7 +580,9 @@ export function eyePackOf(input: QuoteInput): EyePack | null {
     return { perPack: perJar > 0 ? perJar : jar.pairs, jarPrice: jar.price, isJar: true, kind: 'jar', boxed: input.colorBox === '是', bagged: false, packName: String(input.jar) }
   }
   if (input.bagPack === '否') {
-    return { perPack: 1, isJar: false, kind: m.kind, boxed: false, bagged: false, packName: '裸片散装' }
+    const boxed = input.colorBox === '是'
+    const perBox = Math.max(1, Math.floor(num(input.pairsPerBox, 0)) || Number(E.defaults.pairsPerBox) || 6)
+    return { perPack: boxed ? perBox : 1, isJar: false, kind: m.kind, boxed, bagged: false, packName: boxed ? `裸片 · ${perBox}对彩盒装` : '裸片散装' }
   }
   const boxed = input.packMode !== '单袋散装'
   const perBox = Math.max(1, Math.floor(num(input.pairsPerBox, 0)) || Number(E.defaults.pairsPerBox) || 6)
@@ -650,7 +652,7 @@ function eyeAt(input: QuoteInput, pairs: number, fx: number, marginOverride: num
   if (pack.isJar && input.print === '瓶标' && packs <= EC.label.setupQty) notes.push(`瓶标开机费 ¥${EC.label.setupFee} 平摊；超过 ${EC.label.setupQty.toLocaleString('en-US')} 件进入阶梯单价。`)
   if (pack.isJar && input.print === '丝印' && packs <= EC.silk.setupQty) notes.push(`丝印开机费 ¥${EC.silk.setupFee} 平摊；超过 ${EC.silk.setupQty.toLocaleString('en-US')} 件进入阶梯单价。`)
   if (!pack.isJar && pack.bagged) notes.push('袋装自带专版印刷，按色数收取 ¥300/色版费；罐装免版费。')
-  if (!pack.isJar && !pack.bagged) notes.push('未选袋装包材：袋材与袋子版费不计入，按裸片散装核价。')
+  if (!pack.isJar && !pack.bagged) notes.push(`未选袋装包材：袋材与袋子版费不计入，${pack.boxed ? '贴片直接装彩盒核价。' : '按裸片散装核价。'}`)
   if (pairs >= 120000) notes.push('已进入 12 万对战略阶梯，享 35% 官方底价毛利。')
   else if (pairs >= 30000) notes.push('已达 3 万对档，进入 47% 官方毛利阶梯。')
 

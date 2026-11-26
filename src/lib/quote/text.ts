@@ -180,7 +180,9 @@ export function specLine(categoryId: CategoryId, input: QuoteInput) {
     m.kind === 'jar'
       ? `${en(input.jar, EN.jar)} · ${perJar} pairs / jar`
       : input.bagPack === '否'
-        ? 'Bulk patches (no bag)'
+        ? input.colorBox === '是'
+          ? `Bulk patches · ${perBox} pairs / box`
+          : 'Bulk patches (no bag)'
         : input.colorBox === '是'
           ? `${perBox} pairs / box`
           : 'Single sachet'
