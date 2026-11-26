@@ -402,13 +402,18 @@ export function CustomerTable({
                   <TableCell className="font-medium" style={{ color: c.tag_color ?? undefined }}>
                     <button
                       type="button"
-                      className="w-full cursor-pointer text-left hover:underline"
+                      className="block w-full max-w-[140px] cursor-pointer truncate text-left hover:underline"
+                      title={c.name}
                       onClick={() => window.open(`/customers/${c.id}`, '_blank', 'noopener,noreferrer')}
                     >
                       {c.name}
                     </button>
                   </TableCell>
-                  <TableCell>{c.company ?? '—'}</TableCell>
+                  <TableCell>
+                    <span className="block max-w-[180px] truncate" title={c.company ?? undefined}>
+                      {c.company ?? '—'}
+                    </span>
+                  </TableCell>
                   <TableCell>
                     <span className="flex items-center gap-1.5">
                       <CountryFlag country={c.country} />
