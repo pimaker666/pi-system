@@ -222,25 +222,24 @@ export function fieldsFor(categoryId: CategoryId, input: QuoteInput): FormField[
     {
       type: 'select', key: 'bagPack', label: '袋装包材', labelEn: 'Bag packaging',
       options: [opt('是', '配袋（铝箔 / 水凝胶袋）'), opt('否', '不要袋（裸片散装）')],
-      hint: '选“否”则不产生袋材与袋子版费，也无需选色版，按裸片散装核价；罐装膜材不受影响。',
+      hint: '选“否”则不计袋材、袋子版费与袋装印刷（相关选项自动隐藏），外彩盒仍可正常选择；罐装膜材不受影响。',
       visible: (s) => !isJarKind(s),
     },
     {
       type: 'select', key: 'colorBox', label: '外彩盒', labelEn: 'Color box',
-      options: [opt('是', '配彩盒'), opt('否', '裸罐 / 单袋散装')],
-      hint: '袋装选“否”即单袋散装；彩盒按件数阶梯 0.95–2.00 元。',
-      visible: (s) => isJarKind(s) || s.bagPack !== '否',
+      options: [opt('是', '配彩盒'), opt('否', '裸罐 / 单袋 / 裸片散装')],
+      hint: '选“否”即裸罐、单袋或裸片散装；彩盒按件数阶梯 0.95–2.00 元。',
     },
     {
       type: 'number', key: 'pairsPerBox', label: '每盒对数', labelEn: 'Pairs / box', unit: '对/盒',
       min: 1, datalist: [3, 4, 5, 6, 7, 8, 10],
       hint: '彩盒按「6 对/盒」基准阶梯计：盒数命中基准盒价后，按 基准盒价 ÷ 6 × 每盒对数 自动折算（3 对 = 基准的一半，10 对 ≈ 1.67 倍）。盒数 = 总对数 ÷ 每盒对数，彩盒 / 内托 / 装盒人工都按盒计费。可下拉或直接输入。',
-      visible: (s) => s.colorBox === '是' && !isJarKind(s) && s.bagPack !== '否',
+      visible: (s) => s.colorBox === '是' && !isJarKind(s),
     },
     {
       type: 'select', key: 'innerTray', label: '彩盒内托', labelEn: 'Inner tray',
       options: [opt('是', '加吸塑内托'), opt('否', '不加内托')],
-      hint: '≤1,000 件 0.20 元；>1,000 件 0.10 元；罐装与盒装通用，单袋散装不产生内托。',
+      hint: '≤1,000 件 0.20 元；>1,000 件 0.10 元；罐装与盒装通用，裸片散装不产生内托。',
       visible: (s) => s.colorBox === '是',
     },
     {
@@ -277,10 +276,9 @@ export function normalizeInput(categoryId: CategoryId, input: QuoteInput, prev?:
     const m = DATA.eyemask.membranes[String(next.material)]
     if (m && m.kind !== 'jar') {
       if (next.bagPack === '否') {
-        // 裸片散装：无袋材、无版费，也不再叠加彩盒/内托。
-        next.colorBox = '否'
-        next.innerTray = '否'
-        next.packMode = '裸片散装'
+        // 裸片不配袋：无袋材与版费，但外彩盒 / 内托仍由用户选择。
+        next.packMode = next.colorBox === '是' ? '盒装' : '裸片散装'
+        if (!(Number(next.pairsPerBox) > 0)) next.pairsPerBox = DATA.eyemask.defaults.pairsPerBox
       } else {
         next.packMode = next.colorBox === '是' ? '盒装' : '单袋散装'
         if (!(Number(next.pairsPerBox) > 0)) next.pairsPerBox = DATA.eyemask.defaults.pairsPerBox
